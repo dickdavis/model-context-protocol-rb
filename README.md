@@ -7,7 +7,7 @@ An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontex
 Include `model-context-protocol-rb` in your project.
 
 ```ruby
-require 'model-context-protocol-rb'```
+require 'model-context-protocol-rb'
 ```
 
 TODO: Write usage instructions here once implementation lands
