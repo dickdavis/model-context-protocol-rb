@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary = "An implementation of the Model Context Protocol (MCP) in Ruby."
   spec.homepage = "https://github.com/dickdavis/model-context-protocol-rb"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 2.6.0"
+  spec.required_ruby_version = ">= 3.2.4"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
 
