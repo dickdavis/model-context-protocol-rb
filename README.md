@@ -10,7 +10,40 @@ Include `model-context-protocol-rb` in your project.
 require 'model-context-protocol-rb'
 ```
 
-TODO: Write usage instructions here once implementation lands
+# Building an MCP Server
+
+Build a simple MCP server by routing methods to your custom handlers. Then, configure and run the server.
+
+```ruby
+server = ModelContextProtocol::Server.new do |config|
+  config.name = "My MCP Server"
+  config.router = router
+  config.version = "1.0.0"
+  config.enable_log = true
+  config.router = ModelContextProtocol::Router.new do
+    prompts do
+      list Prompt::List, broadcast_changes: true
+      get Prompt::Get
+    end
+
+    resources do
+      list Resource::List, broadcast_changes: true
+      read Resource::Read, allow_subscriptions: true
+    end
+
+    tools do
+      list Tool::List, broadcast_changes: true
+      call Tool::Call
+    end
+  end
+end
+
+server.start
+```
+
+Messages from the MCP client will be routed to the appropriate custom handler. Your customer handler must respond to `call`; the router will pass the message to the handler as an argument.
+
+Your handler should return a valid JSONRPC 2.0 response.
 
 ## Installation
 
