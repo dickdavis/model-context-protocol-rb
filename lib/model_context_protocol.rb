@@ -5,5 +5,4 @@ Dir[File.join(__dir__, "model_context_protocol/", "**", "*.rb")].sort.each { |fi
 ##
 # Top-level namespace
 module ModelContextProtocol
-  # TODO: everything
 end
