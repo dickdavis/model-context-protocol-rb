@@ -1,0 +1,120 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require_relative "../lib/model_context_protocol"
+server = ModelContextProtocol::Server.new do |config|
+  config.name = "MCP Development Server"
+  config.version = "1.0.0"
+  config.enable_log = true
+  config.router = ModelContextProtocol::Server::Router.new do
+    prompts do
+      list(
+        Class.new do
+          def self.call(_message)
+            {
+              prompts: [
+                {
+                  name: "example_prompt",
+                  description: "An example prompt for testing"
+                }
+              ]
+            }
+          end
+        end
+      )
+
+      get(
+        Class.new do
+          def self.call(_message)
+            {
+              messages: [
+                {
+                  role: "user",
+                  content: "This is an example prompt response"
+                }
+              ]
+            }
+          end
+        end
+      )
+    end
+
+    resources do
+      list(
+        Class.new do
+          def self.call(_message)
+            {
+              resources: [
+                {
+                  uri: "test://example.txt",
+                  name: "Example Resource",
+                  description: "A test resource",
+                  mimeType: "text/plain"
+                }
+              ]
+            }
+          end
+        end
+      )
+
+      read(
+        Class.new do
+          def self.call(_message)
+            {
+              contents: [
+                {
+                  uri: "test://example.txt",
+                  text: "This is example resource content"
+                }
+              ]
+            }
+          end
+        end
+      )
+    end
+
+    tools do
+      list(
+        Class.new do
+          def self.call(_message)
+            {
+              tools: [
+                {
+                  name: "example_tool",
+                  description: "A test tool",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      input: {
+                        type: "string",
+                        description: "Test input"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          end
+        end
+      )
+
+      call(
+        Class.new do
+          def self.call(_message)
+            {
+              content: [
+                {
+                  type: "text",
+                  text: "Tool execution result"
+                }
+              ]
+            }
+          end
+        end
+      )
+    end
+  end
+end
+
+server.start
