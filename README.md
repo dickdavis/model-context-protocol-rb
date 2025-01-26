@@ -17,7 +17,6 @@ Build a simple MCP server by routing methods to your custom handlers. Then, conf
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
   config.name = "My MCP Server"
-  config.router = router
   config.version = "1.0.0"
   config.enable_log = true
   config.router = ModelContextProtocol::Router.new do
