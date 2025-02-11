@@ -1,8 +1,8 @@
-#!/usr/bin/env ruby
-# frozen_string_literal: true
+#!/usr/bin/env asdf exec ruby
 
 require "bundler/setup"
 require_relative "../lib/model_context_protocol"
+
 server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
