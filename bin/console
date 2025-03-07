@@ -2,10 +2,34 @@
 # frozen_string_literal: true
 
 require "bundler/setup"
+require "irb"
+require "irb/command"
 require_relative "../lib/model_context_protocol"
 
-# You can add fixtures and/or initialization code here to make experimenting
-# with your gem easier. You can also use a different console, if you like.
+class ReloadProject < IRB::Command::Base
+  category "Reload project"
+  description "Reloads the project files"
+  help_message <<~HELP
+    Reloads the project files.
 
-require "irb"
+    Usage: rp
+  HELP
+
+  def execute(_arg)
+    original_verbosity = $VERBOSE
+    $VERBOSE = nil
+
+    lib_path = File.expand_path('../../lib', __FILE__)
+    Dir.glob(File.join(lib_path, '**', '*.rb')).sort.each do |file|
+      load file
+    end
+
+    puts "Project reloaded successfully."
+  ensure
+    $VERBOSE = original_verbosity
+  end
+end
+
+IRB::Command.register(:rp, ReloadProject)
+
 IRB.start(__FILE__)
