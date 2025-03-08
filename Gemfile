@@ -7,6 +7,8 @@ gemspec
 group :development do
   gem "rake"
   gem "reek"
+  gem "solargraph"
+  gem "solargraph-standardrb"
   gem "standard"
 end
 
