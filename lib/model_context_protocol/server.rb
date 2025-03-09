@@ -2,6 +2,9 @@ require "json"
 
 module ModelContextProtocol
   class Server
+    # Raised when JSON schema validation fails.
+    class SchemaValidationError < StandardError; end
+
     class Configuration
       attr_accessor :enable_log, :name, :router, :version
 
