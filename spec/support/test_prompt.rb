@@ -19,6 +19,15 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   end
 
   def call
-    TextResponse[text: "Do this: #{params["message"]}"]
+    messages = [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "Do this: #{params["message"]}"
+        }
+      }
+    ]
+    Response[messages:, prompt: self]
   end
 end
