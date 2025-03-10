@@ -165,7 +165,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
   describe "with_metadata" do
     it "sets the class metadata" do
-      expect(TestTool.name).to eq("Test Tool")
+      expect(TestTool.name).to eq("test-tool")
       expect(TestTool.description).to eq("A test tool")
       expect(TestTool.input_schema).to eq(
         type: "object",
@@ -182,7 +182,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "metadata" do
     it "returns class metadata" do
       expect(TestTool.metadata).to eq(
-        name: "Test Tool",
+        name: "test-tool",
         description: "A test tool",
         inputSchema: {
           type: "object",

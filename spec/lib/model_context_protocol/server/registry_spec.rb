@@ -55,7 +55,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(tools.size).to eq(1)
       expect(tools.first[:klass]).to eq(TestTool)
-      expect(tools.first[:name]).to eq("Test Tool")
+      expect(tools.first[:name]).to eq("test-tool")
       expect(tools.first[:description]).to eq("A test tool")
       expect(tools.first[:inputSchema]).to be_a(Hash)
     end
@@ -129,7 +129,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_tool" do
       it "returns the tool class when found" do
-        expect(registry.find_tool("Test Tool")).to eq(TestTool)
+        expect(registry.find_tool("test-tool")).to eq(TestTool)
       end
 
       it "returns nil when the tool is not found" do
@@ -195,7 +195,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         expect(result).to have_key(:tools)
         expect(result[:tools]).to be_an(Array)
         expect(result[:tools].first).to include(
-          name: "Test Tool",
+          name: "test-tool",
           description: "A test tool"
         )
         expect(result[:tools].first).to have_key(:inputSchema)
