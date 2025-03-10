@@ -5,10 +5,10 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     context "when input schema validation fails" do
       let(:invalid_params) { {"foo" => "bar"} }
 
-      it "raises a SchemaValidationError" do
+      it "raises a ParameterValidationError" do
         expect {
           TestTool.call(invalid_params)
-        }.to raise_error(ModelContextProtocol::Server::SchemaValidationError)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
 
