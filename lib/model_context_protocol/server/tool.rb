@@ -37,12 +37,16 @@ module ModelContextProtocol
     end
 
     def initialize(params)
-      JSON::Validator.validate!(self.class.input_schema, params)
+      validate!(params)
       @params = params
     end
 
     def call
       raise NotImplementedError, "Subclasses must implement the call method"
+    end
+
+    private def validate!(params)
+      JSON::Validator.validate!(self.class.input_schema, params)
     end
 
     class << self
@@ -66,7 +70,7 @@ module ModelContextProtocol
         response = new(params).call
         response.serialized
       rescue JSON::Schema::ValidationError => error
-        raise ModelContextProtocol::Server::SchemaValidationError, error.message
+        raise ModelContextProtocol::Server::ParameterValidationError, error.message
       rescue => error
         ToolErrorResponse[text: error.message].serialized
       end

@@ -2,8 +2,8 @@ require "json"
 
 module ModelContextProtocol
   class Server
-    # Raised when JSON schema validation fails.
-    class SchemaValidationError < StandardError; end
+    # Raised when invalid parameters are provided.
+    class ParameterValidationError < StandardError; end
 
     class Configuration
       attr_accessor :enable_log, :name, :router, :version
@@ -58,6 +58,8 @@ module ModelContextProtocol
         response = configuration.router.route(message)
         send_response(message["id"], response) if response
       end
+    rescue ModelContextProtocol::Server::ParameterValidationError => error
+      send_error_response(message["id"], {code: -32602, message: error.message})
     rescue => e
       log("Error: #{e.message}")
       log(e.backtrace)
@@ -70,13 +72,13 @@ module ModelContextProtocol
     end
 
     def send_response(id, result)
-      return unless result
+      response = {jsonrpc: "2.0", id:, result:}
+      $stdout.puts(JSON.generate(response))
+      $stdout.flush
+    end
 
-      response = {
-        jsonrpc: "2.0",
-        id: id,
-        result: result
-      }
+    def send_error_response(id, error)
+      response = {jsonrpc: "2.0", id:, error:}
       $stdout.puts(JSON.generate(response))
       $stdout.flush
     end
