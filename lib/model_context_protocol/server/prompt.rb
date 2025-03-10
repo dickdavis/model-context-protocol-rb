@@ -1,43 +1,16 @@
-require "json-schema"
-
 module ModelContextProtocol
   class Server::Prompt
-    attr_reader :params
+    attr_reader :params, :description
 
-    TextResponse = Data.define(:text) do
+    Response = Data.define(:messages, :prompt) do
       def serialized
-        {content: [{type: "text", text:}], isError: false}
-      end
-    end
-
-    ImageResponse = Data.define(:data, :mime_type) do
-      def initialize(data:, mime_type: "image/png")
-        super
-      end
-
-      def serialized
-        {content: [{type: "image", data:, mimeType: mime_type}], isError: false}
-      end
-    end
-
-    ResourceResponse = Data.define(:uri, :text, :mime_type) do
-      def initialize(uri:, text:, mime_type: "text/plain")
-        super
-      end
-
-      def serialized
-        {content: [{type: "resource", resource: {uri:, mimeType: mime_type, text:}}], isError: false}
-      end
-    end
-
-    PromptErrorResponse = Data.define(:text) do
-      def serialized
-        {content: [{type: "text", text:}], isError: true}
+        {description: prompt.description, messages:}
       end
     end
 
     def initialize(params)
       validate!(params)
+      @description = self.class.description
       @params = params
     end
 
@@ -85,8 +58,6 @@ module ModelContextProtocol
         response.serialized
       rescue ArgumentError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
-      rescue => error
-        PromptErrorResponse[text: error.message].serialized
       end
 
       def metadata

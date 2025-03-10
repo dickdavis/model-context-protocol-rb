@@ -23,33 +23,17 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       it "returns the response from the instance's call method" do
         response = TestPrompt.call(valid_params)
         expect(response).to eq(
-          content: [
+          description: "A test prompt",
+          messages: [
             {
-              type: "text",
-              text: "Do this: Hello, world!"
-            }
-          ],
-          isError: false
-        )
-      end
-
-      context "when an unexpected error occurs" do
-        before do
-          allow_any_instance_of(TestPrompt).to receive(:call).and_raise(StandardError, "Test error")
-        end
-
-        it "returns an error response" do
-          response = TestPrompt.call(valid_params)
-          expect(response).to eq(
-            content: [
-              {
+              role: "user",
+              content: {
                 type: "text",
-                text: "Test error"
+                text: "Do this: Hello, world!"
               }
-            ],
-            isError: true
-          )
-        end
+            }
+          ]
+        )
       end
     end
   end
@@ -83,94 +67,29 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
   end
 
   describe "data objects for responses" do
-    describe "TextResponse" do
-      it "formats text responses correctly" do
-        response = described_class::TextResponse[text: "Hello"]
-        expect(response.serialized).to eq(
-          content: [
-            {
+    describe "Response" do
+      it "formats responses correctly" do
+        messages = [
+          {
+            role: "user",
+            content: {
               type: "text",
-              text: "Hello"
+              text: "This is a test"
             }
-          ],
-          isError: false
-        )
-      end
-    end
-
-    describe "ImageResponse" do
-      it "formats image responses correctly" do
-        response = described_class::ImageResponse[data: "base64data", mime_type: "image/jpeg"]
+          }
+        ]
+        response = described_class::Response[messages:, prompt: TestPrompt.new({"message" => "Hello, world!"})]
         expect(response.serialized).to eq(
-          content: [
+          description: "A test prompt",
+          messages: [
             {
-              type: "image",
-              data: "base64data",
-              mimeType: "image/jpeg"
+              role: "user",
+              content: {
+                type: "text",
+                text: "This is a test"
+              }
             }
-          ],
-          isError: false
-        )
-      end
-
-      it "defaults to PNG mime type" do
-        response = described_class::ImageResponse[data: "base64data"]
-        expect(response.serialized).to eq(
-          content: [
-            {
-              type: "image",
-              data: "base64data",
-              mimeType: "image/png"
-            }
-          ],
-          isError: false
-        )
-      end
-    end
-
-    describe "ResourceResponse" do
-      it "formats resource responses correctly" do
-        response = described_class::ResourceResponse[uri: "resource://test", text: "content", mime_type: "text/markdown"]
-        expect(response.serialized).to eq(
-          content: [
-            type: "resource",
-            resource: {
-              uri: "resource://test",
-              mimeType: "text/markdown",
-              text: "content"
-            }
-          ],
-          isError: false
-        )
-      end
-
-      it "defaults to text/plain mime type" do
-        response = described_class::ResourceResponse[uri: "resource://test", text: "content"]
-        expect(response.serialized).to eq(
-          content: [
-            type: "resource",
-            resource: {
-              uri: "resource://test",
-              mimeType: "text/plain",
-              text: "content"
-            }
-          ],
-          isError: false
-        )
-      end
-    end
-
-    describe "PromptErrorResponse" do
-      it "formats error responses correctly" do
-        response = described_class::PromptErrorResponse[text: "Something went wrong"]
-        expect(response.serialized).to eq(
-          content: [
-            {
-              type: "text",
-              text: "Something went wrong"
-            }
-          ],
-          isError: true
+          ]
         )
       end
     end
