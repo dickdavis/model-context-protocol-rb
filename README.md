@@ -19,15 +19,15 @@ TODO's:
 
 ## Usage
 
-Include `model-context-protocol-rb` in your project.
+Include `model_context_protocol` in your project.
 
 ```ruby
-require 'model-context-protocol-rb'
+require 'model_context_protocol'
 ```
 
 ### Building an MCP Server
 
-Build a simple MCP server by routing methods to your custom handlers. Then, configure and run the server.
+Build a simple MCP server by registering your prompts, resources, and tools. Then, configure and run the server.
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
@@ -56,7 +56,7 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 #### ModelContextProtocol::Server::Prompt
 
-The `Prompt` class is used to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block, and then implement the call method to build your prompt. The `call` method should return a `Response` data object.
+The `ModelContextProtocol::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block, and then implement the call method to build your prompt. The `call` method should return a `Response` data object.
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
@@ -97,7 +97,7 @@ end
 
 #### ModelContextProtocol::Server::Resource
 
-The `Resource` class is used to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block, and then implement the 'call' method to build your prompt. The `call` method should return a `TextResponse` or a `BinaryResponse` data object.
+The `ModelContextProtocol::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block, and then implement the 'call' method to build your prompt. The `call` method should return a `TextResponse` or a `BinaryResponse` data object.
 
 ```ruby
 class TestResource < ModelContextProtocol::Server::Resource
@@ -118,7 +118,7 @@ end
 
 #### ModelContextProtocol::Server::Tool
 
-The `Tool` class is used to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block, and then implement the `call` method to build your prompt. The `call` method should return a `TextResponse`, `ImageResponse`, `ResourceResponse`, or `ToolErrorResponse` data object.
+The `ModelContextProtocol::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block, and then implement the `call` method to build your prompt. The `call` method should return a `TextResponse`, `ImageResponse`, `ResourceResponse`, or `ToolErrorResponse` data object.
 
 ```ruby
 class TestTool < ModelContextProtocol::Server::Tool
