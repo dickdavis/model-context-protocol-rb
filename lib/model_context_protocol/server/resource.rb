@@ -43,8 +43,7 @@ module ModelContextProtocol
       end
 
       def call
-        response = new.call
-        response.serialized
+        new.call
       end
 
       def metadata

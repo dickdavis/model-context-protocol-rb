@@ -67,12 +67,11 @@ module ModelContextProtocol
       end
 
       def call(params)
-        response = new(params).call
-        response.serialized
+        new(params).call
       rescue JSON::Schema::ValidationError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       rescue => error
-        ToolErrorResponse[text: error.message].serialized
+        ToolErrorResponse[text: error.message]
       end
 
       def metadata

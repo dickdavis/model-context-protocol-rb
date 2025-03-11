@@ -54,8 +54,7 @@ module ModelContextProtocol
       end
 
       def call(params)
-        response = new(params).call
-        response.serialized
+        new(params).call
       rescue ArgumentError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       end

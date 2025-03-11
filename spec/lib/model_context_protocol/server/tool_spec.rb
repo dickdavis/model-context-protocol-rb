@@ -22,15 +22,19 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "returns the response from the instance's call method" do
         response = TestTool.call(valid_params)
-        expect(response).to eq(
-          content: [
-            {
-              type: "text",
-              text: "You said: Hello, world!"
-            }
-          ],
-          isError: false
-        )
+        aggregate_failures do
+          expect(response).to be_a(ModelContextProtocol::Server::Tool::TextResponse)
+          expect(response.text).to eq("You said: Hello, world!")
+          expect(response.serialized).to eq(
+            content: [
+              {
+                type: "text",
+                text: "You said: Hello, world!"
+              }
+            ],
+            isError: false
+          )
+        end
       end
 
       context "when an unexpected error occurs" do
@@ -40,15 +44,19 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
         it "returns an error response" do
           response = TestTool.call(valid_params)
-          expect(response).to eq(
-            content: [
-              {
-                type: "text",
-                text: "Test error"
-              }
-            ],
-            isError: true
-          )
+          aggregate_failures do
+            expect(response).to be_a(ModelContextProtocol::Server::Tool::ToolErrorResponse)
+            expect(response.text).to eq("Test error")
+            expect(response.serialized).to eq(
+              content: [
+                {
+                  type: "text",
+                  text: "Test error"
+                }
+              ],
+              isError: true
+            )
+          end
         end
       end
     end
