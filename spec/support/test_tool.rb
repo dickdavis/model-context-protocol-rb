@@ -1,7 +1,7 @@
 class TestTool < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "Test Tool",
+      name: "test-tool",
       description: "A test tool",
       inputSchema: {
         type: "object",

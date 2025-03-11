@@ -55,7 +55,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(tools.size).to eq(1)
       expect(tools.first[:klass]).to eq(TestTool)
-      expect(tools.first[:name]).to eq("Test Tool")
+      expect(tools.first[:name]).to eq("test-tool")
       expect(tools.first[:description]).to eq("A test tool")
       expect(tools.first[:inputSchema]).to be_a(Hash)
     end
@@ -129,7 +129,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_tool" do
       it "returns the tool class when found" do
-        expect(registry.find_tool("Test Tool")).to eq(TestTool)
+        expect(registry.find_tool("test-tool")).to eq(TestTool)
       end
 
       it "returns nil when the tool is not found" do
@@ -155,51 +155,54 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       end
     end
 
-    describe "#serialized_prompts" do
+    describe "#prompts_data" do
       it "returns a hash with prompts array without klass references" do
-        result = registry.serialized_prompts
+        result = registry.prompts_data
 
-        expect(result).to be_a(Hash)
-        expect(result).to have_key(:prompts)
-        expect(result[:prompts]).to be_an(Array)
-        expect(result[:prompts].first).to include(
-          name: "Test Prompt",
-          description: "A test prompt"
-        )
-        expect(result[:prompts].first).not_to have_key(:klass)
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Registry::PromptsData)
+          expect(result.prompts).to be_an(Array)
+          expect(result.prompts.first).to include(
+            name: "Test Prompt",
+            description: "A test prompt"
+          )
+          expect(result.prompts.first).not_to have_key(:klass)
+        end
       end
     end
 
-    describe "#serialized_resources" do
+    describe "#resources_data" do
       it "returns a hash with resources array without klass references" do
-        result = registry.serialized_resources
+        result = registry.resources_data
 
-        expect(result).to be_a(Hash)
-        expect(result).to have_key(:resources)
-        expect(result[:resources]).to be_an(Array)
-        expect(result[:resources].first).to include(
-          name: "Test Resource",
-          uri: "resource://test-resource",
-          description: "A test resource",
-          mime_type: "text/plain"
-        )
-        expect(result[:resources].first).not_to have_key(:klass)
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Registry::ResourcesData)
+          expect(result.resources).to be_an(Array)
+          expect(result.resources.first).to include(
+            name: "Test Resource",
+            uri: "resource://test-resource",
+            description: "A test resource",
+            mime_type: "text/plain"
+          )
+          expect(result.resources.first).not_to have_key(:klass)
+        end
       end
     end
 
-    describe "#serialized_tools" do
+    describe "#tools_data" do
       it "returns a hash with tools array without klass references" do
-        result = registry.serialized_tools
+        result = registry.tools_data
 
-        expect(result).to be_a(Hash)
-        expect(result).to have_key(:tools)
-        expect(result[:tools]).to be_an(Array)
-        expect(result[:tools].first).to include(
-          name: "Test Tool",
-          description: "A test tool"
-        )
-        expect(result[:tools].first).to have_key(:inputSchema)
-        expect(result[:tools].first).not_to have_key(:klass)
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Registry::ToolsData)
+          expect(result.tools).to be_an(Array)
+          expect(result.tools.first).to include(
+            name: "test-tool",
+            description: "A test tool"
+          )
+          expect(result.tools.first).to have_key(:inputSchema)
+          expect(result.tools.first).not_to have_key(:klass)
+        end
       end
     end
   end

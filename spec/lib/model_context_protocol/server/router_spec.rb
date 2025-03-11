@@ -1,194 +1,108 @@
-# frozen_string_literal: true
+require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Router do
-  let(:server) do
-    config = ModelContextProtocol::Server::Configuration.new
-    config.name = "test_server"
-    config.version = "1.0.0"
-    double("Server", configuration: config)
+  subject(:router) { described_class.new }
+
+  describe "#map" do
+    it "registers a handler for a method" do
+      router.map("test_method") { |_| "handler result" }
+      result = router.route({"method" => "test_method"})
+      expect(result).to eq("handler result")
+    end
   end
 
-  describe "protocol routes" do
-    subject(:router) do
-      router = described_class.new
-      router.server = server
-      router
+  describe "#route" do
+    let(:message) { {"method" => "test_method", "params" => {"key" => "value"}} }
+
+    before do
+      router.map("test_method") { |msg| msg["params"]["key"] }
     end
 
-    describe "initialize handler" do
-      let(:message) { {"method" => "initialize"} }
-
-      it "returns protocol information" do
-        result = router.route(message)
-
-        expect(result).to include(
-          protocolVersion: "2024-11-05",
-          serverInfo: {
-            name: "test_server",
-            version: "1.0.0"
-          }
-        )
-      end
-
-      context "when no routes are configured" do
-        it "returns empty capabilities" do
-          result = router.route(message)
-          expect(result[:capabilities]).to be_empty
-        end
-      end
+    it "routes the message to the correct handler" do
+      result = router.route(message)
+      expect(result).to eq("value")
     end
 
-    describe "notifications/initialized handler" do
-      let(:message) { {"method" => "notifications/initialized"} }
-
-      it "returns nil" do
-        expect(router.route(message)).to be_nil
-      end
+    it "passes the entire message to the handler" do
+      full_message = nil
+      router.map("echo_method") { |msg| full_message = msg }
+      router.route({"method" => "echo_method", "id" => 123})
+      expect(full_message).to eq({"method" => "echo_method", "id" => 123})
     end
 
-    describe "ping handler" do
-      let(:message) { {"method" => "ping"} }
+    context "when the method is not registered" do
+      let(:unknown_message) { {"method" => "unknown_method"} }
 
-      it "returns empty hash" do
-        expect(router.route(message)).to eq({})
+      it "raises MethodNotFoundError" do
+        expect { router.route(unknown_message) }
+          .to raise_error(ModelContextProtocol::Server::Router::MethodNotFoundError)
+      end
+
+      it "includes the method name in the error message" do
+        expect { router.route(unknown_message) }
+          .to raise_error(/Method not found: unknown_method/)
       end
     end
   end
 
-  describe "capability detection" do
-    subject(:router) do
-      router = described_class.new do
-        prompts do
-          list Class.new {
-            def self.call(*)
-            end
-          }, broadcast_changes: true
-          get Class.new {
-            def self.call(*)
-            end
-          }
-        end
+  describe "error handling" do
+    let(:message) { {"method" => "error_method"} }
 
-        resources do
-          list Class.new {
-            def self.call(*)
-            end
-          }, broadcast_changes: true
-          read Class.new {
-            def self.call(*)
-            end
-          }, allow_subscriptions: true
-        end
-
-        tools do
-          list Class.new {
-            def self.call(*)
-            end
-          }, broadcast_changes: true
-          call Class.new {
-            def self.call(*)
-            end
-          }
-        end
-      end
-      router.server = server
-      router
+    before do
+      router.map("error_method") { |_| raise "Handler error" }
     end
 
-    let(:message) { {"method" => "initialize"} }
-
-    it "detects prompt capabilities" do
-      result = router.route(message)
-      expect(result[:capabilities][:prompts]).to eq(broadcast_changes: true)
-    end
-
-    it "detects resource capabilities" do
-      result = router.route(message)
-      expect(result[:capabilities][:resources]).to eq(
-        broadcast_changes: true,
-        subscribe: true
-      )
-    end
-
-    it "detects tool capabilities" do
-      result = router.route(message)
-      expect(result[:capabilities][:tools]).to eq(broadcast_changes: true)
+    it "allows errors to propagate from handlers" do
+      expect { router.route(message) }.to raise_error(RuntimeError, "Handler error")
     end
   end
 
-  describe "user-defined routes" do
-    let(:prompt_list) { spy("prompt_list") }
-    let(:prompt_get) { spy("prompt_get") }
-    let(:resource_list) { spy("resource_list") }
-    let(:resource_read) { spy("resource_read") }
-    let(:tool_list) { spy("tool_list") }
-    let(:tool_call) { spy("tool_call") }
+  describe "multiple handlers" do
+    before do
+      router.map("method1") { |_| "result1" }
+      router.map("method2") { |_| "result2" }
+    end
 
-    subject(:router) do
-      pl = prompt_list
-      pg = prompt_get
-      rl = resource_list
-      rr = resource_read
-      tl = tool_list
-      tc = tool_call
+    it "routes to the first handler" do
+      expect(router.route({"method" => "method1"})).to eq("result1")
+    end
 
-      described_class.new do
-        prompts do
-          list pl
-          get pg
-        end
+    it "routes to the second handler" do
+      expect(router.route({"method" => "method2"})).to eq("result2")
+    end
+  end
 
-        resources do
-          list rl
-          read rr
-        end
+  describe "overwriting handlers" do
+    it "uses the last registered handler for a method" do
+      router.map("test_method") { |_| "first handler" }
+      router.map("test_method") { |_| "second handler" }
 
-        tools do
-          list tl
-          call tc
-        end
+      expect(router.route({"method" => "test_method"})).to eq("second handler")
+    end
+  end
+
+  describe "handling complex logic" do
+    it "can perform transformations on the input" do
+      router.map("transform") do |message|
+        items = message["params"]["items"]
+        items.map { |item| item * 2 }
       end
+
+      result = router.route({
+        "method" => "transform",
+        "params" => {"items" => [1, 2, 3]}
+      })
+
+      expect(result).to eq([2, 4, 6])
     end
 
-    it "routes prompts/list" do
-      message = {"method" => "prompts/list"}
-      router.route(message)
-      expect(prompt_list).to have_received(:call).with(message)
-    end
+    it "can maintain state between calls" do
+      counter = 0
+      router.map("counter") { |_| counter += 1 }
 
-    it "routes prompts/get" do
-      message = {"method" => "prompts/get"}
-      router.route(message)
-      expect(prompt_get).to have_received(:call).with(message)
-    end
-
-    it "routes resources/list" do
-      message = {"method" => "resources/list"}
-      router.route(message)
-      expect(resource_list).to have_received(:call).with(message)
-    end
-
-    it "routes resources/read" do
-      message = {"method" => "resources/read"}
-      router.route(message)
-      expect(resource_read).to have_received(:call).with(message)
-    end
-
-    it "routes tools/list" do
-      message = {"method" => "tools/list"}
-      router.route(message)
-      expect(tool_list).to have_received(:call).with(message)
-    end
-
-    it "routes tools/call" do
-      message = {"method" => "tools/call"}
-      router.route(message)
-      expect(tool_call).to have_received(:call).with(message)
-    end
-
-    it "returns nil for unknown routes" do
-      message = {"method" => "unknown/route"}
-      expect(router.route(message)).to be_nil
+      expect(router.route({"method" => "counter"})).to eq(1)
+      expect(router.route({"method" => "counter"})).to eq(2)
+      expect(router.route({"method" => "counter"})).to eq(3)
     end
   end
 end

@@ -22,18 +22,32 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
       it "returns the response from the instance's call method" do
         response = TestPrompt.call(valid_params)
-        expect(response).to eq(
-          description: "A test prompt",
-          messages: [
-            {
-              role: "user",
-              content: {
-                type: "text",
-                text: "Do this: Hello, world!"
+        aggregate_failures do
+          expect(response).to be_a(ModelContextProtocol::Server::Prompt::Response)
+          expect(response.messages).to eq(
+            [
+              {
+                role: "user",
+                content: {
+                  type: "text",
+                  text: "Do this: Hello, world!"
+                }
               }
-            }
-          ]
-        )
+            ]
+          )
+          expect(response.serialized).to eq(
+            description: "A test prompt",
+            messages: [
+              {
+                role: "user",
+                content: {
+                  type: "text",
+                  text: "Do this: Hello, world!"
+                }
+              }
+            ]
+          )
+        end
       end
     end
   end

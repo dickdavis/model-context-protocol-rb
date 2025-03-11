@@ -1,47 +1,75 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
-  subject(:server) do
-    ModelContextProtocol::Server.new do |config|
-      config.name = "MCP Development Server"
-      config.version = "1.0.0"
-      config.router = ModelContextProtocol::Server::Router.new
-    end
-  end
-
   describe "start" do
-    subject(:start) { server.start }
+    it "raises an error for an invalid configuration" do
+      expect do
+        server = ModelContextProtocol::Server.new do |config|
+          config.version = "1.0.0"
+          config.enable_log = true
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+        server.start
+      end.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
+    end
 
-    context "prompt requests" do
-      it "handles valid requests" do
+    it "begins the StdioTransport" do
+      transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+      allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
+      allow(transport).to receive(:begin)
+
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.enable_log = true
+        config.registry = ModelContextProtocol::Server::Registry.new
       end
+      server.start
 
-      it "handles invalid requests" do
-      end
+      expect(transport).to have_received(:begin)
+    end
 
-      it "handles unexpected errors" do
+    context "when logging is not enabled" do
+      it "initializes the StdioTransport logger with a null logdev" do
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
+        allow(transport).to receive(:begin)
+
+        logger_class = class_double(Logger)
+        allow(logger_class).to receive(:new)
+        stub_const("Logger", logger_class)
+
+        server = ModelContextProtocol::Server.new do |config|
+          config.name = "MCP Development Server"
+          config.version = "1.0.0"
+          config.enable_log = false
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+        server.start
+
+        expect(logger_class).to have_received(:new).with(File::NULL)
       end
     end
 
-    context "resource requests" do
-      it "handles valid requests" do
-      end
+    context "when logging is enabled" do
+      it "initializes the StdioTransport logger with a $stderr logdev" do
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
+        allow(transport).to receive(:begin)
 
-      it "handles invalid requests" do
-      end
+        logger_class = class_double(Logger)
+        allow(logger_class).to receive(:new)
+        stub_const("Logger", logger_class)
 
-      it "handles unexpected errors" do
-      end
-    end
+        server = ModelContextProtocol::Server.new do |config|
+          config.name = "MCP Development Server"
+          config.version = "1.0.0"
+          config.enable_log = true
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+        server.start
 
-    context "tool requests" do
-      it "handles valid requests" do
-      end
-
-      it "handles invalid requests" do
-      end
-
-      it "handles unexpected errors" do
+        expect(logger_class).to have_received(:new).with($stderr)
       end
     end
   end

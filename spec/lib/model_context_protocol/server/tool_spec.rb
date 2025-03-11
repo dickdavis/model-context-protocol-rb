@@ -22,15 +22,19 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "returns the response from the instance's call method" do
         response = TestTool.call(valid_params)
-        expect(response).to eq(
-          content: [
-            {
-              type: "text",
-              text: "You said: Hello, world!"
-            }
-          ],
-          isError: false
-        )
+        aggregate_failures do
+          expect(response).to be_a(ModelContextProtocol::Server::Tool::TextResponse)
+          expect(response.text).to eq("You said: Hello, world!")
+          expect(response.serialized).to eq(
+            content: [
+              {
+                type: "text",
+                text: "You said: Hello, world!"
+              }
+            ],
+            isError: false
+          )
+        end
       end
 
       context "when an unexpected error occurs" do
@@ -40,15 +44,19 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
         it "returns an error response" do
           response = TestTool.call(valid_params)
-          expect(response).to eq(
-            content: [
-              {
-                type: "text",
-                text: "Test error"
-              }
-            ],
-            isError: true
-          )
+          aggregate_failures do
+            expect(response).to be_a(ModelContextProtocol::Server::Tool::ToolErrorResponse)
+            expect(response.text).to eq("Test error")
+            expect(response.serialized).to eq(
+              content: [
+                {
+                  type: "text",
+                  text: "Test error"
+                }
+              ],
+              isError: true
+            )
+          end
         end
       end
     end
@@ -165,7 +173,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
   describe "with_metadata" do
     it "sets the class metadata" do
-      expect(TestTool.name).to eq("Test Tool")
+      expect(TestTool.name).to eq("test-tool")
       expect(TestTool.description).to eq("A test tool")
       expect(TestTool.input_schema).to eq(
         type: "object",
@@ -182,7 +190,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "metadata" do
     it "returns class metadata" do
       expect(TestTool.metadata).to eq(
-        name: "Test Tool",
+        name: "test-tool",
         description: "A test tool",
         inputSchema: {
           type: "object",

@@ -4,15 +4,20 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe ".call" do
     it "returns the response from the instance's call method" do
       response = TestResource.call
-      expect(response).to eq(
-        contents: [
-          {
-            mimeType: "text/plain",
-            text: "Here's the data",
-            uri: "resource://test-resource"
-          }
-        ]
-      )
+      aggregate_failures do
+        expect(response).to be_a(ModelContextProtocol::Server::Resource::TextResponse)
+        expect(response.resource).to be_a(TestResource)
+        expect(response.text).to eq("Here's the data")
+        expect(response.serialized).to eq(
+          contents: [
+            {
+              mimeType: "text/plain",
+              text: "Here's the data",
+              uri: "resource://test-resource"
+            }
+          ]
+        )
+      end
     end
   end
 
