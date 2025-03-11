@@ -2,6 +2,21 @@
 
 An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2024-11-05/) in Ruby.
 
+This SDK is experimental and subject to change. The initial focus is to implement MCP server support with the goal of providing a stable API by version `0.4`. MCP client support will follow. 
+
+You are welcome to contribute.
+
+TODO's:
+
+* [Completion](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/completion/)
+* [Logging](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/logging/)
+* [Pagination](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/)
+* [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
+* [Resource list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#list-changed-notification)
+* [Resource subscriptions](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#subscriptions)
+* [Resource templates](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#resource-templates)
+* [Tool list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#list-changed-notification)
+
 ## Usage
 
 Include `model-context-protocol-rb` in your project.
@@ -10,29 +25,26 @@ Include `model-context-protocol-rb` in your project.
 require 'model-context-protocol-rb'
 ```
 
-# Building an MCP Server
+### Building an MCP Server
 
 Build a simple MCP server by routing methods to your custom handlers. Then, configure and run the server.
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
-  config.name = "My MCP Server"
+  config.name = "MCP Development Server"
   config.version = "1.0.0"
   config.enable_log = true
-  config.router = ModelContextProtocol::Router.new do
-    prompts do
-      list Prompt::List, broadcast_changes: true
-      get Prompt::Get
+  config.registry = ModelContextProtocol::Server::Registry.new do
+    prompts list_changed: true do
+      register TestPrompt
     end
 
-    resources do
-      list Resource::List, broadcast_changes: true
-      read Resource::Read, allow_subscriptions: true
+    resources list_changed: true, subscribe: true do
+      register TestResource
     end
 
-    tools do
-      list Tool::List, broadcast_changes: true
-      call Tool::Call
+    tools list_changed: true do
+      register TestTool
     end
   end
 end
@@ -40,9 +52,97 @@ end
 server.start
 ```
 
-Messages from the MCP client will be routed to the appropriate custom handler. Your customer handler must respond to `call`; the router will pass the message to the handler as an argument.
+Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
-Your handler should return a valid JSONRPC 2.0 response.
+#### ModelContextProtocol::Server::Prompt
+
+The `Prompt` class is used to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block, and then implement the call method to build your prompt. The `call` method should return a `Response` data object.
+
+```ruby
+class TestPrompt < ModelContextProtocol::Server::Prompt
+  with_metadata do
+    {
+      name: "Test Prompt",
+      description: "A test prompt",
+      arguments: [
+        {
+          name: "message",
+          description: "The thing to do",
+          required: true
+        },
+        {
+          name: "other",
+          description: "Another thing to do",
+          required: false
+        }
+      ]
+    }
+  end
+
+  def call
+    messages = [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "Do this: #{params["message"]}"
+        }
+      }
+    ]
+
+    Response[messages:, prompt: self]
+  end
+end
+```
+
+#### ModelContextProtocol::Server::Resource
+
+The `Resource` class is used to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block, and then implement the 'call' method to build your prompt. The `call` method should return a `TextResponse` or a `BinaryResponse` data object.
+
+```ruby
+class TestResource < ModelContextProtocol::Server::Resource
+  with_metadata do
+    {
+      name: "Test Resource",
+      description: "A test resource",
+      mime_type: "text/plain",
+      uri: "resource://test-resource"
+    }
+  end
+
+  def call
+    TextResponse[resource: self, text: "Here's the data"]
+  end
+end
+```
+
+#### ModelContextProtocol::Server::Tool
+
+The `Tool` class is used to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block, and then implement the `call` method to build your prompt. The `call` method should return a `TextResponse`, `ImageResponse`, `ResourceResponse`, or `ToolErrorResponse` data object.
+
+```ruby
+class TestTool < ModelContextProtocol::Server::Tool
+  with_metadata do
+    {
+      name: "test-tool",
+      description: "A test tool",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string"
+          }
+        },
+        required: ["message"]
+      }
+    }
+  end
+
+  def call
+    TextResponse[text: "You said: #{params["message"]}"]
+  end
+end
+```
 
 ## Installation
 
