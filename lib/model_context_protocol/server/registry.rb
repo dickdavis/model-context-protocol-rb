@@ -62,25 +62,37 @@ module ModelContextProtocol
       find_by_name(@tools, name)
     end
 
-    def serialized_prompts
-      {
-        prompts: @prompts.map { |entry| entry.except(:klass) }
-      }
+    def prompts_data
+      PromptsData[prompts: @prompts.map { |entry| entry.except(:klass) }]
     end
 
-    def serialized_resources
-      {
-        resources: @resources.map { |entry| entry.except(:klass) }
-      }
+    def resources_data
+      ResourcesData[resources: @resources.map { |entry| entry.except(:klass) }]
     end
 
-    def serialized_tools
-      {
-        tools: @tools.map { |entry| entry.except(:klass) }
-      }
+    def tools_data
+      ToolsData[tools: @tools.map { |entry| entry.except(:klass) }]
     end
 
     private
+
+    PromptsData = Data.define(:prompts) do
+      def serialized
+        {prompts:}
+      end
+    end
+
+    ResourcesData = Data.define(:resources) do
+      def serialized
+        {resources:}
+      end
+    end
+
+    ToolsData = Data.define(:tools) do
+      def serialized
+        {tools:}
+      end
+    end
 
     def find_by_name(collection, name)
       entry = collection.find { |item| item[:name] == name }
