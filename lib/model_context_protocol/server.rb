@@ -2,6 +2,9 @@ require "logger"
 
 module ModelContextProtocol
   class Server
+    # Raised when invalid response arguments are provided.
+    class ResponseArgumentsError < StandardError; end
+
     # Raised when invalid parameters are provided.
     class ParameterValidationError < StandardError; end
 
