@@ -4,7 +4,7 @@ require "bundler/setup"
 require_relative "../lib/model_context_protocol"
 require_relative "../spec/support/test_prompt"
 require_relative "../spec/support/test_resource"
-require_relative "../spec/support/test_tool"
+require_relative "../spec/support/test_tool_with_text_response"
 
 server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
@@ -20,7 +20,7 @@ server = ModelContextProtocol::Server.new do |config|
     end
 
     tools list_changed: true do
-      register TestTool
+      register TestToolWithTextResponse
     end
   end
 end
