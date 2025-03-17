@@ -50,14 +50,16 @@ RSpec.describe ModelContextProtocol::Server::Registry do
     end
 
     it "registers a tool class" do
-      registry.register(TestTool)
+      registry.register(TestToolWithTextResponse)
       tools = registry.instance_variable_get(:@tools)
 
-      expect(tools.size).to eq(1)
-      expect(tools.first[:klass]).to eq(TestTool)
-      expect(tools.first[:name]).to eq("test-tool")
-      expect(tools.first[:description]).to eq("A test tool")
-      expect(tools.first[:inputSchema]).to be_a(Hash)
+      aggregate_failures do
+        expect(tools.size).to eq(1)
+        expect(tools.first[:klass]).to eq(TestToolWithTextResponse)
+        expect(tools.first[:name]).to eq("text-summarizer")
+        expect(tools.first[:description]).to eq("Summarizes provided text")
+        expect(tools.first[:inputSchema]).to be_a(Hash)
+      end
     end
 
     it "raises an error for invalid class types" do
@@ -77,7 +79,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         end
 
         tools list_changed: true do
-          register TestTool
+          register TestToolWithTextResponse
         end
       end
 
@@ -102,7 +104,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         end
 
         tools do
-          register TestTool
+          register TestToolWithTextResponse
         end
       end
     end
@@ -129,7 +131,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_tool" do
       it "returns the tool class when found" do
-        expect(registry.find_tool("test-tool")).to eq(TestTool)
+        expect(registry.find_tool("text-summarizer")).to eq(TestToolWithTextResponse)
       end
 
       it "returns nil when the tool is not found" do
@@ -150,7 +152,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         end
 
         tools do
-          register TestTool
+          register TestToolWithTextResponse
         end
       end
     end
@@ -197,8 +199,8 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::ToolsData)
           expect(result.tools).to be_an(Array)
           expect(result.tools.first).to include(
-            name: "test-tool",
-            description: "A test tool"
+            name: "text-summarizer",
+            description: "Summarizes provided text"
           )
           expect(result.tools.first).to have_key(:inputSchema)
           expect(result.tools.first).not_to have_key(:klass)
