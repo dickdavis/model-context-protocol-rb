@@ -4,7 +4,7 @@ require "bundler/setup"
 require_relative "../lib/model_context_protocol"
 require_relative "../spec/support/test_prompt"
 require_relative "../spec/support/test_resource"
-require_relative "../spec/support/test_tool_with_text_response"
+require_relative "../spec/support/tools/test_tool_with_text_response"
 
 server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
