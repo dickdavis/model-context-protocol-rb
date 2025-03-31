@@ -105,4 +105,79 @@ RSpec.describe ModelContextProtocol::Server::Router do
       expect(router.route({"method" => "counter"})).to eq(3)
     end
   end
+
+  describe "environment variable management" do
+    subject(:router) { described_class.new(configuration: configuration) }
+    let(:message) { {"method" => "env_test"} }
+    let(:configuration) { ModelContextProtocol::Server::Configuration.new }
+
+    before do
+      # Set up some initial environment variables
+      ENV["EXISTING_VAR"] = "original_value"
+      ENV["ANOTHER_VAR"] = "another_value"
+    end
+
+    after do
+      # Clean up after tests
+      ENV.delete("EXISTING_VAR")
+      ENV.delete("ANOTHER_VAR")
+      ENV.delete("TEST_VAR")
+      ENV.delete("OVERRIDE_VAR")
+    end
+
+    it "sets environment variables during handler execution" do
+      router.map("env_test") do
+        ENV["TEST_VAR"]
+      end
+
+      configuration.set_environment_variable("TEST_VAR", "test_value")
+      result = router.route(message)
+
+      expect(result).to eq("test_value")
+    end
+
+    it "overrides existing environment variables" do
+      router.map("env_test") do
+        ENV["EXISTING_VAR"]
+      end
+
+      configuration.set_environment_variable("EXISTING_VAR", "new_value")
+      result = router.route(message)
+
+      expect(result).to eq("new_value")
+    end
+
+    it "restores original environment variables after handler execution" do
+      router.map("env_test") do
+        ENV["EXISTING_VAR"] = "changed_value"
+        "done"
+      end
+
+      router.route(message)
+
+      expect(ENV["EXISTING_VAR"]).to eq("original_value")
+    end
+
+    it "restores environment variables even if handler raises an error" do
+      router.map("env_test") do
+        ENV["EXISTING_VAR"] = "changed_value"
+        raise "Handler error"
+      end
+
+      expect { router.route(message) }.to raise_error(RuntimeError, "Handler error")
+      expect(ENV["EXISTING_VAR"]).to eq("original_value")
+    end
+
+    it "handles multiple environment variables" do
+      router.map("env_test") do
+        [ENV["TEST_VAR"], ENV["OVERRIDE_VAR"]]
+      end
+
+      configuration.set_environment_variable("TEST_VAR", "test_value")
+      configuration.set_environment_variable("OVERRIDE_VAR", "override_value")
+      result = router.route(message)
+
+      expect(result).to eq(["test_value", "override_value"])
+    end
+  end
 end

@@ -26,6 +26,10 @@ module ModelContextProtocol
       validate_environment_variables!
     end
 
+    def environment_variables
+      @environment_variables ||= {}
+    end
+
     def environment_variable(key)
       environment_variables[key.to_s.upcase] || ENV[key.to_s.upcase] || nil
     end
@@ -48,10 +52,6 @@ module ModelContextProtocol
     end
 
     private
-
-    def environment_variables
-      @environment_variables ||= {}
-    end
 
     def required_environment_variables
       @required_environment_variables ||= []
