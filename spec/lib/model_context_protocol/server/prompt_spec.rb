@@ -15,7 +15,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     context "when parameter validation succeeds" do
       let(:valid_params) { {"message" => "Hello, world!"} }
 
-      it "instantiates the tool with the provided parameters" do
+      it "instantiates the prompt with the provided parameters" do
         expect(TestPrompt).to receive(:new).with(valid_params).and_call_original
         TestPrompt.call(valid_params)
       end
@@ -23,7 +23,6 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       it "returns the response from the instance's call method" do
         response = TestPrompt.call(valid_params)
         aggregate_failures do
-          expect(response).to be_a(ModelContextProtocol::Server::Prompt::Response)
           expect(response.messages).to eq(
             [
               {
@@ -67,44 +66,15 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when valid parameters are provided" do
       it "stores the parameters" do
-        tool = TestPrompt.new({"message" => "Hello, world!"})
-        expect(tool.params).to eq({"message" => "Hello, world!"})
+        prompt = TestPrompt.new({"message" => "Hello, world!"})
+        expect(prompt.params).to eq({"message" => "Hello, world!"})
       end
 
       context "when optional parameters are provided" do
         it "stores the parameters" do
-          tool = TestPrompt.new({"message" => "Hello, world!", "other" => "Other thing"})
-          expect(tool.params).to eq({"message" => "Hello, world!", "other" => "Other thing"})
+          prompt = TestPrompt.new({"message" => "Hello, world!", "other" => "Other thing"})
+          expect(prompt.params).to eq({"message" => "Hello, world!", "other" => "Other thing"})
         end
-      end
-    end
-  end
-
-  describe "data objects for responses" do
-    describe "Response" do
-      it "formats responses correctly" do
-        messages = [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: "This is a test"
-            }
-          }
-        ]
-        response = described_class::Response[messages:, prompt: TestPrompt.new({"message" => "Hello, world!"})]
-        expect(response.serialized).to eq(
-          description: "A test prompt",
-          messages: [
-            {
-              role: "user",
-              content: {
-                type: "text",
-                text: "This is a test"
-              }
-            }
-          ]
-        )
       end
     end
   end
