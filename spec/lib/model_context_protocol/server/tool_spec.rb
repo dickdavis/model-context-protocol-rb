@@ -100,7 +100,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           content: [
             {
               type: "image",
-              data: "base64encodeddata",
+              data: "dGVzdA==",
               mimeType: "image/jpeg"
             }
           ],
@@ -115,7 +115,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           content: [
             {
               type: "image",
-              data: "base64encodeddata",
+              data: "dGVzdA==",
               mimeType: "image/png"
             }
           ],
