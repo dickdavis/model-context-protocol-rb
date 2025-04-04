@@ -56,7 +56,11 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 #### ModelContextProtocol::Server::Prompt
 
-The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block, and then implement the call method to build your prompt. The `call` method should return a `Response` data object.
+The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
+
+Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+
+This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
@@ -90,7 +94,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
       }
     ]
 
-    Response[messages:, prompt: self]
+    respond_with messages: messages
   end
 end
 ```
