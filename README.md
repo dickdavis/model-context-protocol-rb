@@ -147,7 +147,7 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
 
   def call
     # In a real implementation, we would retrieve the binary resource
-    data = "base64data"
+    data = "dGVzdA=="
     respond_with :binary, blob: data
   end
 end
@@ -171,7 +171,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
         type: "object",
         properties: {
           number: {
-            type: "integer",
+            type: "string",
           }
         },
         required: ["number"]
@@ -224,7 +224,8 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
     end
 
     # In a real implementation, we would generate an actual chart
-    chart_data = "base64encodeddata"
+    # This is a small valid base64 encoded string (represents "test")
+    chart_data = "dGVzdA=="
     respond_with :image, data: chart_data, mime_type:
   end
 end
@@ -236,7 +237,7 @@ If you don't provide a mime type, it will default to `image/png`.
 class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "custom-chart-generator",
+      name: "other-custom-chart-generator",
       description: "Generates a chart",
       inputSchema: {
         type: "object",
@@ -253,7 +254,8 @@ class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::T
 
   def call
     # In a real implementation, we would generate an actual chart
-    chart_data = "base64encodeddata"
+    # This is a small valid base64 encoded string (represents "test")
+    chart_data = "dGVzdA=="
     respond_with :image, data: chart_data
   end
 end

@@ -42,7 +42,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         expect(response.serialized).to eq(
           contents: [
             {
-              blob: "base64data",
+              blob: "dGVzdA==",
               mimeType: "image/jpeg",
               uri: "resource://project-logo"
             }

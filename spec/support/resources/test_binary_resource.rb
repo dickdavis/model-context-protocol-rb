@@ -10,7 +10,8 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
 
   def call
     # In a real implementation, we would retrieve the binary resource
-    data = "base64data"
+    # This is a small valid base64 encoded string (represents "test")
+    data = "dGVzdA=="
     respond_with :binary, blob: data
   end
 end
