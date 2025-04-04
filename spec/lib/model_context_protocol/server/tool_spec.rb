@@ -7,29 +7,28 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "raises a ParameterValidationError" do
         expect {
-          TestTool.call(invalid_params)
+          TestToolWithTextResponse.call(invalid_params)
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
 
     context "when input schema validation succeeds" do
-      let(:valid_params) { {"message" => "Hello, world!"} }
+      let(:valid_params) { {"number" => 21} }
 
       it "instantiates the tool with the provided parameters" do
-        expect(TestTool).to receive(:new).with(valid_params).and_call_original
-        TestTool.call(valid_params)
+        expect(TestToolWithTextResponse).to receive(:new).with(valid_params).and_call_original
+        TestToolWithTextResponse.call(valid_params)
       end
 
       it "returns the response from the instance's call method" do
-        response = TestTool.call(valid_params)
+        response = TestToolWithTextResponse.call(valid_params)
         aggregate_failures do
-          expect(response).to be_a(ModelContextProtocol::Server::Tool::TextResponse)
-          expect(response.text).to eq("You said: Hello, world!")
+          expect(response.text).to eq("21 doubled is 42")
           expect(response.serialized).to eq(
             content: [
               {
                 type: "text",
-                text: "You said: Hello, world!"
+                text: "21 doubled is 42"
               }
             ],
             isError: false
@@ -39,13 +38,12 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       context "when an unexpected error occurs" do
         before do
-          allow_any_instance_of(TestTool).to receive(:call).and_raise("Test error")
+          allow_any_instance_of(TestToolWithTextResponse).to receive(:call).and_raise("Test error")
         end
 
         it "returns an error response" do
-          response = TestTool.call(valid_params)
+          response = TestToolWithTextResponse.call(valid_params)
           aggregate_failures do
-            expect(response).to be_a(ModelContextProtocol::Server::Tool::ToolErrorResponse)
             expect(response.text).to eq("Test error")
             expect(response.serialized).to eq(
               content: [
@@ -65,27 +63,28 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "#initialize" do
     it "validates the parameters against the schema" do
       expect(JSON::Validator).to receive(:validate!).with(
-        TestTool.input_schema,
-        {"message" => "Hello, world!"}
+        TestToolWithTextResponse.input_schema,
+        {"text" => "Hello, world!"}
       )
-      TestTool.new({"message" => "Hello, world!"})
+      TestToolWithTextResponse.new({"text" => "Hello, world!"})
     end
 
     it "stores the parameters" do
-      tool = TestTool.new({"message" => "Hello, world!"})
-      expect(tool.params).to eq({"message" => "Hello, world!"})
+      tool = TestToolWithTextResponse.new({"number" => 42})
+      expect(tool.params).to eq({"number" => 42})
     end
   end
 
-  describe "data objects for responses" do
-    describe "TextResponse" do
-      it "formats text responses correctly" do
-        response = described_class::TextResponse[text: "Hello"]
+  describe "responses" do
+    describe "text response" do
+      it "formats text response correctly" do
+        params = {"number" => 21}
+        response = TestToolWithTextResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             {
               type: "text",
-              text: "Hello"
+              text: "21 doubled is 42"
             }
           ],
           isError: false
@@ -93,14 +92,15 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
     end
 
-    describe "ImageResponse" do
+    describe "image response" do
       it "formats image responses correctly" do
-        response = described_class::ImageResponse[data: "base64data", mime_type: "image/jpeg"]
+        params = {"chart_type" => "bar", "format" => "jpg"}
+        response = TestToolWithImageResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             {
               type: "image",
-              data: "base64data",
+              data: "base64encodeddata",
               mimeType: "image/jpeg"
             }
           ],
@@ -109,12 +109,13 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
 
       it "defaults to PNG mime type" do
-        response = described_class::ImageResponse[data: "base64data"]
+        params = {"chart_type" => "bar"}
+        response = TestToolWithImageResponseDefaultMimeType.call(params)
         expect(response.serialized).to eq(
           content: [
             {
               type: "image",
-              data: "base64data",
+              data: "base64encodeddata",
               mimeType: "image/png"
             }
           ],
@@ -123,16 +124,17 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
     end
 
-    describe "ResourceResponse" do
+    describe "resource response" do
       it "formats resource responses correctly" do
-        response = described_class::ResourceResponse[uri: "resource://test", text: "content", mime_type: "text/markdown"]
+        params = {"title" => "Foobar"}
+        response = TestToolWithResourceResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             type: "resource",
             resource: {
-              uri: "resource://test",
-              mimeType: "text/markdown",
-              text: "content"
+              uri: "resource://document/foobar",
+              mimeType: "application/rtf",
+              text: "richtextdata"
             }
           ],
           isError: false
@@ -140,14 +142,15 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
 
       it "defaults to text/plain mime type" do
-        response = described_class::ResourceResponse[uri: "resource://test", text: "content"]
+        params = {"title" => "foobar", "content" => "baz"}
+        response = TestToolWithResourceResponseDefaultMimeType.call(params)
         expect(response.serialized).to eq(
           content: [
             type: "resource",
             resource: {
-              uri: "resource://test",
+              uri: "note://notes/foobar",
               mimeType: "text/plain",
-              text: "content"
+              text: "baz"
             }
           ],
           isError: false
@@ -155,14 +158,15 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
     end
 
-    describe "ToolErrorResponse" do
+    describe "tool error response" do
       it "formats error responses correctly" do
-        response = described_class::ToolErrorResponse[text: "Something went wrong"]
+        params = {"api_endpoint" => "http://example.com", "method" => "GET"}
+        response = TestToolWithToolErrorResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             {
               type: "text",
-              text: "Something went wrong"
+              text: "Failed to call API at http://example.com: Connection timed out"
             }
           ],
           isError: true
@@ -173,33 +177,35 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
   describe "with_metadata" do
     it "sets the class metadata" do
-      expect(TestTool.name).to eq("test-tool")
-      expect(TestTool.description).to eq("A test tool")
-      expect(TestTool.input_schema).to eq(
-        type: "object",
-        properties: {
-          message: {
-            type: "string"
-          }
-        },
-        required: ["message"]
-      )
+      aggregate_failures do
+        expect(TestToolWithTextResponse.name).to eq("double")
+        expect(TestToolWithTextResponse.description).to eq("Doubles the provided number")
+        expect(TestToolWithTextResponse.input_schema).to eq(
+          type: "object",
+          properties: {
+            number: {
+              type: "integer"
+            }
+          },
+          required: ["number"]
+        )
+      end
     end
   end
 
   describe "metadata" do
     it "returns class metadata" do
-      expect(TestTool.metadata).to eq(
-        name: "test-tool",
-        description: "A test tool",
+      expect(TestToolWithTextResponse.metadata).to eq(
+        name: "double",
+        description: "Doubles the provided number",
         inputSchema: {
           type: "object",
           properties: {
-            message: {
-              type: "string"
+            number: {
+              type: "integer"
             }
           },
-          required: ["message"]
+          required: ["number"]
         }
       )
     end

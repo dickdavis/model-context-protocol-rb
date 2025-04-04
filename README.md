@@ -118,28 +118,136 @@ end
 
 #### ModelContextProtocol::Server::Tool
 
-The `ModelContextProtocol::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block, and then implement the `call` method to build your prompt. The `call` method should return a `TextResponse`, `ImageResponse`, `ResourceResponse`, or `ToolErrorResponse` data object.
+The `ModelContextProtocol::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
+
+Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
+
+This is an example tool that returns a text response:
 
 ```ruby
-class TestTool < ModelContextProtocol::Server::Tool
+class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "test-tool",
-      description: "A test tool",
+      name: "double",
+      description: "Doubles the provided number",
       inputSchema: {
         type: "object",
         properties: {
-          message: {
-            type: "string"
+          number: {
+            type: "integer",
           }
         },
-        required: ["message"]
+        required: ["number"]
       }
     }
   end
 
   def call
-    TextResponse[text: "You said: #{params["message"]}"]
+    number = params["number"].to_i
+    result = number * 2
+    respond_with :text, text: "#{number} doubled is #{result}"
+  end
+end
+```
+
+This is an example of a tool that returns an image:
+
+```ruby
+class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
+  with_metadata do
+    {
+      name: "custom-chart-generator",
+      description: "Generates a chart in various formats",
+      inputSchema: {
+        type: "object",
+        properties: {
+          chart_type: {
+            type: "string",
+            description: "Type of chart (pie, bar, line)"
+          },
+          format: {
+            type: "string",
+            description: "Image format (jpg, svg, etc)"
+          }
+        },
+        required: ["chart_type", "format"]
+      }
+    }
+  end
+
+  def call
+    # Map format to mime type
+    mime_type = case params["format"].downcase
+    when "svg"
+      "image/svg+xml"
+    when "jpg", "jpeg"
+      "image/jpeg"
+    else
+      "image/png"
+    end
+
+    # In a real implementation, we would generate an actual chart
+    chart_data = "base64encodeddata"
+    respond_with :image, data: chart_data, mime_type:
+  end
+end
+```
+
+If you don't provide a mime type, it will default to `image/png`.
+
+```ruby
+class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
+  with_metadata do
+    {
+      name: "custom-chart-generator",
+      description: "Generates a chart",
+      inputSchema: {
+        type: "object",
+        properties: {
+          chart_type: {
+            type: "string",
+            description: "Type of chart (pie, bar, line)"
+          }
+        },
+        required: ["chart_type"]
+      }
+    }
+  end
+
+  def call
+    # In a real implementation, we would generate an actual chart
+    chart_data = "base64encodeddata"
+    respond_with :image, data: chart_data
+  end
+end
+```
+
+This is an example of a tool that returns a resource response:
+
+```ruby
+class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
+  with_metadata do
+    {
+      name: "document-finder",
+      description: "Finds a the document with the given title",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "The title of the document"
+          }
+        },
+        required: ["title"]
+      }
+    }
+  end
+
+  def call
+    title = params["title"].downcase
+    # In a real implementation, we would do a lookup to get the document data
+    document = "richtextdata"
+    respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
   end
 end
 ```
