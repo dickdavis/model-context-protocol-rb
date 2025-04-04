@@ -13,7 +13,7 @@ module ModelContextProtocol
     def initialize
       @configuration = Configuration.new
       yield(@configuration) if block_given?
-      @router = Router.new
+      @router = Router.new(configuration:)
       map_handlers
     end
 

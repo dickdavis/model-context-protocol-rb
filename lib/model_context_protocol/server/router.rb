@@ -3,8 +3,9 @@ module ModelContextProtocol
     # Raised when an invalid method is provided.
     class MethodNotFoundError < StandardError; end
 
-    def initialize
+    def initialize(configuration: nil)
       @handlers = {}
+      @configuration = configuration
     end
 
     def map(method, &handler)
@@ -16,7 +17,20 @@ module ModelContextProtocol
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
 
-      handler.call(message)
+      with_environment(@configuration&.environment_variables) do
+        handler.call(message)
+      end
+    end
+
+    private
+
+    def with_environment(vars)
+      original = ENV.to_h
+      vars&.each { |key, value| ENV[key] = value }
+      yield
+    ensure
+      ENV.clear
+      original.each { |key, value| ENV[key] = value }
     end
   end
 end

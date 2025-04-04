@@ -117,6 +117,73 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     end
   end
 
+  describe "environment variables" do
+    context "when requiring environment variables" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+        configuration.require_environment_variable("TEST_VAR")
+      end
+
+      context "when the environment variable is set" do
+        before { ENV["TEST_VAR"] = "test-value" }
+
+        it "does not raise an error" do
+          expect { configuration.validate! }.not_to raise_error
+        end
+
+        it "returns the environment variable value" do
+          expect(configuration.environment_variable("TEST_VAR")).to eq("test-value")
+        end
+      end
+
+      context "when the environment variable is not set" do
+        before { ENV.delete("TEST_VAR") }
+
+        it "raises MissingRequiredEnvironmentVariable" do
+          expect { configuration.validate! }.to raise_error(described_class::MissingRequiredEnvironmentVariable)
+        end
+
+        it "returns nil" do
+          expect(configuration.environment_variable("TEST_VAR")).to be_nil
+        end
+      end
+
+      context "when setting environment variable programmatically" do
+        before do
+          configuration.set_environment_variable("TEST_VAR", "programmatic-value")
+          ENV.delete("TEST_VAR")
+        end
+
+        it "does not raise an error" do
+          expect { configuration.validate! }.not_to raise_error
+        end
+
+        it "returns the programmatically set value" do
+          expect(configuration.environment_variable("TEST_VAR")).to eq("programmatic-value")
+        end
+      end
+    end
+
+    context "when not requiring environment variables" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+      end
+
+      it "does not raise an error when environment variable is not set" do
+        ENV.delete("TEST_VAR")
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "returns nil for unset environment variable" do
+        expect(configuration.environment_variable("TEST_VAR")).to be_nil
+      end
+    end
+  end
+
   describe "block initialization" do
     it "allows configuration via block" do
       server = ModelContextProtocol::Server.new do |config|
