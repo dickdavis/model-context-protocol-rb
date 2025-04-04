@@ -34,6 +34,14 @@ server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
   config.enable_log = true
+
+  # Environment Variables - https://modelcontextprotocol.io/docs/tools/debugging#environment-variables
+  # Require specific environment variables to be set
+  config.require_environment_variable("API_KEY")
+
+  # Set environment variables programmatically
+  config.set_environment_variable("DEBUG_MODE", "true")
+
   config.registry = ModelContextProtocol::Server::Registry.new do
     prompts list_changed: true do
       register TestPrompt
