@@ -13,7 +13,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
 
     context "when input schema validation succeeds" do
-      let(:valid_params) { {"number" => 21} }
+      let(:valid_params) { {"number" => "21"} }
 
       it "instantiates the tool with the provided parameters" do
         expect(TestToolWithTextResponse).to receive(:new).with(valid_params).and_call_original
@@ -70,15 +70,15 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
 
     it "stores the parameters" do
-      tool = TestToolWithTextResponse.new({"number" => 42})
-      expect(tool.params).to eq({"number" => 42})
+      tool = TestToolWithTextResponse.new({"number" => "42"})
+      expect(tool.params).to eq({"number" => "42"})
     end
   end
 
   describe "responses" do
     describe "text response" do
       it "formats text response correctly" do
-        params = {"number" => 21}
+        params = {"number" => "21"}
         response = TestToolWithTextResponse.call(params)
         expect(response.serialized).to eq(
           content: [
@@ -184,7 +184,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           type: "object",
           properties: {
             number: {
-              type: "integer"
+              type: "string"
             }
           },
           required: ["number"]
@@ -202,7 +202,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           type: "object",
           properties: {
             number: {
-              type: "integer"
+              type: "string"
             }
           },
           required: ["number"]

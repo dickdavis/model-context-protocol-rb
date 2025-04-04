@@ -171,7 +171,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
         type: "object",
         properties: {
           number: {
-            type: "integer",
+            type: "string",
           }
         },
         required: ["number"]
@@ -237,7 +237,7 @@ If you don't provide a mime type, it will default to `image/png`.
 class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "custom-chart-generator",
+      name: "other-custom-chart-generator",
       description: "Generates a chart",
       inputSchema: {
         type: "object",

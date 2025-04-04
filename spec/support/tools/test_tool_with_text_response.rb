@@ -7,7 +7,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
         type: "object",
         properties: {
           number: {
-            type: "integer"
+            type: "string"
           }
         },
         required: ["number"]
