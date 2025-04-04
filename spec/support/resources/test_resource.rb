@@ -9,6 +9,6 @@ class TestResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    TextResponse[resource: self, text: "Here's the data"]
+    respond_with :text, text: "Here's the data"
   end
 end

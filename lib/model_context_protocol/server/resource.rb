@@ -2,18 +2,6 @@ module ModelContextProtocol
   class Server::Resource
     attr_reader :mime_type, :uri
 
-    TextResponse = Data.define(:resource, :text) do
-      def serialized
-        {contents: [{mimeType: resource.mime_type, text:, uri: resource.uri}]}
-      end
-    end
-
-    BinaryResponse = Data.define(:blob, :resource) do
-      def serialized
-        {contents: [{blob:, mimeType: resource.mime_type, uri: resource.uri}]}
-      end
-    end
-
     def initialize
       @mime_type = self.class.mime_type
       @uri = self.class.uri
@@ -21,6 +9,31 @@ module ModelContextProtocol
 
     def call
       raise NotImplementedError, "Subclasses must implement the call method"
+    end
+
+    TextResponse = Data.define(:resource, :text) do
+      def serialized
+        {contents: [{mimeType: resource.mime_type, text:, uri: resource.uri}]}
+      end
+    end
+    private_constant :TextResponse
+
+    BinaryResponse = Data.define(:blob, :resource) do
+      def serialized
+        {contents: [{blob:, mimeType: resource.mime_type, uri: resource.uri}]}
+      end
+    end
+    private_constant :BinaryResponse
+
+    private def respond_with(type, **options)
+      case [type, options]
+      in [:text, {text:}]
+        TextResponse[resource: self, text:]
+      in [:binary, {blob:}]
+        BinaryResponse[blob:, resource: self]
+      else
+        raise ModelContextProtocol::Server::ResponseArgumentsError, "Invalid arguments: #{type}, #{options}"
+      end
     end
 
     class << self
