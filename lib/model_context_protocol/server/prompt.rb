@@ -2,12 +2,6 @@ module ModelContextProtocol
   class Server::Prompt
     attr_reader :params, :description
 
-    Response = Data.define(:messages, :prompt) do
-      def serialized
-        {description: prompt.description, messages:}
-      end
-    end
-
     def initialize(params)
       validate!(params)
       @description = self.class.description
@@ -16,6 +10,17 @@ module ModelContextProtocol
 
     def call
       raise NotImplementedError, "Subclasses must implement the call method"
+    end
+
+    Response = Data.define(:messages, :prompt) do
+      def serialized
+        {description: prompt.description, messages:}
+      end
+    end
+    private_constant :Response
+
+    private def respond_with(messages:)
+      Response[messages:, prompt: self]
     end
 
     private def validate!(params = {})

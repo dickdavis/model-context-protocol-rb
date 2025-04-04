@@ -28,6 +28,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         }
       }
     ]
-    Response[messages:, prompt: self]
+
+    respond_with messages: messages
   end
 end
