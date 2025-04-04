@@ -122,34 +122,35 @@ The `ModelContextProtocol::Tool` base class allows subclasses to define a tool t
 
 Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
-This is an example tool that summarizes text:
+This is an example tool that returns a text response:
 
 ```ruby
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "text-summarizer",
-      description: "Summarizes provided text",
+      name: "double",
+      description: "Doubles the provided number",
       inputSchema: {
         type: "object",
         properties: {
-          text: {
-            type: "string"
+          number: {
+            type: "integer",
           }
         },
-        required: ["text"]
+        required: ["number"]
       }
     }
   end
 
   def call
-    summary = "Summary of your text: #{params["text"][0..30]}..."
-    respond_with :text, text: summary
+    number = params["number"].to_i
+    result = number * 2
+    respond_with :text, text: "#{number} doubled is #{result}"
   end
 end
 ```
 
-This is an example of a tool returning an image:
+This is an example of a tool that returns an image:
 
 ```ruby
 class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
@@ -177,16 +178,17 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
   def call
     # Map format to mime type
     mime_type = case params["format"].downcase
-                when "svg"
-                  "image/svg+xml"
-                when "jpg", "jpeg"
-                  "image/jpeg"
-                else
-                  "image/png"
-                end
+    when "svg"
+      "image/svg+xml"
+    when "jpg", "jpeg"
+      "image/jpeg"
+    else
+      "image/png"
+    end
 
     # In a real implementation, we would generate an actual chart
-    respond_with :image, data: "base64encodeddata", mime_type:
+    chart_data = "base64encodeddata"
+    respond_with :image, data: chart_data, mime_type:
   end
 end
 ```
@@ -197,70 +199,55 @@ If you don't provide a mime type, it will default to `image/png`.
 class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "image-generator",
-      description: "Generates a simple image based on a topic",
+      name: "custom-chart-generator",
+      description: "Generates a chart",
       inputSchema: {
         type: "object",
         properties: {
-          topic: {
+          chart_type: {
             type: "string",
-            description: "Topic to generate an image about"
+            description: "Type of chart (pie, bar, line)"
           }
         },
-        required: ["topic"]
+        required: ["chart_type"]
       }
     }
   end
 
   def call
-    # In a real implementation, we would generate an actual image based on the topic
-    # Here we just return a placeholder
-    respond_with :image, data: "base64encodeddata"
+    # In a real implementation, we would generate an actual chart
+    chart_data = "base64encodeddata"
+    respond_with :image, data: chart_data
   end
 end
 ```
 
-This is an example of a tool returning a resource response:
+This is an example of a tool that returns a resource response:
 
 ```ruby
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "code-generator",
-      description: "Generates code in the specified language",
+      name: "document-finder",
+      description: "Finds a the document with the given title",
       inputSchema: {
         type: "object",
         properties: {
-          language: {
+          title: {
             type: "string",
-            description: "Programming language"
-          },
-          functionality: {
-            type: "string",
-            description: "What the code should do"
+            description: "The title of the document"
           }
         },
-        required: ["language", "functionality"]
+        required: ["title"]
       }
     }
   end
 
   def call
-    # Map language to mime type
-    mime_type = case params["language"].downcase
-                when "python"
-                  "text/x-python"
-                when "javascript"
-                  "application/javascript"
-                when "ruby"
-                  "text/x-ruby"
-                else
-                  "text/plain"
-                end
-
-    # In a real implementation, we would generate actual code
-    generated_code = "// Generated #{params["language"]} code for: #{params["functionality"]}\n// This is just a placeholder"
-    respond_with :resource, uri: "code://generated/code", text: generated_code, mime_type:
+    title = params["title"].downcase
+    # In a real implementation, we would do a lookup to get the document data
+    document = "richtextdata"
+    respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
   end
 end
 ```
