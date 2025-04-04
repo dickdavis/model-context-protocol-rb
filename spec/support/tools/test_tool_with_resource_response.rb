@@ -1,40 +1,25 @@
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "code-generator",
-      description: "Generates code in the specified language",
+      name: "document-finder",
+      description: "Finds a the document with the given title",
       inputSchema: {
         type: "object",
         properties: {
-          language: {
+          title: {
             type: "string",
-            description: "Programming language"
-          },
-          functionality: {
-            type: "string",
-            description: "What the code should do"
+            description: "The title of the document"
           }
         },
-        required: ["language", "functionality"]
+        required: ["title"]
       }
     }
   end
 
   def call
-    # Map language to mime type
-    mime_type = case params["language"].downcase
-    when "python"
-      "text/x-python"
-    when "javascript"
-      "application/javascript"
-    when "ruby"
-      "text/x-ruby"
-    else
-      "text/plain"
-    end
-
-    # In a real implementation, we would generate actual code
-    generated_code = "// Generated #{params["language"]} code for: #{params["functionality"]}\n// This is just a placeholder"
-    respond_with :resource, uri: "code://generated/code", text: generated_code, mime_type:
+    title = params["title"].downcase
+    # In a real implementation, we would do a lookup to get the document data
+    document = "richtextdata"
+    respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
   end
 end

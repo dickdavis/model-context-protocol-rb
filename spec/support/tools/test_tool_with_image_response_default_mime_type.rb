@@ -1,24 +1,24 @@
 class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "image-generator",
-      description: "Generates a simple image based on a topic",
+      name: "custom-chart-generator",
+      description: "Generates a chart",
       inputSchema: {
         type: "object",
         properties: {
-          topic: {
+          chart_type: {
             type: "string",
-            description: "Topic to generate an image about"
+            description: "Type of chart (pie, bar, line)"
           }
         },
-        required: ["topic"]
+        required: ["chart_type"]
       }
     }
   end
 
   def call
-    # In a real implementation, we would generate an actual image based on the topic
-    # Here we just return a placeholder
-    respond_with :image, data: "base64encodeddata"
+    # In a real implementation, we would generate an actual chart
+    chart_data = "base64encodeddata"
+    respond_with :image, data: chart_data
   end
 end

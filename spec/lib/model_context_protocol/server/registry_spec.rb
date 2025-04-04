@@ -56,8 +56,8 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       aggregate_failures do
         expect(tools.size).to eq(1)
         expect(tools.first[:klass]).to eq(TestToolWithTextResponse)
-        expect(tools.first[:name]).to eq("text-summarizer")
-        expect(tools.first[:description]).to eq("Summarizes provided text")
+        expect(tools.first[:name]).to eq("double")
+        expect(tools.first[:description]).to eq("Doubles the provided number")
         expect(tools.first[:inputSchema]).to be_a(Hash)
       end
     end
@@ -131,7 +131,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_tool" do
       it "returns the tool class when found" do
-        expect(registry.find_tool("text-summarizer")).to eq(TestToolWithTextResponse)
+        expect(registry.find_tool("double")).to eq(TestToolWithTextResponse)
       end
 
       it "returns nil when the tool is not found" do
@@ -199,8 +199,8 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::ToolsData)
           expect(result.tools).to be_an(Array)
           expect(result.tools.first).to include(
-            name: "text-summarizer",
-            description: "Summarizes provided text"
+            name: "double",
+            description: "Doubles the provided number"
           )
           expect(result.tools.first).to have_key(:inputSchema)
           expect(result.tools.first).not_to have_key(:klass)

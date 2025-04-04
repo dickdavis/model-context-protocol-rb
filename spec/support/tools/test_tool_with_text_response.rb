@@ -1,21 +1,23 @@
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     {
-      name: "text-summarizer",
-      description: "Summarizes provided text",
+      name: "double",
+      description: "Doubles the provided number",
       inputSchema: {
         type: "object",
         properties: {
-          text: {
-            type: "string"
+          number: {
+            type: "integer"
           }
         },
-        required: ["text"]
+        required: ["number"]
       }
     }
   end
 
   def call
-    respond_with :text, text: "Summary of your text: #{params["text"][0..30]}..."
+    number = params["number"].to_i
+    result = number * 2
+    respond_with :text, text: "#{number} doubled is #{result}"
   end
 end

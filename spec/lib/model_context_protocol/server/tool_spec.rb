@@ -13,7 +13,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
 
     context "when input schema validation succeeds" do
-      let(:valid_params) { {"text" => "Hello, world!"} }
+      let(:valid_params) { {"number" => 21} }
 
       it "instantiates the tool with the provided parameters" do
         expect(TestToolWithTextResponse).to receive(:new).with(valid_params).and_call_original
@@ -23,12 +23,12 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       it "returns the response from the instance's call method" do
         response = TestToolWithTextResponse.call(valid_params)
         aggregate_failures do
-          expect(response.text).to eq("Summary of your text: Hello, world!...")
+          expect(response.text).to eq("21 doubled is 42")
           expect(response.serialized).to eq(
             content: [
               {
                 type: "text",
-                text: "Summary of your text: Hello, world!..."
+                text: "21 doubled is 42"
               }
             ],
             isError: false
@@ -70,21 +70,21 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
 
     it "stores the parameters" do
-      tool = TestToolWithTextResponse.new({"text" => "Hello, world!"})
-      expect(tool.params).to eq({"text" => "Hello, world!"})
+      tool = TestToolWithTextResponse.new({"number" => 42})
+      expect(tool.params).to eq({"number" => 42})
     end
   end
 
   describe "responses" do
     describe "text response" do
       it "formats text response correctly" do
-        params = {"text" => "Hello"}
+        params = {"number" => 21}
         response = TestToolWithTextResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             {
               type: "text",
-              text: "Summary of your text: Hello..."
+              text: "21 doubled is 42"
             }
           ],
           isError: false
@@ -109,7 +109,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
 
       it "defaults to PNG mime type" do
-        params = {"topic" => "foobar"}
+        params = {"chart_type" => "bar"}
         response = TestToolWithImageResponseDefaultMimeType.call(params)
         expect(response.serialized).to eq(
           content: [
@@ -126,15 +126,15 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
     describe "resource response" do
       it "formats resource responses correctly" do
-        params = {"language" => "ruby", "functionality" => "foobar"}
+        params = {"title" => "Foobar"}
         response = TestToolWithResourceResponse.call(params)
         expect(response.serialized).to eq(
           content: [
             type: "resource",
             resource: {
-              uri: "code://generated/code",
-              mimeType: "text/x-ruby",
-              text: "// Generated ruby code for: foobar\n// This is just a placeholder"
+              uri: "resource://document/foobar",
+              mimeType: "application/rtf",
+              text: "richtextdata"
             }
           ],
           isError: false
@@ -178,16 +178,16 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "with_metadata" do
     it "sets the class metadata" do
       aggregate_failures do
-        expect(TestToolWithTextResponse.name).to eq("text-summarizer")
-        expect(TestToolWithTextResponse.description).to eq("Summarizes provided text")
+        expect(TestToolWithTextResponse.name).to eq("double")
+        expect(TestToolWithTextResponse.description).to eq("Doubles the provided number")
         expect(TestToolWithTextResponse.input_schema).to eq(
           type: "object",
           properties: {
-            text: {
-              type: "string"
+            number: {
+              type: "integer"
             }
           },
-          required: ["text"]
+          required: ["number"]
         )
       end
     end
@@ -196,16 +196,16 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "metadata" do
     it "returns class metadata" do
       expect(TestToolWithTextResponse.metadata).to eq(
-        name: "text-summarizer",
-        description: "Summarizes provided text",
+        name: "double",
+        description: "Doubles the provided number",
         inputSchema: {
           type: "object",
           properties: {
-            text: {
-              type: "string"
+            number: {
+              type: "integer"
             }
           },
-          required: ["text"]
+          required: ["number"]
         }
       )
     end
