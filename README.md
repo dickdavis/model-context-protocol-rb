@@ -109,7 +109,11 @@ end
 
 #### ModelContextProtocol::Server::Resource
 
-The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block, and then implement the 'call' method to build your prompt. The `call` method should return a `TextResponse` or a `BinaryResponse` data object.
+The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block.
+
+Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
+
+This is an example resource that returns a text response:
 
 ```ruby
 class TestResource < ModelContextProtocol::Server::Resource
@@ -123,7 +127,28 @@ class TestResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    TextResponse[resource: self, text: "Here's the data"]
+    respond_with :text, text: "Here's the data"
+  end
+end
+```
+
+This is an example resource that returns binary data:
+
+```ruby
+class TestBinaryResource < ModelContextProtocol::Server::Resource
+  with_metadata do
+    {
+      name: "Project Logo",
+      description: "The logo for the project",
+      mime_type: "image/jpeg",
+      uri: "resource://project-logo"
+    }
+  end
+
+  def call
+    # In a real implementation, we would retrieve the binary resource
+    data = "base64data"
+    respond_with :binary, blob: data
   end
 end
 ```
@@ -132,7 +157,7 @@ end
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
 
-Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
+Then implement the `call` method to build your tool. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
 This is an example tool that returns a text response:
 

@@ -5,8 +5,6 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     it "returns the response from the instance's call method" do
       response = TestResource.call
       aggregate_failures do
-        expect(response).to be_a(ModelContextProtocol::Server::Resource::TextResponse)
-        expect(response.resource).to be_a(TestResource)
         expect(response.text).to eq("Here's the data")
         expect(response.serialized).to eq(
           contents: [
@@ -21,15 +19,15 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
   end
 
-  describe "data objects for responses" do
-    describe "TextResponse" do
+  describe "responses" do
+    describe "text response" do
       it "formats text responses correctly" do
-        response = described_class::TextResponse[text: "Hello", resource: TestResource.new]
+        response = TestResource.call
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Hello",
+              text: "Here's the data",
               uri: "resource://test-resource"
             }
           ]
@@ -37,16 +35,16 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
     end
 
-    describe "BinaryResponse" do
+    describe "binary response" do
       it "formats binary responses correctly" do
-        response = described_class::BinaryResponse[blob: "base64data", resource: TestBinaryResource.new]
+        response = TestBinaryResource.call
 
         expect(response.serialized).to eq(
           contents: [
             {
               blob: "base64data",
               mimeType: "image/jpeg",
-              uri: "resource://test-resource"
+              uri: "resource://project-logo"
             }
           ]
         )
