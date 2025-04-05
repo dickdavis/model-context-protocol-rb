@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    model-context-protocol-rb (0.3.0)
+    model-context-protocol-rb (0.3.1)
       json-schema (~> 5.1)
 
 GEM
