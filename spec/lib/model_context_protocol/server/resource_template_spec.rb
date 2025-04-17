@@ -1,16 +1,16 @@
 require "spec_helper"
 
-RSpec.describe ModelContextProtocol::Server::Resource do
+RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
   describe ".call" do
     it "returns the response from the instance's call method" do
-      response = TestResource.call
+      response = TestResourceTemplate.call("resource://test-resource")
       aggregate_failures do
-        expect(response.text).to eq("Here's the data")
+        expect(response.text).to eq("Here's the resource name you requested: test-resource")
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Here's the data",
+              text: "Here's the resource name you requested: test-resource",
               uri: "resource://test-resource"
             }
           ]
@@ -22,12 +22,12 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        response = TestResource.call
+        response = TestResourceTemplate.call("resource://test-resource")
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Here's the data",
+              text: "Here's the resource name you requested: test-resource",
               uri: "resource://test-resource"
             }
           ]
@@ -37,7 +37,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     describe "binary response" do
       it "formats binary responses correctly" do
-        response = TestBinaryResource.call
+        response = TestBinaryResourceTemplate.call("resource://project-logo")
 
         expect(response.serialized).to eq(
           contents: [
@@ -55,21 +55,21 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "with_metadata" do
     it "sets the class metadata" do
       aggregate_failures do
-        expect(TestResource.name).to eq("Test Resource")
-        expect(TestResource.description).to eq("A test resource")
-        expect(TestResource.mime_type).to eq("text/plain")
-        expect(TestResource.uri).to eq("resource://test-resource")
+        expect(TestResourceTemplate.name).to eq("Test Resource Template")
+        expect(TestResourceTemplate.description).to eq("A test resource template")
+        expect(TestResourceTemplate.mime_type).to eq("text/plain")
+        expect(TestResourceTemplate.uri_template).to eq("resource://{name}")
       end
     end
   end
 
   describe "metadata" do
     it "returns class metadata" do
-      expect(TestResource.metadata).to eq(
-        name: "Test Resource",
-        description: "A test resource",
+      expect(TestResourceTemplate.metadata).to eq(
+        name: "Test Resource Template",
+        description: "A test resource template",
         mimeType: "text/plain",
-        uri: "resource://test-resource"
+        uriTemplate: "resource://{name}"
       )
     end
   end

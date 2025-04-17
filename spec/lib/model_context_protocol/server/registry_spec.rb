@@ -7,6 +7,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(registry.instance_variable_get(:@prompts)).to be_empty
       expect(registry.instance_variable_get(:@resources)).to be_empty
+      expect(registry.instance_variable_get(:@resource_templates)).to be_empty
       expect(registry.instance_variable_get(:@tools)).to be_empty
     end
 
@@ -46,7 +47,19 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       expect(resources.first[:name]).to eq("Test Resource")
       expect(resources.first[:uri]).to eq("resource://test-resource")
       expect(resources.first[:description]).to eq("A test resource")
-      expect(resources.first[:mime_type]).to eq("text/plain")
+      expect(resources.first[:mimeType]).to eq("text/plain")
+    end
+
+    it "registers a resource template class" do
+      registry.register(TestResourceTemplate)
+      resource_templates = registry.instance_variable_get(:@resource_templates)
+
+      expect(resource_templates.size).to eq(1)
+      expect(resource_templates.first[:klass]).to eq(TestResourceTemplate)
+      expect(resource_templates.first[:name]).to eq("Test Resource Template")
+      expect(resource_templates.first[:uriTemplate]).to eq("resource://{name}")
+      expect(resource_templates.first[:description]).to eq("A test resource template")
+      expect(resource_templates.first[:mimeType]).to eq("text/plain")
     end
 
     it "registers a tool class" do
@@ -78,6 +91,10 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           register TestResource
         end
 
+        resource_templates do
+          register TestResourceTemplate
+        end
+
         tools list_changed: true do
           register TestToolWithTextResponse
         end
@@ -85,6 +102,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(registry.instance_variable_get(:@prompts).size).to eq(1)
       expect(registry.instance_variable_get(:@resources).size).to eq(1)
+      expect(registry.instance_variable_get(:@resource_templates).size).to eq(1)
       expect(registry.instance_variable_get(:@tools).size).to eq(1)
       expect(registry.prompts_options).to eq(list_changed: true)
       expect(registry.resources_options).to eq(list_changed: true, subscribe: true)
@@ -101,6 +119,10 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
         resources do
           register TestResource
+        end
+
+        resource_templates do
+          register TestResourceTemplate
         end
 
         tools do
@@ -129,6 +151,18 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       end
     end
 
+    describe "#find_resource_template" do
+      it "returns the resource template class when a matching URI is found" do
+        uri = Addressable::URI.parse("resource://test-name")
+        expect(registry.find_resource_template(uri)).to eq(TestResourceTemplate)
+      end
+
+      it "returns nil when no matching template is found" do
+        uri = Addressable::URI.parse("invalid://test-name")
+        expect(registry.find_resource_template(uri)).to be_nil
+      end
+    end
+
     describe "#find_tool" do
       it "returns the tool class when found" do
         expect(registry.find_tool("double")).to eq(TestToolWithTextResponse)
@@ -149,6 +183,10 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
         resources do
           register TestResource
+        end
+
+        resource_templates do
+          register TestResourceTemplate
         end
 
         tools do
@@ -184,10 +222,43 @@ RSpec.describe ModelContextProtocol::Server::Registry do
             name: "Test Resource",
             uri: "resource://test-resource",
             description: "A test resource",
-            mime_type: "text/plain"
+            mimeType: "text/plain"
           )
           expect(result.resources.first).not_to have_key(:klass)
         end
+      end
+    end
+
+    describe "#resource_templates_data" do
+      it "returns a hash with resource templates array without klass references" do
+        result = registry.resource_templates_data
+
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Registry::ResourceTemplatesData)
+          expect(result.resource_templates).to be_an(Array)
+          expect(result.resource_templates.first).to include(
+            name: "Test Resource Template",
+            uriTemplate: "resource://{name}",
+            description: "A test resource template",
+            mimeType: "text/plain"
+          )
+          expect(result.resource_templates.first).not_to have_key(:klass)
+        end
+      end
+
+      it "serializes resource templates data properly" do
+        result = registry.resource_templates_data.serialized
+
+        expect(result).to eq(
+          resourceTemplates: [
+            {
+              name: "Test Resource Template",
+              uriTemplate: "resource://{name}",
+              description: "A test resource template",
+              mimeType: "text/plain"
+            }
+          ]
+        )
       end
     end
 

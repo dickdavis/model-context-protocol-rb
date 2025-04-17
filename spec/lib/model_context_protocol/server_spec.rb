@@ -1,7 +1,84 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
-  describe "start" do
+  describe "router mapping" do
+    context "resources/read" do
+      it "looks up resource templates when direct resource is not found" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          resource_templates do
+            register TestResourceTemplate
+          end
+        end
+
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = registry
+        end
+
+        test_uri = "resource://test-template"
+        message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
+        response = server.router.route(message)
+
+        expect(response.serialized).to eq(
+          contents: [
+            {
+              mimeType: "text/plain",
+              text: "Here's the resource name you requested: test-template",
+              uri: test_uri
+            }
+          ]
+        )
+      end
+
+      it "returns nil when no matching resource or template is found" do
+        registry = ModelContextProtocol::Server::Registry.new
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = registry
+        end
+
+        test_uri = "null://nonexistent"
+        message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
+        response = server.router.route(message)
+
+        expect(response).to be_nil
+      end
+    end
+
+    context "resources/templates/list" do
+      it "returns a list of registered resource templates" do
+        # Set up a registry with resource templates
+        registry = ModelContextProtocol::Server::Registry.new do
+          resource_templates do
+            register TestResourceTemplate
+          end
+        end
+
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = registry
+        end
+
+        message = {"method" => "resources/templates/list"}
+        response = server.router.route(message)
+        expect(response.serialized).to eq(
+          resourceTemplates: [
+            {
+              name: "Test Resource Template",
+              description: "A test resource template",
+              mimeType: "text/plain",
+              uriTemplate: "resource://{name}"
+            }
+          ]
+        )
+      end
+    end
+  end
+
+  describe ".start" do
     it "raises an error for an invalid configuration" do
       expect do
         server = ModelContextProtocol::Server.new do |config|

@@ -14,7 +14,6 @@ TODO's:
 * [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
 * [Resource list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#list-changed-notification)
 * [Resource subscriptions](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#subscriptions)
-* [Resource templates](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#resource-templates)
 * [Tool list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#list-changed-notification)
 
 ## Usage
@@ -27,7 +26,7 @@ require 'model_context_protocol'
 
 ### Building an MCP Server
 
-Build a simple MCP server by registering your prompts, resources, and tools. Then, configure and run the server.
+Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server.
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
@@ -51,6 +50,10 @@ server = ModelContextProtocol::Server.new do |config|
       register TestResource
     end
 
+    resource_templates do
+      register TestResourceTemplate
+    end
+
     tools list_changed: true do
       register TestTool
     end
@@ -62,7 +65,7 @@ server.start
 
 Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
-#### ModelContextProtocol::Server::Prompt
+#### Prompts
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
 
@@ -107,7 +110,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 end
 ```
 
-#### ModelContextProtocol::Server::Resource
+#### Resources
 
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block.
 
@@ -153,7 +156,54 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
 end
 ```
 
-#### ModelContextProtocol::Server::Tool
+#### Resource Templates
+
+The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2024-11-05/server/resources#resource-templates) in the `with_metadata` block.
+
+Then, implement the `call` method to build your resource template. The `extracted_uri` method is available to deconstruct the components of the URI according to the resource template's URI template. Use the `respond_with` instance method to ensure your resource template responds with appropriately formatted response data.
+
+This is an example resource template that returns a text response:
+
+```ruby
+class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
+  with_metadata do
+    {
+      name: "Test Resource Template",
+      description: "A test resource template",
+      mime_type: "text/plain",
+      uri_template: "resource://{name}"
+    }
+  end
+
+  def call
+    result = "Here's the resource name you requested: #{extracted_uri["name"]}"
+    respond_with :text, text: result
+  end
+end
+```
+
+This is an example resource that returns binary data:
+
+```ruby
+class TestBinaryResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
+  with_metadata do
+    {
+      name: "Image Search",
+      description: "Returns an image given a filename",
+      mime_type: "image/jpeg",
+      uri_template: "images://{filename}"
+    }
+  end
+
+  def call
+    # In a real implementation, we would retrieve the binary resource using extracted_uri["filename"]
+    data = "dGVzdA=="
+    respond_with :binary, blob: data
+  end
+end
+```
+
+#### Tools
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
 

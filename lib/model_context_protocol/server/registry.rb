@@ -12,6 +12,7 @@ module ModelContextProtocol
     def initialize
       @prompts = []
       @resources = []
+      @resource_templates = []
       @tools = []
       @prompts_options = {}
       @resources_options = {}
@@ -25,6 +26,10 @@ module ModelContextProtocol
 
     def resources(options = {}, &block)
       @resources_options = options
+      instance_eval(&block) if block
+    end
+
+    def resource_templates(&block)
       instance_eval(&block) if block
     end
 
@@ -42,6 +47,8 @@ module ModelContextProtocol
         @prompts << entry
       when ->(ancestors) { ancestors.include?(ModelContextProtocol::Server::Resource) }
         @resources << entry
+      when ->(ancestors) { ancestors.include?(ModelContextProtocol::Server::ResourceTemplate) }
+        @resource_templates << entry
       when ->(ancestors) { ancestors.include?(ModelContextProtocol::Server::Tool) }
         @tools << entry
       else
@@ -58,6 +65,15 @@ module ModelContextProtocol
       entry ? entry[:klass] : nil
     end
 
+    def find_resource_template(uri)
+      addressable_uri = Addressable::URI.parse(uri)
+      entry = @resource_templates.find do |r|
+        template = Addressable::Template.new(r[:uriTemplate])
+        template.match(addressable_uri)
+      end
+      entry ? entry[:klass] : nil
+    end
+
     def find_tool(name)
       find_by_name(@tools, name)
     end
@@ -68,6 +84,10 @@ module ModelContextProtocol
 
     def resources_data
       ResourcesData[resources: @resources.map { |entry| entry.except(:klass) }]
+    end
+
+    def resource_templates_data
+      ResourceTemplatesData[resource_templates: @resource_templates.map { |entry| entry.except(:klass) }]
     end
 
     def tools_data
@@ -85,6 +105,12 @@ module ModelContextProtocol
     ResourcesData = Data.define(:resources) do
       def serialized
         {resources:}
+      end
+    end
+
+    ResourceTemplatesData = Data.define(:resource_templates) do
+      def serialized
+        {resourceTemplates: resource_templates}
       end
     end
 
