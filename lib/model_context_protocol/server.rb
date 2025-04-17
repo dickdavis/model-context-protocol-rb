@@ -65,7 +65,17 @@ module ModelContextProtocol
       end
 
       router.map("resources/read") do |message|
-        configuration.registry.find_resource(message["params"]["uri"]).call
+        uri = message["params"]["uri"]
+        if (resource = configuration.registry.find_resource(uri))
+          resource.call
+        else
+          resource_template = configuration.registry.find_resource_template(uri)
+          resource_template&.call(uri)
+        end
+      end
+
+      router.map("resources/templates/list") do |message|
+        configuration.registry.resource_templates_data
       end
 
       router.map("prompts/list") do
