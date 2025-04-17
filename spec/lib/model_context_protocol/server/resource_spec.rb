@@ -68,7 +68,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       expect(TestResource.metadata).to eq(
         name: "Test Resource",
         description: "A test resource",
-        mime_type: "text/plain",
+        mimeType: "text/plain",
         uri: "resource://test-resource"
       )
     end

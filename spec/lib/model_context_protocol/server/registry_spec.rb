@@ -46,7 +46,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       expect(resources.first[:name]).to eq("Test Resource")
       expect(resources.first[:uri]).to eq("resource://test-resource")
       expect(resources.first[:description]).to eq("A test resource")
-      expect(resources.first[:mime_type]).to eq("text/plain")
+      expect(resources.first[:mimeType]).to eq("text/plain")
     end
 
     it "registers a tool class" do
@@ -184,7 +184,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
             name: "Test Resource",
             uri: "resource://test-resource",
             description: "A test resource",
-            mime_type: "text/plain"
+            mimeType: "text/plain"
           )
           expect(result.resources.first).not_to have_key(:klass)
         end

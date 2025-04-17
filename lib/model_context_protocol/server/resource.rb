@@ -60,7 +60,7 @@ module ModelContextProtocol
       end
 
       def metadata
-        {name: @name, description: @description, mime_type: @mime_type, uri: @uri}
+        {name: @name, description: @description, mimeType: @mime_type, uri: @uri}
       end
     end
   end
