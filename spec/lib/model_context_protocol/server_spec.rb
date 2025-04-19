@@ -2,6 +2,80 @@ require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
   describe "router mapping" do
+    context "completion/complete" do
+      context "for prompts" do
+        it "looks up resource templates when direct resource is not found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            prompts do
+              register TestPrompt
+            end
+          end
+
+          server = described_class.new do |config|
+            config.name = "Test Server"
+            config.version = "1.0.0"
+            config.registry = registry
+          end
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/prompt",
+                "name" => "test_prompt"
+              },
+              "argument" => {
+                "name" => "message",
+                "value" => "f"
+              }
+            }
+          }
+
+          response = server.router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: ["foo"],
+              total: 1,
+              hasMore: false
+            }
+          )
+        end
+
+        it "raises an error when no matching prompt is found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            prompts do
+              register TestPrompt
+            end
+          end
+
+          server = described_class.new do |config|
+            config.name = "Test Server"
+            config.version = "1.0.0"
+            config.registry = registry
+          end
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/invalid_type",
+                "name" => "foo"
+              },
+              "argument" => {
+                "name" => "bar",
+                "value" => "baz"
+              }
+            }
+          }
+
+          expect {
+            server.router.route(message)
+          }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid")
+        end
+      end
+    end
+
     context "resources/read" do
       it "looks up resource templates when direct resource is not found" do
         registry = ModelContextProtocol::Server::Registry.new do

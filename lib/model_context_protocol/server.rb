@@ -60,6 +60,24 @@ module ModelContextProtocol
         PingResponse[]
       end
 
+      router.map("completion/complete") do |message|
+        type, name = message["params"]["ref"].values_at("type", "name")
+
+        completion_source = case type
+        when "ref/prompt"
+          configuration.registry.find_prompt(name)
+          # when "ref/resource"
+          #   configuration.registry.find_resource(name)
+        end
+
+        unless completion_source
+          raise ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid"
+        end
+
+        arg_name, arg_value = message["params"]["argument"].values_at("name", "value")
+        completion_source.complete_for(arg_name, arg_value)
+      end
+
       router.map("resources/list") do
         configuration.registry.resources_data
       end
@@ -97,6 +115,7 @@ module ModelContextProtocol
 
     def build_capabilities
       {}.tap do |capabilities|
+        capabilities[:completions] = {}
         capabilities[:logging] = {} if configuration.logging_enabled?
 
         registry = configuration.registry
@@ -104,7 +123,7 @@ module ModelContextProtocol
         if registry.prompts_options.any? && !registry.instance_variable_get(:@prompts).empty?
           capabilities[:prompts] = {
             listChanged: registry.prompts_options[:list_changed]
-          }.compact
+          }.except(:completions).compact
         end
 
         if registry.resources_options.any? && !registry.instance_variable_get(:@resources).empty?
