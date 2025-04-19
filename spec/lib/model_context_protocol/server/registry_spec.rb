@@ -33,7 +33,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(prompts.size).to eq(1)
       expect(prompts.first[:klass]).to eq(TestPrompt)
-      expect(prompts.first[:name]).to eq("Test Prompt")
+      expect(prompts.first[:name]).to eq("test_prompt")
       expect(prompts.first[:description]).to eq("A test prompt")
       expect(prompts.first[:arguments]).to be_an(Array)
     end
@@ -133,7 +133,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_prompt" do
       it "returns the prompt class when found" do
-        expect(registry.find_prompt("Test Prompt")).to eq(TestPrompt)
+        expect(registry.find_prompt("test_prompt")).to eq(TestPrompt)
       end
 
       it "returns nil when the prompt is not found" do
@@ -203,7 +203,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::PromptsData)
           expect(result.prompts).to be_an(Array)
           expect(result.prompts.first).to include(
-            name: "Test Prompt",
+            name: "test_prompt",
             description: "A test prompt"
           )
           expect(result.prompts.first).not_to have_key(:klass)

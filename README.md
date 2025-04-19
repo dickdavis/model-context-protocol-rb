@@ -8,8 +8,6 @@ You are welcome to contribute.
 
 TODO's:
 
-* [Completion](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/completion/)
-* [Logging](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/logging/)
 * [Pagination](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/)
 * [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
 * [Resource list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#list-changed-notification)
@@ -69,6 +67,8 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
 
+Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide the class name of a service object that provides completions. See [Completions](#completions) for more information.
+
 Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
 This is an example prompt that returns a properly formatted response:
@@ -76,22 +76,21 @@ This is an example prompt that returns a properly formatted response:
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
   with_metadata do
-    {
-      name: "Test Prompt",
-      description: "A test prompt",
-      arguments: [
-        {
-          name: "message",
-          description: "The thing to do",
-          required: true
-        },
-        {
-          name: "other",
-          description: "Another thing to do",
-          required: false
-        }
-      ]
-    }
+    name "test_prompt"
+    description "A test prompt"
+  end
+
+  with_argument do
+    name "message"
+    description "The thing to do"
+    required true
+    completion TestCompletion
+  end
+
+  with_argument do
+    name "other"
+    description "Another thing to do"
+    required false
   end
 
   def call
@@ -337,6 +336,27 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
     # In a real implementation, we would do a lookup to get the document data
     document = "richtextdata"
     respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
+  end
+end
+```
+
+### Completions
+
+The `ModelContextProtocol::Server::Completion` base class allows subclasses to define a completion that the MCP client can use to obtain hints or suggestions for arguments to prompts and resources.
+
+implement the `call` method to build your completion. Use the `respond_with` instance method to ensure your completion responds with appropriately formatted response data.
+
+This is an example completion that returns an array of values in the response:
+
+```ruby
+class TestCompletion < ModelContextProtocol::Server::Completion
+  def call
+    hints = {
+      "message" => ["hello", "world", "foo", "bar"]
+    }
+    values = hints[argument_name].grep(/#{argument_value}/)
+
+    respond_with values:
   end
 end
 ```

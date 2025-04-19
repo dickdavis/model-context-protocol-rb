@@ -1,10 +1,9 @@
 module ModelContextProtocol
   class Server::Prompt
-    attr_reader :params, :description
+    attr_reader :params
 
     def initialize(params)
       validate!(params)
-      @description = self.class.description
       @params = params
     end
 
@@ -12,15 +11,15 @@ module ModelContextProtocol
       raise NotImplementedError, "Subclasses must implement the call method"
     end
 
-    Response = Data.define(:messages, :prompt) do
+    Response = Data.define(:messages, :description) do
       def serialized
-        {description: prompt.description, messages:}
+        {description:, messages:}
       end
     end
     private_constant :Response
 
     private def respond_with(messages:)
-      Response[messages:, prompt: self]
+      Response[messages:, description: self.class.description]
     end
 
     private def validate!(params = {})
@@ -45,17 +44,33 @@ module ModelContextProtocol
       attr_reader :name, :description, :arguments
 
       def with_metadata(&block)
-        metadata = instance_eval(&block)
+        @arguments ||= []
 
-        @name = metadata[:name]
-        @description = metadata[:description]
-        @arguments = metadata[:arguments]
+        metadata_dsl = MetadataDSL.new
+        metadata_dsl.instance_eval(&block)
+
+        @name = metadata_dsl.name
+        @description = metadata_dsl.description
+      end
+
+      def with_argument(&block)
+        @arguments ||= []
+
+        argument_dsl = ArgumentDSL.new
+        argument_dsl.instance_eval(&block)
+
+        @arguments << {
+          name: argument_dsl.name,
+          description: argument_dsl.description,
+          required: argument_dsl.required,
+          completion: argument_dsl.completion
+        }
       end
 
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)
-        subclass.instance_variable_set(:@arguments, @arguments)
+        subclass.instance_variable_set(:@arguments, @arguments&.dup)
       end
 
       def call(params)
@@ -66,6 +81,46 @@ module ModelContextProtocol
 
       def metadata
         {name: @name, description: @description, arguments: @arguments}
+      end
+
+      def complete_for(arg_name, value)
+        arg = @arguments&.find { |a| a[:name] == arg_name.to_s }
+        completion = (arg && arg[:completion]) ? arg[:completion] : ModelContextProtocol::Server::NullCompletion
+        completion.call(arg_name.to_s, value)
+      end
+    end
+
+    class MetadataDSL
+      def name(value = nil)
+        @name = value if value
+        @name
+      end
+
+      def description(value = nil)
+        @description = value if value
+        @description
+      end
+    end
+
+    class ArgumentDSL
+      def name(value = nil)
+        @name = value if value
+        @name
+      end
+
+      def description(value = nil)
+        @description = value if value
+        @description
+      end
+
+      def required(value = nil)
+        @required = value unless value.nil?
+        @required
+      end
+
+      def completion(klass = nil)
+        @completion = klass unless klass.nil?
+        @completion
       end
     end
   end
