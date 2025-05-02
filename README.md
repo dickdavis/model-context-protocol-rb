@@ -162,12 +162,10 @@ This is an example resource template that returns a text response:
 ```ruby
 class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   with_metadata do
-    {
-      name: "Test Resource Template",
-      description: "A test resource template",
-      mime_type: "text/plain",
-      uri_template: "resource://{name}"
-    }
+    name "Test Resource Template"
+    description "A test resource template"
+    mime_type "text/plain"
+    uri_template: "resource://{name}"
   end
 
   def call
@@ -182,12 +180,10 @@ This is an example resource that returns binary data:
 ```ruby
 class TestBinaryResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   with_metadata do
-    {
-      name: "Image Search",
-      description: "Returns an image given a filename",
-      mime_type: "image/jpeg",
-      uri_template: "images://{filename}"
-    }
+    name "Image Search"
+    description "Returns an image given a filename"
+    mime_type "image/jpeg"
+    uri_template "images://{filename}"
   end
 
   def call

@@ -1,11 +1,9 @@
 class TestBinaryResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   with_metadata do
-    {
-      name: "Image Search",
-      description: "Returns an image given a filename",
-      mime_type: "image/jpeg",
-      uri_template: "resource://{filename}"
-    }
+    name "Image Search"
+    description "Returns an image given a filename"
+    mime_type "image/jpeg"
+    uri_template "resource://{filename}"
   end
 
   def call
