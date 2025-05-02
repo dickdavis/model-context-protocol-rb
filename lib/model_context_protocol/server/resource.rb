@@ -40,12 +40,13 @@ module ModelContextProtocol
       attr_reader :name, :description, :mime_type, :uri
 
       def with_metadata(&block)
-        metadata = instance_eval(&block)
+        metadata_dsl = MetadataDSL.new
+        metadata_dsl.instance_eval(&block)
 
-        @name = metadata[:name]
-        @description = metadata[:description]
-        @mime_type = metadata[:mime_type]
-        @uri = metadata[:uri]
+        @name = metadata_dsl.name
+        @description = metadata_dsl.description
+        @mime_type = metadata_dsl.mime_type
+        @uri = metadata_dsl.uri
       end
 
       def inherited(subclass)
@@ -61,6 +62,28 @@ module ModelContextProtocol
 
       def metadata
         {name: @name, description: @description, mimeType: @mime_type, uri: @uri}
+      end
+    end
+
+    class MetadataDSL
+      def name(value = nil)
+        @name = value if value
+        @name
+      end
+
+      def description(value = nil)
+        @description = value if value
+        @description
+      end
+
+      def mime_type(value = nil)
+        @mime_type = value if value
+        @mime_type
+      end
+
+      def uri(value = nil)
+        @uri = value if value
+        @uri
       end
     end
   end
