@@ -1,11 +1,9 @@
 class TestResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    {
-      name: "Test Resource",
-      description: "A test resource",
-      mime_type: "text/plain",
-      uri: "resource://test-resource"
-    }
+    name "Test Resource"
+    description "A test resource"
+    mime_type "text/plain"
+    uri "resource://test-resource"
   end
 
   def call

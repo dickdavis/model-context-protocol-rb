@@ -1,11 +1,9 @@
 class TestBinaryResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    {
-      name: "Project Logo",
-      description: "The logo for the project",
-      mime_type: "image/jpeg",
-      uri: "resource://project-logo"
-    }
+    name "Project Logo"
+    description "The logo for the project"
+    mime_type "image/jpeg"
+    uri "resource://project-logo"
   end
 
   def call

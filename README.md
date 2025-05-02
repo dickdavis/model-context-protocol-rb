@@ -120,12 +120,10 @@ This is an example resource that returns a text response:
 ```ruby
 class TestResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    {
-      name: "Test Resource",
-      description: "A test resource",
-      mime_type: "text/plain",
-      uri: "resource://test-resource"
-    }
+    name "Test Resource"
+    description "A test resource"
+    mime_type "text/plain"
+    uri "resource://test-resource"
   end
 
   def call
@@ -139,12 +137,10 @@ This is an example resource that returns binary data:
 ```ruby
 class TestBinaryResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    {
-      name: "Project Logo",
-      description: "The logo for the project",
-      mime_type: "image/jpeg",
-      uri: "resource://project-logo"
-    }
+    name "Project Logo"
+    description "The logo for the project"
+    mime_type "image/jpeg"
+    uri "resource://project-logo"
   end
 
   def call
