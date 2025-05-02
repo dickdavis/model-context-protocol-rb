@@ -1,9 +1,9 @@
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "double",
-      description: "Doubles the provided number",
-      inputSchema: {
+    name "double"
+    description "Doubles the provided number"
+    input_schema do
+      {
         type: "object",
         properties: {
           number: {
@@ -12,7 +12,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
         },
         required: ["number"]
       }
-    }
+    end
   end
 
   def call

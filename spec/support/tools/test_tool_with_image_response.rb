@@ -1,9 +1,9 @@
 class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "custom-chart-generator",
-      description: "Generates a chart in various formats",
-      inputSchema: {
+    name "custom-chart-generator"
+    description "Generates a chart in various formats"
+    input_schema do
+      {
         type: "object",
         properties: {
           chart_type: {
@@ -17,7 +17,7 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
         },
         required: ["chart_type", "format"]
       }
-    }
+    end
   end
 
   def call

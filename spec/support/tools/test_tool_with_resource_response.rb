@@ -1,9 +1,9 @@
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "document-finder",
-      description: "Finds a the document with the given title",
-      inputSchema: {
+    name "document-finder"
+    description "Finds a the document with the given title"
+    input_schema do
+      {
         type: "object",
         properties: {
           title: {
@@ -13,7 +13,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
         },
         required: ["title"]
       }
-    }
+    end
   end
 
   def call
