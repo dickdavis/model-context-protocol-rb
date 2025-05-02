@@ -76,11 +76,12 @@ module ModelContextProtocol
       attr_reader :name, :description, :input_schema
 
       def with_metadata(&block)
-        metadata = instance_eval(&block)
+        metadata_dsl = MetadataDSL.new
+        metadata_dsl.instance_eval(&block)
 
-        @name = metadata[:name]
-        @description = metadata[:description]
-        @input_schema = metadata[:inputSchema]
+        @name = metadata_dsl.name
+        @description = metadata_dsl.description
+        @input_schema = metadata_dsl.input_schema
       end
 
       def inherited(subclass)
@@ -101,6 +102,23 @@ module ModelContextProtocol
 
       def metadata
         {name: @name, description: @description, inputSchema: @input_schema}
+      end
+    end
+
+    class MetadataDSL
+      def name(value = nil)
+        @name = value if value
+        @name
+      end
+
+      def description(value = nil)
+        @description = value if value
+        @description
+      end
+
+      def input_schema(&block)
+        @input_schema = instance_eval(&block) if block_given?
+        @input_schema
       end
     end
   end

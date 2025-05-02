@@ -1,9 +1,9 @@
 class TestToolWithResourceResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "note-creator",
-      description: "Creates a note at the specified location",
-      inputSchema: {
+    name "note-creator"
+    description "Creates a note at the specified location"
+    input_schema do
+      {
         type: "object",
         properties: {
           title: {
@@ -17,7 +17,7 @@ class TestToolWithResourceResponseDefaultMimeType < ModelContextProtocol::Server
         },
         required: ["title", "content"]
       }
-    }
+    end
   end
 
   def call

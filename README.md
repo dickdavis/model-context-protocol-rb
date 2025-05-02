@@ -205,19 +205,19 @@ This is an example tool that returns a text response:
 ```ruby
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "double",
-      description: "Doubles the provided number",
-      inputSchema: {
+    name "double"
+    description "Doubles the provided number"
+    input_schema do
+      {
         type: "object",
         properties: {
           number: {
-            type: "string",
+            type: "string"
           }
         },
         required: ["number"]
       }
-    }
+    end
   end
 
   def call
@@ -233,10 +233,10 @@ This is an example of a tool that returns an image:
 ```ruby
 class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "custom-chart-generator",
-      description: "Generates a chart in various formats",
-      inputSchema: {
+    name "custom-chart-generator"
+    description "Generates a chart in various formats"
+    input_schema do
+      {
         type: "object",
         properties: {
           chart_type: {
@@ -250,7 +250,7 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
         },
         required: ["chart_type", "format"]
       }
-    }
+    end
   end
 
   def call
@@ -277,10 +277,10 @@ If you don't provide a mime type, it will default to `image/png`.
 ```ruby
 class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "other-custom-chart-generator",
-      description: "Generates a chart",
-      inputSchema: {
+    name "other-custom-chart-generator"
+    description "Generates a chart"
+    input_schema do
+      {
         type: "object",
         properties: {
           chart_type: {
@@ -290,7 +290,7 @@ class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::T
         },
         required: ["chart_type"]
       }
-    }
+    end
   end
 
   def call
@@ -307,10 +307,10 @@ This is an example of a tool that returns a resource response:
 ```ruby
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "document-finder",
-      description: "Finds a the document with the given title",
-      inputSchema: {
+    name "document-finder"
+    description "Finds a the document with the given title"
+    input_schema do
+      {
         type: "object",
         properties: {
           title: {
@@ -320,7 +320,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
         },
         required: ["title"]
       }
-    }
+    end
   end
 
   def call

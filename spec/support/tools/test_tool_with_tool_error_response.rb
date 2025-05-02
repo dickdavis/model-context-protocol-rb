@@ -1,9 +1,9 @@
 class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    {
-      name: "api-caller",
-      description: "Makes calls to external APIs",
-      inputSchema: {
+    name "api-caller"
+    description "Makes calls to external APIs"
+    input_schema do
+      {
         type: "object",
         properties: {
           api_endpoint: {
@@ -17,7 +17,7 @@ class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
         },
         required: ["api_endpoint", "method"]
       }
-    }
+    end
   end
 
   def call
