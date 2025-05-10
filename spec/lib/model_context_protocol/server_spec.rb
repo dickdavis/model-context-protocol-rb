@@ -3,8 +3,44 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server do
   describe "router mapping" do
     context "completion/complete" do
+      it "raises an error when an invalid ref/type is provided" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          prompts do
+            register TestPrompt
+          end
+
+          resource_templates do
+            register TestResourceTemplate
+          end
+        end
+
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = registry
+        end
+
+        message = {
+          "method" => "completion/complete",
+          "params" => {
+            "ref" => {
+              "type" => "ref/invalid_type",
+              "name" => "foo"
+            },
+            "argument" => {
+              "name" => "bar",
+              "value" => "baz"
+            }
+          }
+        }
+
+        expect {
+          server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid")
+      end
+
       context "for prompts" do
-        it "looks up resource templates when direct resource is not found" do
+        it "returns a completion for the given prompt" do
           registry = ModelContextProtocol::Server::Registry.new do
             prompts do
               register TestPrompt
@@ -42,7 +78,7 @@ RSpec.describe ModelContextProtocol::Server do
           )
         end
 
-        it "raises an error when no matching prompt is found" do
+        it "returns a null completion when no matching prompt is found" do
           registry = ModelContextProtocol::Server::Registry.new do
             prompts do
               register TestPrompt
@@ -59,7 +95,7 @@ RSpec.describe ModelContextProtocol::Server do
             "method" => "completion/complete",
             "params" => {
               "ref" => {
-                "type" => "ref/invalid_type",
+                "type" => "ref/prompt",
                 "name" => "foo"
               },
               "argument" => {
@@ -69,9 +105,93 @@ RSpec.describe ModelContextProtocol::Server do
             }
           }
 
-          expect {
-            server.router.route(message)
-          }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid")
+          response = server.router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: [],
+              total: 0,
+              hasMore: false
+            }
+          )
+        end
+      end
+
+      context "for resource templates" do
+        it "looks up resource templates when direct resource is not found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            resource_templates do
+              register TestResourceTemplate
+            end
+          end
+
+          server = described_class.new do |config|
+            config.name = "Test Server"
+            config.version = "1.0.0"
+            config.registry = registry
+          end
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/resource",
+                "uri" => "resource:///{name}"
+              },
+              "argument" => {
+                "name" => "name",
+                "value" => "te"
+              }
+            }
+          }
+
+          response = server.router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: ["test-resource"],
+              total: 1,
+              hasMore: false
+            }
+          )
+        end
+
+        it "returns a null completion when no matching resource template is found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            resource_templates do
+              register TestResourceTemplate
+            end
+          end
+
+          server = described_class.new do |config|
+            config.name = "Test Server"
+            config.version = "1.0.0"
+            config.registry = registry
+          end
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/resource",
+                "uri" => "not-valid"
+              },
+              "argument" => {
+                "name" => "bar",
+                "value" => "baz"
+              }
+            }
+          }
+
+          response = server.router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: [],
+              total: 0,
+              hasMore: false
+            }
+          )
         end
       end
     end
@@ -90,7 +210,7 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = registry
         end
 
-        test_uri = "resource://test-template"
+        test_uri = "resource:///{name}"
         message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
         response = server.router.route(message)
 
@@ -144,7 +264,7 @@ RSpec.describe ModelContextProtocol::Server do
               name: "Test Resource Template",
               description: "A test resource template",
               mimeType: "text/plain",
-              uriTemplate: "resource://{name}"
+              uriTemplate: "resource:///{name}"
             }
           ]
         )

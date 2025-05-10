@@ -61,21 +61,26 @@ module ModelContextProtocol
       end
 
       router.map("completion/complete") do |message|
-        type, name = message["params"]["ref"].values_at("type", "name")
+        type = message["params"]["ref"]["type"]
 
         completion_source = case type
         when "ref/prompt"
+          name = message["params"]["ref"]["name"]
           configuration.registry.find_prompt(name)
-          # when "ref/resource"
-          #   configuration.registry.find_resource(name)
-        end
-
-        unless completion_source
+        when "ref/resource"
+          uri = message["params"]["ref"]["uri"]
+          configuration.registry.find_resource_template(uri)
+        else
           raise ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid"
         end
 
         arg_name, arg_value = message["params"]["argument"].values_at("name", "value")
-        completion_source.complete_for(arg_name, arg_value)
+
+        if completion_source
+          completion_source.complete_for(arg_name, arg_value)
+        else
+          ModelContextProtocol::Server::NullCompletion.call(arg_name, arg_value)
+        end
       end
 
       router.map("resources/list") do
