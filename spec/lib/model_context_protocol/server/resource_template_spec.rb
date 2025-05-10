@@ -3,7 +3,7 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
   describe ".call" do
     it "returns the response from the instance's call method" do
-      response = TestResourceTemplate.call("resource://test-resource")
+      response = TestResourceTemplate.call("resource:///test-resource")
       aggregate_failures do
         expect(response.text).to eq("Here's the resource name you requested: test-resource")
         expect(response.serialized).to eq(
@@ -11,7 +11,7 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
             {
               mimeType: "text/plain",
               text: "Here's the resource name you requested: test-resource",
-              uri: "resource://test-resource"
+              uri: "resource:///test-resource"
             }
           ]
         )
@@ -22,13 +22,13 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        response = TestResourceTemplate.call("resource://test-resource")
+        response = TestResourceTemplate.call("resource:///test-resource")
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
               text: "Here's the resource name you requested: test-resource",
-              uri: "resource://test-resource"
+              uri: "resource:///test-resource"
             }
           ]
         )
@@ -58,7 +58,8 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
         expect(TestResourceTemplate.name).to eq("Test Resource Template")
         expect(TestResourceTemplate.description).to eq("A test resource template")
         expect(TestResourceTemplate.mime_type).to eq("text/plain")
-        expect(TestResourceTemplate.uri_template).to eq("resource://{name}")
+        expect(TestResourceTemplate.uri_template).to eq("resource:///{name}")
+        expect(TestResourceTemplate.completions).to eq({"name" => TestResourceTemplateCompletion})
       end
     end
   end
@@ -69,7 +70,8 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
         name: "Test Resource Template",
         description: "A test resource template",
         mimeType: "text/plain",
-        uriTemplate: "resource://{name}"
+        uriTemplate: "resource:///{name}",
+        completions: {"name" => TestResourceTemplateCompletion}
       )
     end
   end

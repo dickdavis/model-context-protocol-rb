@@ -3,7 +3,7 @@ class TestBinaryResourceTemplate < ModelContextProtocol::Server::ResourceTemplat
     name "Image Search"
     description "Returns an image given a filename"
     mime_type "image/jpeg"
-    uri_template "resource://{filename}"
+    uri_template "resource:///{filename}"
   end
 
   def call
