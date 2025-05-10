@@ -89,12 +89,12 @@ module ModelContextProtocol
 
       router.map("resources/read") do |message|
         uri = message["params"]["uri"]
-        if (resource = configuration.registry.find_resource(uri))
-          resource.call
-        else
-          resource_template = configuration.registry.find_resource_template(uri)
-          resource_template&.call(uri)
+        resource = configuration.registry.find_resource(uri)
+        unless resource
+          raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
+
+        resource.call
       end
 
       router.map("resources/templates/list") do |message|

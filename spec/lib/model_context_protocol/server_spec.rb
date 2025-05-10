@@ -197,10 +197,10 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     context "resources/read" do
-      it "looks up resource templates when direct resource is not found" do
+      it "raises an error when resource is not found" do
         registry = ModelContextProtocol::Server::Registry.new do
-          resource_templates do
-            register TestResourceTemplate
+          resources do
+            register TestResource
           end
         end
 
@@ -210,34 +210,41 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = registry
         end
 
-        test_uri = "resource:///{name}"
+        test_uri = "resource:///invalid"
         message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
-        response = server.router.route(message)
 
-        expect(response.serialized).to eq(
-          contents: [
-            {
-              mimeType: "text/plain",
-              text: "Here's the resource name you requested: test-template",
-              uri: test_uri
-            }
-          ]
-        )
+        expect {
+          server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{test_uri}")
       end
 
-      it "returns nil when no matching resource or template is found" do
-        registry = ModelContextProtocol::Server::Registry.new
+      it "returns the serialized resource data when the resource is found" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          resources do
+            register TestResource
+          end
+        end
+
         server = described_class.new do |config|
           config.name = "Test Server"
           config.version = "1.0.0"
           config.registry = registry
         end
 
-        test_uri = "null://nonexistent"
+        test_uri = "resource:///test-resource"
         message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
+
         response = server.router.route(message)
 
-        expect(response).to be_nil
+        expect(response.serialized).to eq(
+          contents: [
+            {
+              mimeType: "text/plain",
+              text: "Here's the data",
+              uri: "resource:///test-resource"
+            }
+          ]
+        )
       end
     end
 
