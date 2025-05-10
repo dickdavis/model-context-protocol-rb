@@ -21,7 +21,6 @@ server = ModelContextProtocol::Server.new do |config|
 
     resource_templates do
       register TestResourceTemplate
-      register TestBinaryResourceTemplate
     end
 
     tools list_changed: true do

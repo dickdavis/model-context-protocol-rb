@@ -45,7 +45,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       expect(resources.size).to eq(1)
       expect(resources.first[:klass]).to eq(TestResource)
       expect(resources.first[:name]).to eq("Test Resource")
-      expect(resources.first[:uri]).to eq("resource://test-resource")
+      expect(resources.first[:uri]).to eq("resource:///test-resource")
       expect(resources.first[:description]).to eq("A test resource")
       expect(resources.first[:mimeType]).to eq("text/plain")
     end
@@ -57,7 +57,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       expect(resource_templates.size).to eq(1)
       expect(resource_templates.first[:klass]).to eq(TestResourceTemplate)
       expect(resource_templates.first[:name]).to eq("Test Resource Template")
-      expect(resource_templates.first[:uriTemplate]).to eq("resource://{name}")
+      expect(resource_templates.first[:uriTemplate]).to eq("resource:///{name}")
       expect(resource_templates.first[:description]).to eq("A test resource template")
       expect(resource_templates.first[:mimeType]).to eq("text/plain")
     end
@@ -143,7 +143,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_resource" do
       it "returns the resource class when found" do
-        expect(registry.find_resource("resource://test-resource")).to eq(TestResource)
+        expect(registry.find_resource("resource:///test-resource")).to eq(TestResource)
       end
 
       it "returns nil when the resource is not found" do
@@ -153,12 +153,12 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_resource_template" do
       it "returns the resource template class when a matching URI is found" do
-        uri = Addressable::URI.parse("resource://test-name")
+        uri = "resource:///{name}"
         expect(registry.find_resource_template(uri)).to eq(TestResourceTemplate)
       end
 
       it "returns nil when no matching template is found" do
-        uri = Addressable::URI.parse("invalid://test-name")
+        uri = "invalid://test-name"
         expect(registry.find_resource_template(uri)).to be_nil
       end
     end
@@ -220,7 +220,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result.resources).to be_an(Array)
           expect(result.resources.first).to include(
             name: "Test Resource",
-            uri: "resource://test-resource",
+            uri: "resource:///test-resource",
             description: "A test resource",
             mimeType: "text/plain"
           )
@@ -238,7 +238,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result.resource_templates).to be_an(Array)
           expect(result.resource_templates.first).to include(
             name: "Test Resource Template",
-            uriTemplate: "resource://{name}",
+            uriTemplate: "resource:///{name}",
             description: "A test resource template",
             mimeType: "text/plain"
           )
@@ -253,7 +253,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           resourceTemplates: [
             {
               name: "Test Resource Template",
-              uriTemplate: "resource://{name}",
+              uriTemplate: "resource:///{name}",
               description: "A test resource template",
               mimeType: "text/plain"
             }

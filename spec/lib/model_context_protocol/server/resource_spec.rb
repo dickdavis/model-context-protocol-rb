@@ -11,7 +11,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
             {
               mimeType: "text/plain",
               text: "Here's the data",
-              uri: "resource://test-resource"
+              uri: "resource:///test-resource"
             }
           ]
         )
@@ -28,7 +28,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
             {
               mimeType: "text/plain",
               text: "Here's the data",
-              uri: "resource://test-resource"
+              uri: "resource:///test-resource"
             }
           ]
         )
@@ -44,7 +44,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
             {
               blob: "dGVzdA==",
               mimeType: "image/jpeg",
-              uri: "resource://project-logo"
+              uri: "resource:///project-logo"
             }
           ]
         )
@@ -58,7 +58,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         expect(TestResource.name).to eq("Test Resource")
         expect(TestResource.description).to eq("A test resource")
         expect(TestResource.mime_type).to eq("text/plain")
-        expect(TestResource.uri).to eq("resource://test-resource")
+        expect(TestResource.uri).to eq("resource:///test-resource")
       end
     end
   end
@@ -69,7 +69,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         name: "Test Resource",
         description: "A test resource",
         mimeType: "text/plain",
-        uri: "resource://test-resource"
+        uri: "resource:///test-resource"
       )
     end
   end

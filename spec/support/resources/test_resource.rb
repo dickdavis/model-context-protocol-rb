@@ -3,7 +3,7 @@ class TestResource < ModelContextProtocol::Server::Resource
     name "Test Resource"
     description "A test resource"
     mime_type "text/plain"
-    uri "resource://test-resource"
+    uri "resource:///test-resource"
   end
 
   def call

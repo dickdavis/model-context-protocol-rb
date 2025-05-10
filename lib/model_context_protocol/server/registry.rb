@@ -66,11 +66,7 @@ module ModelContextProtocol
     end
 
     def find_resource_template(uri)
-      addressable_uri = Addressable::URI.parse(uri)
-      entry = @resource_templates.find do |r|
-        template = Addressable::Template.new(r[:uriTemplate])
-        template.match(addressable_uri)
-      end
+      entry = @resource_templates.find { |r| uri == r[:uriTemplate] }
       entry ? entry[:klass] : nil
     end
 
@@ -87,7 +83,7 @@ module ModelContextProtocol
     end
 
     def resource_templates_data
-      ResourceTemplatesData[resource_templates: @resource_templates.map { |entry| entry.except(:klass) }]
+      ResourceTemplatesData[resource_templates: @resource_templates.map { |entry| entry.except(:klass, :completions) }]
     end
 
     def tools_data

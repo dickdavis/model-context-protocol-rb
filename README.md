@@ -155,41 +155,28 @@ end
 
 The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2024-11-05/server/resources#resource-templates) in the `with_metadata` block.
 
-Then, implement the `call` method to build your resource template. The `extracted_uri` method is available to deconstruct the components of the URI according to the resource template's URI template. Use the `respond_with` instance method to ensure your resource template responds with appropriately formatted response data.
-
-This is an example resource template that returns a text response:
+This is an example resource template that provides a completion for a parameter of the URI template:
 
 ```ruby
+class TestResourceTemplateCompletion < ModelContextProtocol::Server::Completion
+  def call
+    hints = {
+      "name" => ["test-resource", "project-logo"]
+    }
+    values = hints[argument_name].grep(/#{argument_value}/)
+
+    respond_with values:
+  end
+end
+
 class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   with_metadata do
     name "Test Resource Template"
     description "A test resource template"
     mime_type "text/plain"
-    uri_template: "resource://{name}"
-  end
-
-  def call
-    result = "Here's the resource name you requested: #{extracted_uri["name"]}"
-    respond_with :text, text: result
-  end
-end
-```
-
-This is an example resource that returns binary data:
-
-```ruby
-class TestBinaryResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
-  with_metadata do
-    name "Image Search"
-    description "Returns an image given a filename"
-    mime_type "image/jpeg"
-    uri_template "images://{filename}"
-  end
-
-  def call
-    # In a real implementation, we would retrieve the binary resource using extracted_uri["filename"]
-    data = "dGVzdA=="
-    respond_with :binary, blob: data
+    uri_template "resource://{name}" do
+      completion :name, TestResourceTemplateCompletion
+    end
   end
 end
 ```
