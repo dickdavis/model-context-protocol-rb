@@ -7,9 +7,4 @@ class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
       completion :name, TestResourceTemplateCompletion
     end
   end
-
-  def call
-    result = "Here's the resource name you requested: #{extracted_uri["name"]}"
-    respond_with :text, text: result
-  end
 end
