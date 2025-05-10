@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.3.2] - 2025-05-10
+
+- Added resource template support.
+- Added completion support for prompts and resources.
+- Improved metadata definition for prompts, resources, and tools using simple DSL.
+
 ## [0.3.1] - 2025-04-04
 
 - Added support for environment variables to MCP servers (thanks @hmk):
@@ -31,7 +37,8 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.2...HEAD
+[0.3.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.1.0...v0.2.0
