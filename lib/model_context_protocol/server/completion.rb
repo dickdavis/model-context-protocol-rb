@@ -15,6 +15,12 @@ module ModelContextProtocol
       new(...).call
     end
 
+    def self.define(&block)
+      Class.new(self) do
+        define_method(:call, &block)
+      end
+    end
+
     private
 
     Response = Data.define(:values, :total, :hasMore) do
