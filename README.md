@@ -73,30 +73,39 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
 
-Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide the class name of a service object that provides completions. See [Completions](#completions) for more information.
+Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
-Then implement the `call` method to build your prompt. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `params` hash, and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
 This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
+  class ToneCompletion < ModelContextProtocol::Server::Completion
+    def call
+      hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+      values = hints.grep(/#{argument_value}/)
+
+      respond_with values:
+    end
+  end
+
   with_metadata do
-    name "test_prompt"
-    description "A test prompt"
+    name "brainstorm_excuses"
+    description "A prompt for brainstorming excuses to get out of something"
   end
 
   with_argument do
-    name "message"
-    description "The thing to do"
+    name "undesirable_activity"
+    description "The thing to get out of"
     required true
-    completion TestCompletion
   end
 
   with_argument do
-    name "other"
-    description "Another thing to do"
+    name "tone"
+    description "The general tone to be used in the generated excuses"
     required false
+    completion ToneCompletion
   end
 
   def call
@@ -105,7 +114,35 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         role: "user",
         content: {
           type: "text",
-          text: "Do this: #{params["message"]}"
+          text: "My wife wants me to: #{params["undesirable_activity"]}... Can you believe it?"
+        }
+      },
+      {
+        role: "assistant",
+        content: {
+          type: "text",
+          text: "Oh, that's just downright awful. What are you going to do?"
+        }
+      },
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "Well, I'd like to get out of it, but I'm going to need your help."
+        }
+      },
+      {
+        role: "assistant",
+        content: {
+          type: "text",
+          text: "Anything for you."
+        }
+      },
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "Can you generate some excuses for me?" + (params["tone"] ? "Make them as #{params["tone"]} as possible." : "")
         }
       }
     ]

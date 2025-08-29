@@ -106,7 +106,10 @@ module ModelContextProtocol
       end
 
       router.map("prompts/get") do |message|
-        configuration.registry.find_prompt(message["params"]["name"]).call(message["params"]["arguments"])
+        configuration
+          .registry
+          .find_prompt(message["params"]["name"])
+          .call(message["params"]["arguments"], configuration.context)
       end
 
       router.map("tools/list") do

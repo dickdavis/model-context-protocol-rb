@@ -58,11 +58,11 @@ RSpec.describe ModelContextProtocol::Server do
             "params" => {
               "ref" => {
                 "type" => "ref/prompt",
-                "name" => "test_prompt"
+                "name" => "brainstorm_excuses"
               },
               "argument" => {
-                "name" => "message",
-                "value" => "f"
+                "name" => "tone",
+                "value" => "w"
               }
             }
           }
@@ -71,7 +71,7 @@ RSpec.describe ModelContextProtocol::Server do
 
           expect(response.serialized).to eq(
             completion: {
-              values: ["foo"],
+              values: ["whiny"],
               total: 1,
               hasMore: false
             }
