@@ -114,7 +114,10 @@ module ModelContextProtocol
       end
 
       router.map("tools/call") do |message|
-        configuration.registry.find_tool(message["params"]["name"]).call(message["params"]["arguments"])
+        configuration
+          .registry
+          .find_tool(message["params"]["name"])
+          .call(message["params"]["arguments"], configuration.context)
       end
     end
 

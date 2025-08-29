@@ -191,7 +191,7 @@ end
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
 
-Then implement the `call` method to build your tool. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
+Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `params` hash, and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
 This is an example tool that returns a text response:
 
@@ -214,9 +214,11 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
+    user_id = context[:user_id]
     number = params["number"].to_i
-    result = number * 2
-    respond_with :text, text: "#{number} doubled is #{result}"
+    calculation = number * 2
+    salutation = user_id ? "User #{user_id}, " : ""
+    respond_with :text, text: salutation << "#{number} doubled is #{calculation}"
   end
 end
 ```
