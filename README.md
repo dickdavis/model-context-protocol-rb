@@ -156,21 +156,32 @@ end
 
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block.
 
-Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
+Then, implement the `call` method to build your resource. Any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
 This is an example resource that returns a text response:
 
 ```ruby
 class TestResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    name "Test Resource"
-    description "A test resource"
+    name "top-secret-plans.txt"
+    description "Top secret plans to do top secret things"
     mime_type "text/plain"
-    uri "resource://test-resource"
+    uri "file:///top-secret-plans.txt"
   end
 
   def call
-    respond_with :text, text: "Here's the data"
+    unless authorized?(context[:user_id])
+      return respond_with :text, text: "Nothing to see here, move along."
+    end
+
+    respond_with :text, text: "I'm finna eat all my wife's leftovers."
+  end
+
+  private
+
+  def authorized?(user_id)
+    authorized_users = ["42", "123456"]
+    authorized_users.any?(user_id)
   end
 end
 ```
@@ -180,14 +191,15 @@ This is an example resource that returns binary data:
 ```ruby
 class TestBinaryResource < ModelContextProtocol::Server::Resource
   with_metadata do
-    name "Project Logo"
+    name "project-logo.png"
     description "The logo for the project"
-    mime_type "image/jpeg"
-    uri "resource://project-logo"
+    mime_type "image/png"
+    uri "file:///project-logo.png"
   end
 
   def call
     # In a real implementation, we would retrieve the binary resource
+    # This is a small valid base64 encoded string (represents "test")
     data = "dGVzdA=="
     respond_with :binary, blob: data
   end

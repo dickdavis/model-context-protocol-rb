@@ -94,7 +94,7 @@ module ModelContextProtocol
           raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
 
-        resource.call
+        resource.call(configuration.context)
       end
 
       router.map("resources/templates/list") do |message|

@@ -42,12 +42,14 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       registry.register(TestResource)
       resources = registry.instance_variable_get(:@resources)
 
-      expect(resources.size).to eq(1)
-      expect(resources.first[:klass]).to eq(TestResource)
-      expect(resources.first[:name]).to eq("Test Resource")
-      expect(resources.first[:uri]).to eq("resource:///test-resource")
-      expect(resources.first[:description]).to eq("A test resource")
-      expect(resources.first[:mimeType]).to eq("text/plain")
+      aggregate_failures do
+        expect(resources.size).to eq(1)
+        expect(resources.first[:klass]).to eq(TestResource)
+        expect(resources.first[:name]).to eq("top-secret-plans.txt")
+        expect(resources.first[:uri]).to eq("file:///top-secret-plans.txt")
+        expect(resources.first[:description]).to eq("Top secret plans to do top secret things")
+        expect(resources.first[:mimeType]).to eq("text/plain")
+      end
     end
 
     it "registers a resource template class" do
@@ -143,7 +145,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_resource" do
       it "returns the resource class when found" do
-        expect(registry.find_resource("resource:///test-resource")).to eq(TestResource)
+        expect(registry.find_resource("file:///top-secret-plans.txt")).to eq(TestResource)
       end
 
       it "returns nil when the resource is not found" do
@@ -219,9 +221,9 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::ResourcesData)
           expect(result.resources).to be_an(Array)
           expect(result.resources.first).to include(
-            name: "Test Resource",
-            uri: "resource:///test-resource",
-            description: "A test resource",
+            name: "top-secret-plans.txt",
+            uri: "file:///top-secret-plans.txt",
+            description: "Top secret plans to do top secret things",
             mimeType: "text/plain"
           )
           expect(result.resources.first).not_to have_key(:klass)

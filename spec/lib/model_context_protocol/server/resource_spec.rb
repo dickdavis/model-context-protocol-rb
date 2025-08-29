@@ -5,17 +5,56 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     it "returns the response from the instance's call method" do
       response = TestResource.call
       aggregate_failures do
-        expect(response.text).to eq("Here's the data")
+        expect(response.text).to eq("Nothing to see here, move along.")
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Here's the data",
-              uri: "resource:///test-resource"
+              text: "Nothing to see here, move along.",
+              uri: "file:///top-secret-plans.txt"
             }
           ]
         )
       end
+    end
+  end
+
+  describe ".call with context" do
+    let(:context) { {user_id: "123456"} }
+
+    it "passes context to the instance" do
+      allow(TestResource).to receive(:new).with(context).and_call_original
+      response = TestResource.call(context)
+      expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
+    end
+
+    it "works with empty context" do
+      response = TestResource.call({})
+      expect(response.text).to eq("Nothing to see here, move along.")
+    end
+
+    it "works when context is not provided" do
+      response = TestResource.call
+      expect(response.text).to eq("Nothing to see here, move along.")
+    end
+  end
+
+  describe "#initialize" do
+    it "stores context when provided" do
+      context = {user_id: "123"}
+      resource = TestResource.new(context)
+      expect(resource.context).to eq(context)
+    end
+
+    it "defaults to empty hash when no context provided" do
+      resource = TestResource.new
+      expect(resource.context).to eq({})
+    end
+
+    it "sets mime_type and uri from class metadata" do
+      resource = TestResource.new
+      expect(resource.mime_type).to eq("text/plain")
+      expect(resource.uri).to eq("file:///top-secret-plans.txt")
     end
   end
 
@@ -27,8 +66,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           contents: [
             {
               mimeType: "text/plain",
-              text: "Here's the data",
-              uri: "resource:///test-resource"
+              text: "Nothing to see here, move along.",
+              uri: "file:///top-secret-plans.txt"
             }
           ]
         )
@@ -43,8 +82,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           contents: [
             {
               blob: "dGVzdA==",
-              mimeType: "image/jpeg",
-              uri: "resource:///project-logo"
+              mimeType: "image/png",
+              uri: "file:///project-logo.png"
             }
           ]
         )
@@ -55,10 +94,10 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "with_metadata" do
     it "sets the class metadata" do
       aggregate_failures do
-        expect(TestResource.name).to eq("Test Resource")
-        expect(TestResource.description).to eq("A test resource")
+        expect(TestResource.name).to eq("top-secret-plans.txt")
+        expect(TestResource.description).to eq("Top secret plans to do top secret things")
         expect(TestResource.mime_type).to eq("text/plain")
-        expect(TestResource.uri).to eq("resource:///test-resource")
+        expect(TestResource.uri).to eq("file:///top-secret-plans.txt")
       end
     end
   end
@@ -66,10 +105,10 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "metadata" do
     it "returns class metadata" do
       expect(TestResource.metadata).to eq(
-        name: "Test Resource",
-        description: "A test resource",
+        name: "top-secret-plans.txt",
+        description: "Top secret plans to do top secret things",
         mimeType: "text/plain",
-        uri: "resource:///test-resource"
+        uri: "file:///top-secret-plans.txt"
       )
     end
   end
