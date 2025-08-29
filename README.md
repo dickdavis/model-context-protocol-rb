@@ -1,7 +1,5 @@
 # model-context-protocol-rb
 
-Note: An [official MCP implementation](https://github.com/modelcontextprotocol/ruby-sdk) has been released for Ruby, so development of this project has ceased.
-
 An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2024-11-05/) in Ruby.
 
 This SDK is experimental and subject to change. The initial focus is to implement MCP server support with the goal of providing a stable API by version `0.4`. MCP client support will follow. 
