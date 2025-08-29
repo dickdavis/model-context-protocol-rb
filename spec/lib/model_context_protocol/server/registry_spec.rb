@@ -33,8 +33,8 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(prompts.size).to eq(1)
       expect(prompts.first[:klass]).to eq(TestPrompt)
-      expect(prompts.first[:name]).to eq("test_prompt")
-      expect(prompts.first[:description]).to eq("A test prompt")
+      expect(prompts.first[:name]).to eq("brainstorm_excuses")
+      expect(prompts.first[:description]).to eq("A prompt for brainstorming excuses to get out of something")
       expect(prompts.first[:arguments]).to be_an(Array)
     end
 
@@ -42,12 +42,14 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       registry.register(TestResource)
       resources = registry.instance_variable_get(:@resources)
 
-      expect(resources.size).to eq(1)
-      expect(resources.first[:klass]).to eq(TestResource)
-      expect(resources.first[:name]).to eq("Test Resource")
-      expect(resources.first[:uri]).to eq("resource:///test-resource")
-      expect(resources.first[:description]).to eq("A test resource")
-      expect(resources.first[:mimeType]).to eq("text/plain")
+      aggregate_failures do
+        expect(resources.size).to eq(1)
+        expect(resources.first[:klass]).to eq(TestResource)
+        expect(resources.first[:name]).to eq("top-secret-plans.txt")
+        expect(resources.first[:uri]).to eq("file:///top-secret-plans.txt")
+        expect(resources.first[:description]).to eq("Top secret plans to do top secret things")
+        expect(resources.first[:mimeType]).to eq("text/plain")
+      end
     end
 
     it "registers a resource template class" do
@@ -133,7 +135,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_prompt" do
       it "returns the prompt class when found" do
-        expect(registry.find_prompt("test_prompt")).to eq(TestPrompt)
+        expect(registry.find_prompt("brainstorm_excuses")).to eq(TestPrompt)
       end
 
       it "returns nil when the prompt is not found" do
@@ -143,7 +145,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_resource" do
       it "returns the resource class when found" do
-        expect(registry.find_resource("resource:///test-resource")).to eq(TestResource)
+        expect(registry.find_resource("file:///top-secret-plans.txt")).to eq(TestResource)
       end
 
       it "returns nil when the resource is not found" do
@@ -203,8 +205,8 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::PromptsData)
           expect(result.prompts).to be_an(Array)
           expect(result.prompts.first).to include(
-            name: "test_prompt",
-            description: "A test prompt"
+            name: "brainstorm_excuses",
+            description: "A prompt for brainstorming excuses to get out of something"
           )
           expect(result.prompts.first).not_to have_key(:klass)
         end
@@ -219,9 +221,9 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::ResourcesData)
           expect(result.resources).to be_an(Array)
           expect(result.resources.first).to include(
-            name: "Test Resource",
-            uri: "resource:///test-resource",
-            description: "A test resource",
+            name: "top-secret-plans.txt",
+            uri: "file:///top-secret-plans.txt",
+            description: "Top secret plans to do top secret things",
             mimeType: "text/plain"
           )
           expect(result.resources.first).not_to have_key(:klass)

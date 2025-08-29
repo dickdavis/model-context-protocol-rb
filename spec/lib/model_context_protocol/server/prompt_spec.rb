@@ -13,41 +13,42 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     end
 
     context "when parameter validation succeeds" do
-      let(:valid_params) { {"message" => "Hello, world!"} }
+      let(:valid_params) { {"undesirable_activity" => "clean the garage"} }
 
       it "instantiates the prompt with the provided parameters" do
-        expect(TestPrompt).to receive(:new).with(valid_params).and_call_original
+        expect(TestPrompt).to receive(:new).with(valid_params, {}).and_call_original
         TestPrompt.call(valid_params)
       end
 
       it "returns the response from the instance's call method" do
         response = TestPrompt.call(valid_params)
         aggregate_failures do
-          expect(response.messages).to eq(
-            [
-              {
-                role: "user",
-                content: {
-                  type: "text",
-                  text: "Do this: Hello, world!"
-                }
-              }
-            ]
-          )
-          expect(response.serialized).to eq(
-            description: "A test prompt",
-            messages: [
-              {
-                role: "user",
-                content: {
-                  type: "text",
-                  text: "Do this: Hello, world!"
-                }
-              }
-            ]
-          )
+          expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
+          expect(response.serialized[:description]).to eq("A prompt for brainstorming excuses to get out of something")
+          expect(response.serialized[:messages]).to be_an(Array)
+          expect(response.serialized[:messages].length).to eq(5)
         end
       end
+    end
+  end
+
+  describe ".call with context" do
+    let(:valid_params) { {"undesirable_activity" => "clean the garage"} }
+    let(:context) { {"user_id" => "456", "environment" => "test"} }
+
+    it "passes context to the instance" do
+      expect(TestPrompt).to receive(:new).with(valid_params, context).and_call_original
+      TestPrompt.call(valid_params, context)
+    end
+
+    it "works with empty context" do
+      response = TestPrompt.call(valid_params, {})
+      expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
+    end
+
+    it "works when context is not provided" do
+      response = TestPrompt.call(valid_params)
+      expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
   end
 
@@ -66,14 +67,25 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when valid parameters are provided" do
       it "stores the parameters" do
-        prompt = TestPrompt.new({"message" => "Hello, world!"})
-        expect(prompt.params).to eq({"message" => "Hello, world!"})
+        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"})
+        expect(prompt.params).to eq({"undesirable_activity" => "clean the garage"})
+      end
+
+      it "stores context when provided" do
+        context = {"user_id" => "123", "session" => "abc"}
+        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"}, context)
+        expect(prompt.context).to eq(context)
+      end
+
+      it "defaults to empty hash when no context provided" do
+        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"})
+        expect(prompt.context).to eq({})
       end
 
       context "when optional parameters are provided" do
         it "stores the parameters" do
-          prompt = TestPrompt.new({"message" => "Hello, world!", "other" => "Other thing"})
-          expect(prompt.params).to eq({"message" => "Hello, world!", "other" => "Other thing"})
+          prompt = TestPrompt.new({"undesirable_activity" => "clean the garage", "tone" => "whiny"})
+          expect(prompt.params).to eq({"undesirable_activity" => "clean the garage", "tone" => "whiny"})
         end
       end
     end
@@ -82,8 +94,8 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
   describe ".with_metadata" do
     it "sets the class metadata" do
       aggregate_failures do
-        expect(TestPrompt.name).to eq("test_prompt")
-        expect(TestPrompt.description).to eq("A test prompt")
+        expect(TestPrompt.name).to eq("brainstorm_excuses")
+        expect(TestPrompt.description).to eq("A prompt for brainstorming excuses to get out of something")
       end
     end
   end
@@ -96,8 +108,8 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     it "sets a required argument" do
       aggregate_failures do
         first_argument = TestPrompt.arguments[0]
-        expect(first_argument[:name]).to eq("message")
-        expect(first_argument[:description]).to eq("The thing to do")
+        expect(first_argument[:name]).to eq("undesirable_activity")
+        expect(first_argument[:description]).to eq("The thing to get out of")
         expect(first_argument[:required]).to eq(true)
       end
     end
@@ -105,41 +117,41 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     it "sets a optional argument" do
       aggregate_failures do
         second_argument = TestPrompt.arguments[1]
-        expect(second_argument[:name]).to eq("other")
-        expect(second_argument[:description]).to eq("Another thing to do")
+        expect(second_argument[:name]).to eq("tone")
+        expect(second_argument[:description]).to eq("The general tone to be used in the generated excuses")
         expect(second_argument[:required]).to eq(false)
       end
     end
 
     it "sets an argument with a completion proc" do
-      first_argument = TestPrompt.arguments[0]
-      expect(first_argument[:completion]).to be(TestCompletion)
+      second_argument = TestPrompt.arguments[1]
+      expect(second_argument[:completion]).to be(TestPrompt::ToneCompletion)
     end
 
     it "sets an argument without a completion proc" do
-      second_argument = TestPrompt.arguments[1]
-      expect(second_argument[:completion]).to be_nil
+      first_argument = TestPrompt.arguments[0]
+      expect(first_argument[:completion]).to be_nil
     end
   end
 
   describe ".metadata" do
     it "returns class metadata" do
       metadata = TestPrompt.metadata
-      expect(metadata[:name]).to eq("test_prompt")
-      expect(metadata[:description]).to eq("A test prompt")
+      expect(metadata[:name]).to eq("brainstorm_excuses")
+      expect(metadata[:description]).to eq("A prompt for brainstorming excuses to get out of something")
       expect(metadata[:arguments].size).to eq(2)
 
       first_arg = metadata[:arguments][0]
-      expect(first_arg[:name]).to eq("message")
-      expect(first_arg[:description]).to eq("The thing to do")
+      expect(first_arg[:name]).to eq("undesirable_activity")
+      expect(first_arg[:description]).to eq("The thing to get out of")
       expect(first_arg[:required]).to eq(true)
-      expect(first_arg[:completion]).to be(TestCompletion)
+      expect(first_arg[:completion]).to be_nil
 
       second_arg = metadata[:arguments][1]
-      expect(second_arg[:name]).to eq("other")
-      expect(second_arg[:description]).to eq("Another thing to do")
+      expect(second_arg[:name]).to eq("tone")
+      expect(second_arg[:description]).to eq("The general tone to be used in the generated excuses")
       expect(second_arg[:required]).to eq(false)
-      expect(second_arg[:completion]).to be_nil
+      expect(second_arg[:completion]).to be(TestPrompt::ToneCompletion)
     end
   end
 
@@ -160,23 +172,23 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when the argument has a completion proc" do
       it "calls the completion proc with the argument name" do
-        first_argument_completion = TestPrompt.arguments[0][:completion]
-        argument_name = "message"
-        argument_value = "f"
-        allow(first_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
+        second_argument_completion = TestPrompt.arguments[1][:completion]
+        argument_name = "tone"
+        argument_value = "w"
+        allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
         TestPrompt.complete_for(argument_name, argument_value)
-        expect(first_argument_completion).to have_received(:call).with(argument_name, argument_value)
+        expect(second_argument_completion).to have_received(:call).with(argument_name, argument_value)
       end
     end
 
     context "when argument name is a symbol" do
       it "converts the symbol to a string" do
-        first_argument_completion = TestPrompt.arguments[0][:completion]
-        argument_name = "message"
-        argument_value = "f"
-        allow(first_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
+        second_argument_completion = TestPrompt.arguments[1][:completion]
+        argument_name = "tone"
+        argument_value = "w"
+        allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
         TestPrompt.complete_for(argument_name.to_sym, argument_value)
-        expect(first_argument_completion).to have_received(:call).with(argument_name, argument_value)
+        expect(second_argument_completion).to have_received(:call).with(argument_name, argument_value)
       end
     end
   end

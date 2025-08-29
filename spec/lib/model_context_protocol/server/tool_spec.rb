@@ -16,7 +16,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       let(:valid_params) { {"number" => "21"} }
 
       it "instantiates the tool with the provided parameters" do
-        expect(TestToolWithTextResponse).to receive(:new).with(valid_params).and_call_original
+        expect(TestToolWithTextResponse).to receive(:new).with(valid_params, {}).and_call_original
         TestToolWithTextResponse.call(valid_params)
       end
 
@@ -72,6 +72,41 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     it "stores the parameters" do
       tool = TestToolWithTextResponse.new({"number" => "42"})
       expect(tool.params).to eq({"number" => "42"})
+    end
+
+    it "stores context when provided" do
+      context = {"user_id" => "123", "session" => "abc"}
+      tool = TestToolWithTextResponse.new({"number" => "42"}, context)
+      expect(tool.context).to eq(context)
+    end
+
+    it "defaults to empty hash when no context provided" do
+      tool = TestToolWithTextResponse.new({"number" => "42"})
+      expect(tool.context).to eq({})
+    end
+  end
+
+  describe ".call with context" do
+    let(:valid_params) { {"number" => "21"} }
+    let(:context) { {user_id: "123456"} }
+
+    it "passes context to the instance" do
+      allow(TestToolWithTextResponse).to receive(:new).with(valid_params, context).and_call_original
+      response = TestToolWithTextResponse.call(valid_params, context)
+      aggregate_failures do
+        expect(TestToolWithTextResponse).to have_received(:new).with(valid_params, context)
+        expect(response.text).to eq("User 123456, 21 doubled is 42")
+      end
+    end
+
+    it "works with empty context" do
+      response = TestToolWithTextResponse.call(valid_params, {})
+      expect(response.text).to eq("21 doubled is 42")
+    end
+
+    it "works when context is not provided" do
+      response = TestToolWithTextResponse.call(valid_params)
+      expect(response.text).to eq("21 doubled is 42")
     end
   end
 

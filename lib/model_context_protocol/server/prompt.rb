@@ -1,10 +1,11 @@
 module ModelContextProtocol
   class Server::Prompt
-    attr_reader :params
+    attr_reader :params, :context
 
-    def initialize(params)
+    def initialize(params, context = {})
       validate!(params)
       @params = params
+      @context = context
     end
 
     def call
@@ -73,8 +74,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@arguments, @arguments&.dup)
       end
 
-      def call(params)
-        new(params).call
+      def call(params, context = {})
+        new(params, context).call
       rescue ArgumentError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       end

@@ -58,11 +58,11 @@ RSpec.describe ModelContextProtocol::Server do
             "params" => {
               "ref" => {
                 "type" => "ref/prompt",
-                "name" => "test_prompt"
+                "name" => "brainstorm_excuses"
               },
               "argument" => {
-                "name" => "message",
-                "value" => "f"
+                "name" => "tone",
+                "value" => "w"
               }
             }
           }
@@ -71,7 +71,7 @@ RSpec.describe ModelContextProtocol::Server do
 
           expect(response.serialized).to eq(
             completion: {
-              values: ["foo"],
+              values: ["whiny"],
               total: 1,
               hasMore: false
             }
@@ -231,7 +231,7 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = registry
         end
 
-        test_uri = "resource:///test-resource"
+        test_uri = "file:///top-secret-plans.txt"
         message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
 
         response = server.router.route(message)
@@ -240,8 +240,8 @@ RSpec.describe ModelContextProtocol::Server do
           contents: [
             {
               mimeType: "text/plain",
-              text: "Here's the data",
-              uri: "resource:///test-resource"
+              text: "Nothing to see here, move along.",
+              uri: "file:///top-secret-plans.txt"
             }
           ]
         )

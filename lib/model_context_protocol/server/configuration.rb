@@ -51,6 +51,14 @@ module ModelContextProtocol
       environment_variables[key.to_s.upcase] = value
     end
 
+    def context
+      @context ||= {}
+    end
+
+    def context=(context_hash = {})
+      @context = context_hash
+    end
+
     private
 
     def required_environment_variables

@@ -200,4 +200,51 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       expect(config.enable_log).to be true
     end
   end
+
+  describe "#context" do
+    context "when not previously set" do
+      it "returns an empty hash" do
+        expect(configuration.context).to eq({})
+      end
+
+      it "memoizes the empty hash" do
+        first_call = configuration.context
+        second_call = configuration.context
+        expect(first_call).to be(second_call)
+      end
+    end
+
+    context "when previously set" do
+      before { configuration.context = {key: "value"} }
+
+      it "returns the set hash" do
+        expect(configuration.context).to eq({key: "value"})
+      end
+    end
+  end
+
+  describe "#context=" do
+    it "sets the context hash" do
+      test_context = {foo: "bar", baz: 42}
+      configuration.context = test_context
+      expect(configuration.context).to eq(test_context)
+    end
+
+    it "overrides memoized value" do
+      configuration.context # Initialize memoized value
+      new_context = {new: "value"}
+      configuration.context = new_context
+      expect(configuration.context).to eq(new_context)
+    end
+
+    it "accepts an empty hash" do
+      configuration.context = {}
+      expect(configuration.context).to eq({})
+    end
+
+    it "accepts nil and converts to empty hash when accessed" do
+      configuration.context = nil
+      expect(configuration.context).to eq({})
+    end
+  end
 end

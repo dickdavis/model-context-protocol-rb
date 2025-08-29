@@ -16,8 +16,10 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
+    user_id = context[:user_id]
     number = params["number"].to_i
-    result = number * 2
-    respond_with :text, text: "#{number} doubled is #{result}"
+    calculation = number * 2
+    salutation = user_id ? "User #{user_id}, " : ""
+    respond_with :text, text: salutation << "#{number} doubled is #{calculation}"
   end
 end

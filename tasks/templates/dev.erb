@@ -1,6 +1,7 @@
 #!/usr/bin/env <%= @ruby_path %>
 
 require "bundler/setup"
+require "securerandom"
 require_relative "../lib/model_context_protocol"
 
 Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
@@ -9,6 +10,14 @@ server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
   config.enable_log = true
+
+  config.set_environment_variable("MCP_ENV", "development")
+
+  config.context = {
+    user_id: "123456",
+    request_id: SecureRandom.uuid
+  }
+
   config.registry = ModelContextProtocol::Server::Registry.new do
     prompts list_changed: true do
       register TestPrompt
