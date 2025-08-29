@@ -39,6 +39,12 @@ server = ModelContextProtocol::Server.new do |config|
   # Set environment variables programmatically
   config.set_environment_variable("DEBUG_MODE", "true")
 
+  # Provide prompts, resources, and tools with contextual variables
+  config.context = {
+    user_id: "123456",
+    request_id: SecureRandom.uuid
+  }
+
   config.registry = ModelContextProtocol::Server::Registry.new do
     prompts list_changed: true do
       register TestPrompt
