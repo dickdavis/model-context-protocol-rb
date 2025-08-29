@@ -136,11 +136,11 @@ RSpec.describe ModelContextProtocol::Server do
             "params" => {
               "ref" => {
                 "type" => "ref/resource",
-                "uri" => "resource:///{name}"
+                "uri" => "file:///{name}"
               },
               "argument" => {
                 "name" => "name",
-                "value" => "te"
+                "value" => "to"
               }
             }
           }
@@ -149,7 +149,7 @@ RSpec.describe ModelContextProtocol::Server do
 
           expect(response.serialized).to eq(
             completion: {
-              values: ["test-resource"],
+              values: ["top-secret-plans.txt"],
               total: 1,
               hasMore: false
             }
@@ -250,7 +250,6 @@ RSpec.describe ModelContextProtocol::Server do
 
     context "resources/templates/list" do
       it "returns a list of registered resource templates" do
-        # Set up a registry with resource templates
         registry = ModelContextProtocol::Server::Registry.new do
           resource_templates do
             register TestResourceTemplate
@@ -268,10 +267,10 @@ RSpec.describe ModelContextProtocol::Server do
         expect(response.serialized).to eq(
           resourceTemplates: [
             {
-              name: "Test Resource Template",
-              description: "A test resource template",
+              name: "project-document-resource-template",
+              description: "A resource template for retrieving project documents",
               mimeType: "text/plain",
-              uriTemplate: "resource:///{name}"
+              uriTemplate: "file:///{name}"
             }
           ]
         )

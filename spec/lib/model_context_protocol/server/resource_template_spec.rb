@@ -4,11 +4,11 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
   describe "with_metadata" do
     it "sets the class metadata" do
       aggregate_failures do
-        expect(TestResourceTemplate.name).to eq("Test Resource Template")
-        expect(TestResourceTemplate.description).to eq("A test resource template")
+        expect(TestResourceTemplate.name).to eq("project-document-resource-template")
+        expect(TestResourceTemplate.description).to eq("A resource template for retrieving project documents")
         expect(TestResourceTemplate.mime_type).to eq("text/plain")
-        expect(TestResourceTemplate.uri_template).to eq("resource:///{name}")
-        expect(TestResourceTemplate.completions).to eq({"name" => TestResourceTemplateCompletion})
+        expect(TestResourceTemplate.uri_template).to eq("file:///{name}")
+        expect(TestResourceTemplate.completions).to eq({"name" => TestResourceTemplate::Completion})
       end
     end
   end
@@ -16,11 +16,11 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
   describe "metadata" do
     it "returns class metadata" do
       expect(TestResourceTemplate.metadata).to eq(
-        name: "Test Resource Template",
-        description: "A test resource template",
+        name: "project-document-resource-template",
+        description: "A resource template for retrieving project documents",
         mimeType: "text/plain",
-        uriTemplate: "resource:///{name}",
-        completions: {"name" => TestResourceTemplateCompletion}
+        uriTemplate: "file:///{name}",
+        completions: {"name" => TestResourceTemplate::Completion}
       )
     end
   end

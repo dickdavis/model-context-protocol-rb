@@ -81,13 +81,11 @@ This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
-  class ToneCompletion < ModelContextProtocol::Server::Completion
-    def call
-      hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
-      values = hints.grep(/#{argument_value}/)
+  ToneCompletion = ModelContextProtocol::Server::Completion.define do
+    hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+    values = hints.grep(/#{argument_value}/)
 
-      respond_with values:
-    end
+    respond_with values:
   end
 
   with_metadata do
@@ -213,24 +211,22 @@ The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasse
 This is an example resource template that provides a completion for a parameter of the URI template:
 
 ```ruby
-class TestResourceTemplateCompletion < ModelContextProtocol::Server::Completion
-  def call
+class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
+  Completion = ModelContextProtocol::Server::Completion.define do
     hints = {
-      "name" => ["test-resource", "project-logo"]
+      "name" => ["top-secret-plans.txt"]
     }
     values = hints[argument_name].grep(/#{argument_value}/)
 
     respond_with values:
   end
-end
 
-class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   with_metadata do
-    name "Test Resource Template"
-    description "A test resource template"
+    name "project-document-resource-template"
+    description "A resource template for retrieving project documents"
     mime_type "text/plain"
-    uri_template "resource://{name}" do
-      completion :name, TestResourceTemplateCompletion
+    uri_template "file:///{name}" do
+      completion :name, Completion
     end
   end
 end

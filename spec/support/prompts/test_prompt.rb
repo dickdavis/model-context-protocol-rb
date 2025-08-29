@@ -1,11 +1,9 @@
 class TestPrompt < ModelContextProtocol::Server::Prompt
-  class ToneCompletion < ModelContextProtocol::Server::Completion
-    def call
-      hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
-      values = hints.grep(/#{argument_value}/)
+  ToneCompletion = ModelContextProtocol::Server::Completion.define do
+    hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+    values = hints.grep(/#{argument_value}/)
 
-      respond_with values:
-    end
+    respond_with values:
   end
 
   with_metadata do

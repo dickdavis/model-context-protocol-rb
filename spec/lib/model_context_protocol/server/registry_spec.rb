@@ -58,9 +58,9 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
       expect(resource_templates.size).to eq(1)
       expect(resource_templates.first[:klass]).to eq(TestResourceTemplate)
-      expect(resource_templates.first[:name]).to eq("Test Resource Template")
-      expect(resource_templates.first[:uriTemplate]).to eq("resource:///{name}")
-      expect(resource_templates.first[:description]).to eq("A test resource template")
+      expect(resource_templates.first[:name]).to eq("project-document-resource-template")
+      expect(resource_templates.first[:uriTemplate]).to eq("file:///{name}")
+      expect(resource_templates.first[:description]).to eq("A resource template for retrieving project documents")
       expect(resource_templates.first[:mimeType]).to eq("text/plain")
     end
 
@@ -155,7 +155,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
 
     describe "#find_resource_template" do
       it "returns the resource template class when a matching URI is found" do
-        uri = "resource:///{name}"
+        uri = "file:///{name}"
         expect(registry.find_resource_template(uri)).to eq(TestResourceTemplate)
       end
 
@@ -239,9 +239,9 @@ RSpec.describe ModelContextProtocol::Server::Registry do
           expect(result).to be_a(ModelContextProtocol::Server::Registry::ResourceTemplatesData)
           expect(result.resource_templates).to be_an(Array)
           expect(result.resource_templates.first).to include(
-            name: "Test Resource Template",
-            uriTemplate: "resource:///{name}",
-            description: "A test resource template",
+            name: "project-document-resource-template",
+            uriTemplate: "file:///{name}",
+            description: "A resource template for retrieving project documents",
             mimeType: "text/plain"
           )
           expect(result.resource_templates.first).not_to have_key(:klass)
@@ -254,9 +254,9 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         expect(result).to eq(
           resourceTemplates: [
             {
-              name: "Test Resource Template",
-              uriTemplate: "resource:///{name}",
-              description: "A test resource template",
+              name: "project-document-resource-template",
+              uriTemplate: "file:///{name}",
+              description: "A resource template for retrieving project documents",
               mimeType: "text/plain"
             }
           ]
