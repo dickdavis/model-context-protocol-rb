@@ -25,8 +25,8 @@ module ModelContextProtocol
 
     private def validate!(params = {})
       arguments = self.class.arguments || []
-      required_args = arguments.select { |arg| arg[:required] }.map { |arg| arg[:name] }
-      valid_arg_names = arguments.map { |arg| arg[:name] }
+      required_args = arguments.select { |arg| arg[:required] }.map { |arg| arg[:name].to_sym }
+      valid_arg_names = arguments.map { |arg| arg[:name].to_sym }
 
       missing_args = required_args - params.keys
       unless missing_args.empty?

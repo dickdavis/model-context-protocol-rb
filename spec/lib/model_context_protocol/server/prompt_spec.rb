@@ -2,26 +2,26 @@ require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Prompt do
   describe ".call" do
-    context "when parameter validation fails" do
-      let(:invalid_params) { {"foo" => "bar"} }
+    context "when argument validation fails" do
+      let(:invalid_arguments) { {foo: "bar"} }
 
       it "raises a ParameterValidationError" do
         expect {
-          TestPrompt.call(invalid_params)
+          TestPrompt.call(invalid_arguments)
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
 
-    context "when parameter validation succeeds" do
-      let(:valid_params) { {"undesirable_activity" => "clean the garage"} }
+    context "when argument validation succeeds" do
+      let(:valid_arguments) { {undesirable_activity: "clean the garage"} }
 
-      it "instantiates the prompt with the provided parameters" do
-        expect(TestPrompt).to receive(:new).with(valid_params, {}).and_call_original
-        TestPrompt.call(valid_params)
+      it "instantiates the prompt with the provided arguments" do
+        expect(TestPrompt).to receive(:new).with(valid_arguments, {}).and_call_original
+        TestPrompt.call(valid_arguments)
       end
 
       it "returns the response from the instance's call method" do
-        response = TestPrompt.call(valid_params)
+        response = TestPrompt.call(valid_arguments)
         aggregate_failures do
           expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
           expect(response.serialized[:description]).to eq("A prompt for brainstorming excuses to get out of something")
@@ -33,59 +33,59 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
   end
 
   describe ".call with context" do
-    let(:valid_params) { {"undesirable_activity" => "clean the garage"} }
+    let(:valid_arguments) { {undesirable_activity: "clean the garage"} }
     let(:context) { {"user_id" => "456", "environment" => "test"} }
 
     it "passes context to the instance" do
-      expect(TestPrompt).to receive(:new).with(valid_params, context).and_call_original
-      TestPrompt.call(valid_params, context)
+      expect(TestPrompt).to receive(:new).with(valid_arguments, context).and_call_original
+      TestPrompt.call(valid_arguments, context)
     end
 
     it "works with empty context" do
-      response = TestPrompt.call(valid_params, {})
+      response = TestPrompt.call(valid_arguments, {})
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
 
     it "works when context is not provided" do
-      response = TestPrompt.call(valid_params)
+      response = TestPrompt.call(valid_arguments)
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
   end
 
   describe "#initialize" do
-    context "when no parameters are provided" do
+    context "when no arguments are provided" do
       it "raises an ArgumentError" do
         expect { TestPrompt.new }.to raise_error(ArgumentError)
       end
     end
 
-    context "when invalid parameters are provided" do
+    context "when invalid arguments are provided" do
       it "raises an ArgumentError" do
-        expect { TestPrompt.new({"foo" => "bar"}) }.to raise_error(ArgumentError)
+        expect { TestPrompt.new({foo: "bar"}) }.to raise_error(ArgumentError)
       end
     end
 
-    context "when valid parameters are provided" do
-      it "stores the parameters" do
-        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"})
-        expect(prompt.params).to eq({"undesirable_activity" => "clean the garage"})
+    context "when valid arguments are provided" do
+      it "stores the arguments" do
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"})
+        expect(prompt.params).to eq({undesirable_activity: "clean the garage"})
       end
 
       it "stores context when provided" do
         context = {"user_id" => "123", "session" => "abc"}
-        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"}, context)
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, context)
         expect(prompt.context).to eq(context)
       end
 
       it "defaults to empty hash when no context provided" do
-        prompt = TestPrompt.new({"undesirable_activity" => "clean the garage"})
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"})
         expect(prompt.context).to eq({})
       end
 
-      context "when optional parameters are provided" do
-        it "stores the parameters" do
-          prompt = TestPrompt.new({"undesirable_activity" => "clean the garage", "tone" => "whiny"})
-          expect(prompt.params).to eq({"undesirable_activity" => "clean the garage", "tone" => "whiny"})
+      context "when optional arguments are provided" do
+        it "stores the arguments" do
+          prompt = TestPrompt.new({undesirable_activity: "clean the garage", tone: "whiny"})
+          expect(prompt.params).to eq({undesirable_activity: "clean the garage", tone: "whiny"})
         end
       end
     end

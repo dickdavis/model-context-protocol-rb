@@ -75,7 +75,7 @@ The `ModelContextProtocol::Server::Prompt` base class allows subclasses to defin
 
 Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
-Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `params` hash, and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
 This is an example prompt that returns a properly formatted response:
 
@@ -112,7 +112,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         role: "user",
         content: {
           type: "text",
-          text: "My wife wants me to: #{params["undesirable_activity"]}... Can you believe it?"
+          text: "My wife wants me to: #{arguments[:undesirable_activity]}... Can you believe it?"
         }
       },
       {
@@ -140,7 +140,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         role: "user",
         content: {
           type: "text",
-          text: "Can you generate some excuses for me?" + (params["tone"] ? "Make them as #{params["tone"]} as possible." : "")
+          text: "Can you generate some excuses for me?" + (arguments[:tone] ? "Make them as #{arguments[:tone]} as possible." : "")
         }
       }
     ]
@@ -236,7 +236,7 @@ end
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
 
-Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `params` hash, and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
+Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
 This is an example tool that returns a text response:
 
@@ -260,7 +260,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
 
   def call
     user_id = context[:user_id]
-    number = params["number"].to_i
+    number = arguments[:number].to_i
     calculation = number * 2
     salutation = user_id ? "User #{user_id}, " : ""
     respond_with :text, text: salutation << "#{number} doubled is #{calculation}"
@@ -295,7 +295,7 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
 
   def call
     # Map format to mime type
-    mime_type = case params["format"].downcase
+    mime_type = case arguments[:format].downcase
     when "svg"
       "image/svg+xml"
     when "jpg", "jpeg"
@@ -364,7 +364,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    title = params["title"].downcase
+    title = arguments[:title].downcase
     # In a real implementation, we would do a lookup to get the document data
     document = "richtextdata"
     respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"

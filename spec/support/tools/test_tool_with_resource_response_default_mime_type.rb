@@ -22,7 +22,7 @@ class TestToolWithResourceResponseDefaultMimeType < ModelContextProtocol::Server
 
   def call
     # In a real implementation, we would create an actual file
-    note_uri = "note://notes/#{params["title"].downcase.gsub(/\s+/, "-")}"
-    respond_with :resource, uri: note_uri, text: params["content"]
+    note_uri = "note://notes/#{params[:title].downcase.gsub(/\s+/, "-")}"
+    respond_with :resource, uri: note_uri, text: params[:content]
   end
 end

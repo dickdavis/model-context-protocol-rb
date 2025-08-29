@@ -106,10 +106,12 @@ module ModelContextProtocol
       end
 
       router.map("prompts/get") do |message|
+        arguments = message["params"]["arguments"]
+        symbolized_arguments = arguments.transform_keys(&:to_sym)
         configuration
           .registry
           .find_prompt(message["params"]["name"])
-          .call(message["params"]["arguments"], configuration.context)
+          .call(symbolized_arguments, configuration.context)
       end
 
       router.map("tools/list") do
@@ -117,10 +119,12 @@ module ModelContextProtocol
       end
 
       router.map("tools/call") do |message|
+        arguments = message["params"]["arguments"]
+        symbolized_arguments = arguments.transform_keys(&:to_sym)
         configuration
           .registry
           .find_tool(message["params"]["name"])
-          .call(message["params"]["arguments"], configuration.context)
+          .call(symbolized_arguments, configuration.context)
       end
     end
 
