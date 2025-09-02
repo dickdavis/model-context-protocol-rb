@@ -21,7 +21,20 @@ module ModelContextProtocol
       configuration.validate!
       logdev = configuration.logging_enabled? ? $stderr : File::NULL
       logger = Logger.new(logdev)
-      StdioTransport.new(logger:, router:).begin
+
+      case configuration.transport_type
+      when :stdio, nil
+        StdioTransport.new(logger:, router:).begin
+      when :streamable_http
+        transport = StreamableHttpTransport.new(
+          logger:,
+          router:,
+          configuration:
+        )
+        transport.handle_request
+      else
+        raise ArgumentError, "Unknown transport: #{configuration.transport_type}"
+      end
     end
 
     private
