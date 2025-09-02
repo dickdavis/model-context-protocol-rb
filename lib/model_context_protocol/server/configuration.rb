@@ -12,16 +12,38 @@ module ModelContextProtocol
     # Raised when a required environment variable is not set
     class MissingRequiredEnvironmentVariable < StandardError; end
 
-    attr_accessor :enable_log, :name, :registry, :version
+    # Raised when transport configuration is invalid
+    class InvalidTransportError < StandardError; end
+
+    attr_accessor :enable_log, :name, :registry, :version, :transport
 
     def logging_enabled?
       enable_log || false
+    end
+
+    def transport_type
+      case transport
+      when Hash
+        transport[:type] || transport["type"]
+      when Symbol, String
+        transport.to_sym
+      end
+    end
+
+    def transport_options
+      case transport
+      when Hash
+        transport.except(:type, "type").transform_keys(&:to_sym)
+      else
+        {}
+      end
     end
 
     def validate!
       raise InvalidServerNameError unless valid_name?
       raise InvalidRegistryError unless valid_registry?
       raise InvalidServerVersionError unless valid_version?
+      validate_transport!
 
       validate_environment_variables!
     end
@@ -81,6 +103,30 @@ module ModelContextProtocol
 
     def valid_version?
       version&.is_a?(String)
+    end
+
+    def validate_transport!
+      case transport_type
+      when :streamable_http
+        validate_streamable_http_transport!
+      when :stdio, nil
+        # stdio transport has no required options
+      else
+        raise InvalidTransportError, "Unknown transport type: #{transport_type}" if transport_type
+      end
+    end
+
+    def validate_streamable_http_transport!
+      options = transport_options
+
+      unless options[:redis_client]
+        raise InvalidTransportError, "streamable_http transport requires redis_client option"
+      end
+
+      redis_client = options[:redis_client]
+      unless redis_client.respond_to?(:hset) && redis_client.respond_to?(:expire)
+        raise InvalidTransportError, "redis_client must be a Redis-compatible client"
+      end
     end
   end
 end
