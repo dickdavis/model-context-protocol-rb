@@ -85,7 +85,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
         logger = double("logger")
         allow(logger).to receive(:info)
         prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, logger)
-        expect(prompt.params).to eq({undesirable_activity: "clean the garage"})
+        expect(prompt.arguments).to eq({undesirable_activity: "clean the garage"})
       end
 
       it "stores context when provided" do
@@ -108,7 +108,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
           logger = double("logger")
           allow(logger).to receive(:info)
           prompt = TestPrompt.new({undesirable_activity: "clean the garage", tone: "whiny"}, logger)
-          expect(prompt.params).to eq({undesirable_activity: "clean the garage", tone: "whiny"})
+          expect(prompt.arguments).to eq({undesirable_activity: "clean the garage", tone: "whiny"})
         end
       end
     end
@@ -125,12 +125,12 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
   describe "with_argument" do
     it "adds arguments to an array" do
-      expect(TestPrompt.arguments.size).to eq(2)
+      expect(TestPrompt.defined_arguments.size).to eq(2)
     end
 
     it "sets a required argument" do
       aggregate_failures do
-        first_argument = TestPrompt.arguments[0]
+        first_argument = TestPrompt.defined_arguments[0]
         expect(first_argument[:name]).to eq("undesirable_activity")
         expect(first_argument[:description]).to eq("The thing to get out of")
         expect(first_argument[:required]).to eq(true)
@@ -139,7 +139,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     it "sets a optional argument" do
       aggregate_failures do
-        second_argument = TestPrompt.arguments[1]
+        second_argument = TestPrompt.defined_arguments[1]
         expect(second_argument[:name]).to eq("tone")
         expect(second_argument[:description]).to eq("The general tone to be used in the generated excuses")
         expect(second_argument[:required]).to eq(false)
@@ -147,12 +147,12 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     end
 
     it "sets an argument with a completion proc" do
-      second_argument = TestPrompt.arguments[1]
+      second_argument = TestPrompt.defined_arguments[1]
       expect(second_argument[:completion]).to be(TestPrompt::ToneCompletion)
     end
 
     it "sets an argument without a completion proc" do
-      first_argument = TestPrompt.arguments[0]
+      first_argument = TestPrompt.defined_arguments[0]
       expect(first_argument[:completion]).to be_nil
     end
   end
@@ -195,7 +195,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when the argument has a completion proc" do
       it "calls the completion proc with the argument name" do
-        second_argument_completion = TestPrompt.arguments[1][:completion]
+        second_argument_completion = TestPrompt.defined_arguments[1][:completion]
         argument_name = "tone"
         argument_value = "w"
         allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
@@ -206,7 +206,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when argument name is a symbol" do
       it "converts the symbol to a string" do
-        second_argument_completion = TestPrompt.arguments[1][:completion]
+        second_argument_completion = TestPrompt.defined_arguments[1][:completion]
         argument_name = "tone"
         argument_value = "w"
         allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original

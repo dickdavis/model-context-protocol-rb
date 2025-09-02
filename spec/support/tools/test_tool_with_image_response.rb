@@ -22,7 +22,7 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
 
   def call
     # Map format to mime type
-    mime_type = case params[:format].downcase
+    mime_type = case arguments[:format].downcase
     when "svg"
       "image/svg+xml"
     when "jpg", "jpeg"

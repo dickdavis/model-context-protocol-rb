@@ -1,10 +1,10 @@
 module ModelContextProtocol
   class Server::Prompt
-    attr_reader :params, :context, :logger
+    attr_reader :arguments, :context, :logger
 
-    def initialize(params, logger, context = {})
-      validate!(params)
-      @params = params
+    def initialize(arguments, logger, context = {})
+      validate!(arguments)
+      @arguments = arguments
       @context = context
       @logger = logger
     end
@@ -24,18 +24,18 @@ module ModelContextProtocol
       Response[messages:, description: self.class.description]
     end
 
-    private def validate!(params = {})
-      arguments = self.class.arguments || []
-      required_args = arguments.select { |arg| arg[:required] }.map { |arg| arg[:name].to_sym }
-      valid_arg_names = arguments.map { |arg| arg[:name].to_sym }
+    private def validate!(arguments = {})
+      defined_arguments = self.class.defined_arguments || []
+      required_args = defined_arguments.select { |arg| arg[:required] }.map { |arg| arg[:name].to_sym }
+      valid_arg_names = defined_arguments.map { |arg| arg[:name].to_sym }
 
-      missing_args = required_args - params.keys
+      missing_args = required_args - arguments.keys
       unless missing_args.empty?
         missing_args_list = missing_args.join(", ")
         raise ArgumentError, "Missing required arguments: #{missing_args_list}"
       end
 
-      extra_args = params.keys - valid_arg_names
+      extra_args = arguments.keys - valid_arg_names
       unless extra_args.empty?
         extra_args_list = extra_args.join(", ")
         raise ArgumentError, "Unexpected arguments: #{extra_args_list}"
@@ -43,10 +43,10 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :arguments
+      attr_reader :name, :description, :defined_arguments
 
       def with_metadata(&block)
-        @arguments ||= []
+        @defined_arguments ||= []
 
         metadata_dsl = MetadataDSL.new
         metadata_dsl.instance_eval(&block)
@@ -56,12 +56,12 @@ module ModelContextProtocol
       end
 
       def with_argument(&block)
-        @arguments ||= []
+        @defined_arguments ||= []
 
         argument_dsl = ArgumentDSL.new
         argument_dsl.instance_eval(&block)
 
-        @arguments << {
+        @defined_arguments << {
           name: argument_dsl.name,
           description: argument_dsl.description,
           required: argument_dsl.required,
@@ -72,21 +72,21 @@ module ModelContextProtocol
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)
-        subclass.instance_variable_set(:@arguments, @arguments&.dup)
+        subclass.instance_variable_set(:@defined_arguments, @defined_arguments&.dup)
       end
 
-      def call(params, logger, context = {})
-        new(params, logger, context).call
+      def call(arguments, logger, context = {})
+        new(arguments, logger, context).call
       rescue ArgumentError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       end
 
       def metadata
-        {name: @name, description: @description, arguments: @arguments}
+        {name: @name, description: @description, arguments: @defined_arguments}
       end
 
       def complete_for(arg_name, value)
-        arg = @arguments&.find { |a| a[:name] == arg_name.to_s }
+        arg = @defined_arguments&.find { |a| a[:name] == arg_name.to_s }
         completion = (arg && arg[:completion]) ? arg[:completion] : ModelContextProtocol::Server::NullCompletion
         completion.call(arg_name.to_s, value)
       end
