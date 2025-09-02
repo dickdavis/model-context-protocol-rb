@@ -7,7 +7,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "raises a ParameterValidationError" do
         expect {
-          TestToolWithTextResponse.call(invalid_arguments)
+          TestToolWithTextResponse.call(invalid_arguments, double("logger"))
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
@@ -16,12 +16,14 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       let(:valid_arguments) { {number: "21"} }
 
       it "instantiates the tool with the provided arguments" do
-        expect(TestToolWithTextResponse).to receive(:new).with(valid_arguments, {}).and_call_original
-        TestToolWithTextResponse.call(valid_arguments)
+        logger = double("logger")
+        expect(TestToolWithTextResponse).to receive(:new).with(valid_arguments, logger, {}).and_call_original
+        TestToolWithTextResponse.call(valid_arguments, logger)
       end
 
       it "returns the response from the instance's call method" do
-        response = TestToolWithTextResponse.call(valid_arguments)
+        logger = double("logger")
+        response = TestToolWithTextResponse.call(valid_arguments, logger)
         aggregate_failures do
           expect(response.text).to eq("21 doubled is 42")
           expect(response.serialized).to eq(
@@ -42,7 +44,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         end
 
         it "returns an error response" do
-          response = TestToolWithTextResponse.call(valid_arguments)
+          logger = double("logger")
+          response = TestToolWithTextResponse.call(valid_arguments, logger)
           aggregate_failures do
             expect(response.text).to eq("Test error")
             expect(response.serialized).to eq(
@@ -66,22 +69,25 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         TestToolWithTextResponse.input_schema,
         {"text" => "Hello, world!"}
       )
-      TestToolWithTextResponse.new({"text" => "Hello, world!"})
+      TestToolWithTextResponse.new({"text" => "Hello, world!"}, double("logger"))
     end
 
     it "stores the arguments" do
-      tool = TestToolWithTextResponse.new({number: "42"})
+      logger = double("logger")
+      tool = TestToolWithTextResponse.new({number: "42"}, logger)
       expect(tool.params).to eq({number: "42"})
     end
 
     it "stores context when provided" do
       context = {"user_id" => "123", "session" => "abc"}
-      tool = TestToolWithTextResponse.new({"number" => "42"}, context)
+      logger = double("logger")
+      tool = TestToolWithTextResponse.new({"number" => "42"}, logger, context)
       expect(tool.context).to eq(context)
     end
 
     it "defaults to empty hash when no context provided" do
-      tool = TestToolWithTextResponse.new({number: "42"})
+      logger = double("logger")
+      tool = TestToolWithTextResponse.new({number: "42"}, logger)
       expect(tool.context).to eq({})
     end
   end
@@ -91,21 +97,24 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     let(:context) { {user_id: "123456"} }
 
     it "passes context to the instance" do
-      allow(TestToolWithTextResponse).to receive(:new).with(valid_arguments, context).and_call_original
-      response = TestToolWithTextResponse.call(valid_arguments, context)
+      logger = double("logger")
+      allow(TestToolWithTextResponse).to receive(:new).with(valid_arguments, logger, context).and_call_original
+      response = TestToolWithTextResponse.call(valid_arguments, logger, context)
       aggregate_failures do
-        expect(TestToolWithTextResponse).to have_received(:new).with(valid_arguments, context)
+        expect(TestToolWithTextResponse).to have_received(:new).with(valid_arguments, logger, context)
         expect(response.text).to eq("User 123456, 21 doubled is 42")
       end
     end
 
     it "works with empty context" do
-      response = TestToolWithTextResponse.call(valid_arguments, {})
+      logger = double("logger")
+      response = TestToolWithTextResponse.call(valid_arguments, logger, {})
       expect(response.text).to eq("21 doubled is 42")
     end
 
     it "works when context is not provided" do
-      response = TestToolWithTextResponse.call(valid_arguments)
+      logger = double("logger")
+      response = TestToolWithTextResponse.call(valid_arguments, logger)
       expect(response.text).to eq("21 doubled is 42")
     end
   end
@@ -114,7 +123,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     describe "text response" do
       it "formats text response correctly" do
         arguments = {number: "21"}
-        response = TestToolWithTextResponse.call(arguments)
+        logger = double("logger")
+        response = TestToolWithTextResponse.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             {
@@ -130,7 +140,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     describe "image response" do
       it "formats image responses correctly" do
         arguments = {chart_type: "bar", format: "jpg"}
-        response = TestToolWithImageResponse.call(arguments)
+        logger = double("logger")
+        response = TestToolWithImageResponse.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             {
@@ -145,7 +156,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "defaults to PNG mime type" do
         arguments = {chart_type: "bar"}
-        response = TestToolWithImageResponseDefaultMimeType.call(arguments)
+        logger = double("logger")
+        response = TestToolWithImageResponseDefaultMimeType.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             {
@@ -162,7 +174,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     describe "resource response" do
       it "formats resource responses correctly" do
         arguments = {title: "Foobar"}
-        response = TestToolWithResourceResponse.call(arguments)
+        logger = double("logger")
+        response = TestToolWithResourceResponse.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             type: "resource",
@@ -178,7 +191,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
 
       it "defaults to text/plain mime type" do
         arguments = {title: "foobar", content: "baz"}
-        response = TestToolWithResourceResponseDefaultMimeType.call(arguments)
+        logger = double("logger")
+        response = TestToolWithResourceResponseDefaultMimeType.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             type: "resource",
@@ -196,7 +210,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     describe "tool error response" do
       it "formats error responses correctly" do
         arguments = {api_endpoint: "http://example.com", method: "GET"}
-        response = TestToolWithToolErrorResponse.call(arguments)
+        logger = double("logger")
+        response = TestToolWithToolErrorResponse.call(arguments, logger)
         expect(response.serialized).to eq(
           content: [
             {
