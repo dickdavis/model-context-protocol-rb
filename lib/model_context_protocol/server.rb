@@ -37,7 +37,7 @@ module ModelContextProtocol
 
     private
 
-    PROTOCOL_VERSION = "2024-11-05".freeze
+    PROTOCOL_VERSION = "2025-06-18".freeze
     private_constant :PROTOCOL_VERSION
 
     InitializeResponse = Data.define(:protocol_version, :capabilities, :server_info) do
