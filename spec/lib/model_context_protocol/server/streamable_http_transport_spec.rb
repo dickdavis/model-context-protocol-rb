@@ -9,15 +9,13 @@ end
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   subject(:transport) do
     described_class.new(
-      logger: logger,
       router: router,
       configuration: configuration
     )
   end
-
-  let(:logger) { Logger.new(StringIO.new) }
   let(:router) { ModelContextProtocol::Server::Router.new(configuration: configuration) }
   let(:mock_redis) { MockRedis.new }
+  let(:mcp_logger) { configuration.logger }
   let(:configuration) do
     config = ModelContextProtocol::Server::Configuration.new
     config.name = "test-server"
@@ -63,7 +61,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     }
   end
 
-  describe "#handle_request" do
+  describe "#handle" do
     context "when request and response objects are missing" do
       before do
         configuration.transport = {
@@ -73,7 +71,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "raises ArgumentError" do
-        expect { transport.handle_request }.to raise_error(
+        expect { transport.handle }.to raise_error(
           ArgumentError,
           "StreamableHTTP transport requires request and response objects in transport_options"
         )
@@ -96,7 +94,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "creates a session and returns response with session ID" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to include(text: "initialized")
@@ -109,7 +107,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "creates session in Redis" do
-          result = transport.handle_request
+          result = transport.handle
           session_id = result[:headers]["Mcp-Session-Id"]
 
           expect(mock_redis.exists("session:#{session_id}")).to eq(1)
@@ -125,7 +123,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns error for missing session ID" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid or missing session ID"})
@@ -154,7 +152,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns response directly when no active stream" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to include(text: "pong")
@@ -165,7 +163,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         it "routes to stream when session has active stream" do
           mock_redis.hset("session:#{session_id}", "active_stream", true.to_json)
 
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({accepted: true})
@@ -181,7 +179,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns JSON parse error" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid JSON"})
@@ -207,17 +205,18 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             "active_stream" => false.to_json
           })
 
-          allow(logger).to receive(:error)
+          allow(mcp_logger).to receive(:error)
         end
 
         it "returns internal server error" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Internal server error"})
             expect(result[:status]).to eq(500)
-            expect(logger).to have_received(:error).with(/Error handling POST request/)
-            expect(logger).to have_received(:error).with(kind_of(Array)) # backtrace
+            expect(mcp_logger).to have_received(:error).with("Error handling POST request",
+              error: String,
+              backtrace: kind_of(Array))
           end
         end
       end
@@ -239,7 +238,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "returns SSE stream configuration" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:stream]).to be true
@@ -253,7 +252,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "marks session as having active stream" do
-        transport.handle_request
+        transport.handle
 
         stream_data = mock_redis.hget("session:#{session_id}", "active_stream")
         expect(JSON.parse(stream_data)).to be true
@@ -265,7 +264,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns error for invalid session" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid or missing session ID"})
@@ -291,7 +290,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "cleans up session and returns success" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:json]).to eq({success: true})
@@ -306,7 +305,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "still returns success" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({success: true})
@@ -322,7 +321,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "returns method not allowed error" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:json]).to eq({error: "Method not allowed"})
@@ -351,7 +350,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     describe "stream connection handling" do
       it "registers local stream when SSE connection starts" do
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         allow(mock_stream).to receive(:write)
@@ -379,7 +378,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "sends ping messages to detect connection status" do
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         expect(mock_stream).to receive(:write).with(": ping\n\n")
@@ -398,7 +397,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       it "detects broken connections" do
         allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
 
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         stream_thread = Thread.new do
@@ -431,7 +430,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_redis).to receive(:subscribe)
 
       described_class.new(
-        logger: logger,
         router: ModelContextProtocol::Server::Router.new(configuration: other_config),
         configuration: other_config
       )
@@ -444,7 +442,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_request).to receive(:body).and_return(mock_body)
       allow(mock_request).to receive(:headers).and_return({})
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
 
       first_server_instance = transport.instance_variable_get(:@server_instance)
@@ -472,7 +470,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       expect(mock_redis).to receive(:publish)
 
-      result = other_server_transport.handle_request
+      result = other_server_transport.handle
       expect(result[:json]).to eq({accepted: true})
     end
   end
@@ -490,7 +488,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       mock_body.string = {"method" => "initialize"}.to_json
       mock_body.rewind
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
       context_data = mock_redis.hget("session:#{session_id}", "context")
       parsed_context = JSON.parse(context_data)
@@ -501,7 +499,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       mock_body.string = {"method" => "initialize"}.to_json
       mock_body.rewind
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
 
       expect(mock_redis.exists("session:#{session_id}")).to eq(1)
@@ -509,12 +507,148 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_request).to receive(:method).and_return("DELETE")
       allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
 
-      result = transport.handle_request
+      result = transport.handle
 
       aggregate_failures do
         expect(result[:json]).to eq({success: true})
         expect(result[:status]).to eq(200)
         expect(mock_redis.exists("session:#{session_id}")).to eq(0)
+      end
+    end
+  end
+
+  describe "MCP logging integration" do
+    before do
+      allow(mock_request).to receive(:method).and_return("GET")
+      allow(mock_request).to receive(:headers).and_return({})
+    end
+
+    it "connects the logger to the transport when handle starts" do
+      expect(mcp_logger).to receive(:connect_transport).with(transport)
+
+      transport.handle
+    end
+
+    describe "#send_notification" do
+      let(:mock_stream) { StringIO.new }
+      let(:session_id) { "test-session-123" }
+
+      before do
+        mcp_logger.connect_transport(transport)
+      end
+
+      context "when there are active streams" do
+        before do
+          transport.instance_variable_get(:@local_streams)[session_id] = mock_stream
+        end
+
+        it "delivers notifications to active streams" do
+          transport.send_notification("notifications/message", {
+            level: "info",
+            logger: "test",
+            data: {message: "test notification"}
+          })
+
+          mock_stream.rewind
+          output = mock_stream.read
+
+          expect(output).to include("data: ")
+          notification = JSON.parse(output.gsub("data: ", "").strip)
+
+          aggregate_failures do
+            expect(notification["jsonrpc"]).to eq("2.0")
+            expect(notification["method"]).to eq("notifications/message")
+            expect(notification["params"]["level"]).to eq("info")
+            expect(notification["params"]["logger"]).to eq("test")
+            expect(notification["params"]["data"]["message"]).to eq("test notification")
+          end
+        end
+
+        it "handles broken stream connections gracefully" do
+          allow(mock_stream).to receive(:write).and_raise(IOError, "broken pipe")
+
+          expect {
+            transport.send_notification("notifications/message", {level: "error", data: {}})
+          }.not_to raise_error
+        end
+      end
+
+      context "when there are no active streams" do
+        it "queues notifications" do
+          transport.send_notification("notifications/message", {
+            level: "warning",
+            logger: "test",
+            data: {message: "queued notification"}
+          })
+
+          notification_queue = transport.instance_variable_get(:@notification_queue)
+          expect(notification_queue.size).to eq(1)
+
+          queued_notification = notification_queue.first
+          aggregate_failures do
+            expect(queued_notification[:jsonrpc]).to eq("2.0")
+            expect(queued_notification[:method]).to eq("notifications/message")
+            expect(queued_notification[:params][:level]).to eq("warning")
+            expect(queued_notification[:params][:data][:message]).to eq("queued notification")
+          end
+        end
+      end
+
+      context "when stream connects later" do
+        it "flushes queued notifications to new stream" do
+          transport.send_notification("notifications/message", {
+            level: "info",
+            data: {message: "queued message"}
+          })
+
+          transport.send(:flush_notifications_to_stream, mock_stream)
+
+          mock_stream.rewind
+          output = mock_stream.read
+
+          expect(output).to include("data: ")
+          notification = JSON.parse(output.gsub("data: ", "").strip)
+          expect(notification["params"]["data"]["message"]).to eq("queued message")
+        end
+      end
+    end
+
+    describe "logging error handling" do
+      let(:test_stream) { StringIO.new }
+
+      before do
+        allow(mock_request).to receive(:method).and_return("POST")
+        allow(mock_request).to receive(:headers).and_return({})
+        allow(mock_request).to receive(:body).and_return(mock_body)
+      end
+
+      it "uses MCP logger for keepalive thread errors" do
+        allow(mcp_logger).to receive(:error)
+
+        original_sleep = method(:sleep)
+        allow(transport).to receive(:sleep) do |duration|
+          raise StandardError, "keepalive error" if duration == 30
+          original_sleep.call(duration) if duration < 30
+        end
+
+        transport.send(:start_keepalive_thread, "session-id", test_stream)
+
+        sleep(0.01)
+
+        expect(mcp_logger).to have_received(:error).with("Keepalive thread error", error: "keepalive error")
+      end
+
+      it "uses MCP logger for Redis subscriber errors" do
+        allow(mcp_logger).to receive(:error)
+        allow(mock_redis).to receive(:subscribe).and_raise(StandardError, "redis error")
+
+        transport.send(:setup_redis_subscriber)
+
+        sleep(0.01)
+
+        expect(mcp_logger).to have_received(:error).at_least(1).times.with("Redis subscriber error",
+          error: "redis error",
+          backtrace: kind_of(Array))
       end
     end
   end

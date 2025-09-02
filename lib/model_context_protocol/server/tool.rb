@@ -2,12 +2,13 @@ require "json-schema"
 
 module ModelContextProtocol
   class Server::Tool
-    attr_reader :params, :context
+    attr_reader :params, :context, :logger
 
-    def initialize(params, context = {})
+    def initialize(params, logger, context = {})
       validate!(params)
       @params = params
       @context = context
+      @logger = logger
     end
 
     def call
@@ -91,8 +92,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@input_schema, @input_schema)
       end
 
-      def call(params, context = {})
-        new(params, context).call
+      def call(params, logger, context = {})
+        new(params, logger, context).call
       rescue JSON::Schema::ValidationError => validation_error
         raise ModelContextProtocol::Server::ParameterValidationError, validation_error.message
       rescue ModelContextProtocol::Server::ResponseArgumentsError => response_arguments_error

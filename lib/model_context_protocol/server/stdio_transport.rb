@@ -12,14 +12,17 @@ module ModelContextProtocol
       end
     end
 
-    attr_reader :logger, :router
+    attr_reader :router, :configuration
 
-    def initialize(logger:, router:)
-      @logger = logger
+    def initialize(router:, configuration:)
       @router = router
+      @configuration = configuration
     end
 
-    def begin
+    def handle
+      # Connect logger to transport
+      @configuration.logger.connect_transport(self)
+
       loop do
         line = receive_message
         break unless line
@@ -31,18 +34,17 @@ module ModelContextProtocol
           result = router.route(message)
           send_message(Response[id: message["id"], result: result.serialized])
         rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
-          log("Validation error: #{validation_error.message}")
+          @configuration.logger.error("Validation error", error: validation_error.message)
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32602, message: validation_error.message}]
           )
         rescue JSON::ParserError => parser_error
-          log("Parser error: #{parser_error.message}")
+          @configuration.logger.error("Parser error", error: parser_error.message)
           send_message(
             ErrorResponse[id: "", error: {code: -32700, message: parser_error.message}]
           )
         rescue => error
-          log("Internal error: #{error.message}")
-          log(error.backtrace)
+          @configuration.logger.error("Internal error", error: error.message, backtrace: error.backtrace.first(5))
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32603, message: error.message}]
           )
@@ -50,11 +52,20 @@ module ModelContextProtocol
       end
     end
 
-    private
-
-    def log(output, level = :error)
-      logger.send(level.to_sym, output)
+    def send_notification(method, params)
+      notification = {
+        jsonrpc: "2.0",
+        method: method,
+        params: params
+      }
+      $stdout.puts(JSON.generate(notification))
+      $stdout.flush
+    rescue IOError => e
+      # Handle broken pipe gracefully
+      @configuration.logger.debug("Failed to send notification", error: e.message) if @configuration.logging_enabled?
     end
+
+    private
 
     def receive_message
       $stdin.gets

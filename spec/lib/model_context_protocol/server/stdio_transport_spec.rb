@@ -7,10 +7,11 @@ TestResponse = Data.define(:text) do
 end
 
 RSpec.describe ModelContextProtocol::Server::StdioTransport do
-  subject(:transport) { described_class.new(logger: logger, router: router) }
+  subject(:transport) { described_class.new(router: router, configuration: configuration) }
 
-  let(:logger) { Logger.new(StringIO.new) }
   let(:router) { ModelContextProtocol::Server::Router.new }
+  let(:configuration) { ModelContextProtocol::Server::Configuration.new }
+  let(:mcp_logger) { configuration.logger }
 
   before do
     @original_stdin = $stdin
@@ -36,7 +37,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
     $stdout = @original_stdout
   end
 
-  describe "#begin" do
+  describe "#handle" do
     context "with a valid request" do
       let(:request) { {"jsonrpc" => "2.0", "id" => 1, "method" => "test_method"} }
 
@@ -47,7 +48,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "processes the request and sends a response" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected to raise EOFError when stdin is exhausted
         end
@@ -72,7 +73,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "does not process notifications" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -96,10 +97,10 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends an error response" do
-        allow(logger).to receive(:error)
+        allow(mcp_logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -114,7 +115,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(error_response).to include("error")
           expect(error_response["error"]["code"]).to eq(-32700)
           expect(error_response["error"]["message"]).to include("unexpected token")
-          expect(logger).to have_received(:error).with(/Parser error/)
+          expect(mcp_logger).to have_received(:error).with("Parser error", error: String)
         end
       end
     end
@@ -128,10 +129,10 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends a validation error response" do
-        allow(logger).to receive(:error)
+        allow(mcp_logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -144,7 +145,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(response_json).to include("error")
           expect(response_json["error"]["code"]).to eq(-32602)
           expect(response_json["error"]["message"]).to eq("Invalid parameters")
-          expect(logger).to have_received(:error).with(/Validation error: Invalid parameters/)
+          expect(mcp_logger).to have_received(:error).with("Validation error", error: "Invalid parameters")
         end
       end
     end
@@ -158,10 +159,10 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends an internal error response" do
-        allow(logger).to receive(:error)
+        allow(mcp_logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -174,8 +175,9 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(response_json).to include("error")
           expect(response_json["error"]["code"]).to eq(-32603)
           expect(response_json["error"]["message"]).to eq("Something went wrong")
-          expect(logger).to have_received(:error).with(/Internal error: Something went wrong/)
-          expect(logger).to have_received(:error).with(kind_of(Array)) # backtrace
+          expect(mcp_logger).to have_received(:error).with("Internal error",
+            error: "Something went wrong",
+            backtrace: kind_of(Array))
         end
       end
     end
@@ -197,7 +199,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "processes all requests in sequence" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -212,6 +214,68 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(responses[0]["result"]).to eq({"text" => "method1 response"})
           expect(responses[1]["id"]).to eq(2)
           expect(responses[1]["result"]).to eq({"text" => "method2 response"})
+        end
+      end
+    end
+  end
+
+  describe "MCP logging integration" do
+    it "connects the logger to the transport when handle starts" do
+      expect(mcp_logger).to receive(:connect_transport).with(transport)
+
+      begin
+        transport.handle
+      rescue EOFError
+        # Expected when stdin is empty
+      end
+    end
+
+    describe "#send_notification" do
+      before do
+        # Connect logger so notifications can be sent
+        mcp_logger.connect_transport(transport)
+      end
+
+      it "sends MCP notifications to stdout" do
+        transport.send_notification("notifications/message", {
+          level: "info",
+          logger: "test",
+          data: {message: "test notification"}
+        })
+
+        $stdout.rewind
+        output = $stdout.read
+        notification = JSON.parse(output)
+
+        aggregate_failures do
+          expect(notification["jsonrpc"]).to eq("2.0")
+          expect(notification["method"]).to eq("notifications/message")
+          expect(notification["params"]["level"]).to eq("info")
+          expect(notification["params"]["logger"]).to eq("test")
+          expect(notification["params"]["data"]["message"]).to eq("test notification")
+        end
+      end
+
+      it "handles broken pipe gracefully" do
+        allow($stdout).to receive(:puts).and_raise(IOError, "broken pipe")
+        allow($stdout).to receive(:flush)
+
+        expect {
+          transport.send_notification("notifications/message", {level: "error", data: {}})
+        }.not_to raise_error
+      end
+
+      context "when logging is disabled" do
+        before do
+          configuration.logging_enabled = false
+        end
+
+        it "does not log debug messages about failed notifications when logging disabled" do
+          allow($stdout).to receive(:puts).and_raise(IOError, "broken pipe")
+          allow($stdout).to receive(:flush)
+          expect(mcp_logger).not_to receive(:debug)
+
+          transport.send_notification("notifications/message", {level: "info", data: {}})
         end
       end
     end

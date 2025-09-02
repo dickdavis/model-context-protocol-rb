@@ -1,11 +1,12 @@
 module ModelContextProtocol
   class Server::Resource
-    attr_reader :mime_type, :uri, :context
+    attr_reader :mime_type, :uri, :context, :logger
 
-    def initialize(context = {})
+    def initialize(logger, context = {})
       @mime_type = self.class.mime_type
       @uri = self.class.uri
       @context = context
+      @logger = logger
     end
 
     def call
@@ -57,8 +58,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@uri, @uri)
       end
 
-      def call(context = {})
-        new(context).call
+      def call(logger, context = {})
+        new(logger, context).call
       end
 
       def metadata

@@ -11,40 +11,125 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
         config.name = "test-server"
         config.registry = registry
         config.version = "1.0.0"
-        config.enable_log = true
+        config.logging_enabled = true
       end
 
       config = server.configuration
-      expect(config.name).to eq("test-server")
-      expect(config.registry).to eq(registry)
-      expect(config.version).to eq("1.0.0")
-      expect(config.enable_log).to be true
+      aggregate_failures do
+        expect(config.name).to eq("test-server")
+        expect(config.registry).to eq(registry)
+        expect(config.version).to eq("1.0.0")
+        expect(config.logging_enabled?).to be true
+      end
     end
   end
 
   describe "#logging_enabled?" do
-    context "when enable_log is true" do
-      before { configuration.enable_log = true }
+    it "returns true by default" do
+      expect(configuration.logging_enabled?).to be(true)
+    end
 
+    context "when logging_enabled is explicitly set to true" do
       it "returns true" do
-        expect(configuration.logging_enabled?).to be true
+        configuration.logging_enabled = true
+        expect(configuration.logging_enabled?).to be(true)
       end
     end
 
-    context "when enable_log is false" do
-      before { configuration.enable_log = false }
-
+    context "when logging_enabled is set to false" do
       it "returns false" do
-        expect(configuration.logging_enabled?).to be false
+        configuration.logging_enabled = false
+        expect(configuration.logging_enabled?).to be(false)
+      end
+    end
+  end
+
+  describe "#logger" do
+    it "always provides a logger instance" do
+      expect(configuration.logger).to be_a(ModelContextProtocol::Server::MCPLogger)
+    end
+
+    it "creates an enabled logger by default" do
+      expect(configuration.logger.enabled).to be(true)
+    end
+
+    it "creates a disabled logger when logging is disabled" do
+      configuration.logging_enabled = false
+      expect(configuration.logger.enabled).to be(false)
+    end
+
+    it "sets default logger name to 'server'" do
+      expect(configuration.logger.logger_name).to eq("server")
+    end
+
+    it "sets default log level to INFO" do
+      expect(configuration.logger.level).to eq(Logger::INFO)
+    end
+  end
+
+  describe "#logging_enabled=" do
+    it "recreates the logger with new enabled state" do
+      original_logger = configuration.logger
+
+      configuration.logging_enabled = false
+
+      aggregate_failures do
+        expect(configuration.logger).not_to eq(original_logger)
+        expect(configuration.logger.enabled).to be(false)
       end
     end
 
-    context "when enable_log is nil" do
-      before { configuration.enable_log = nil }
+    it "preserves log level when recreating logger" do
+      configuration.default_log_level = "debug"
 
-      it "returns false" do
-        expect(configuration.logging_enabled?).to be false
+      configuration.logging_enabled = false
+
+      expect(configuration.logger.level).to eq(Logger::DEBUG)
+    end
+  end
+
+  describe "#default_log_level=" do
+    it "updates the logger's level" do
+      configuration.default_log_level = "debug"
+
+      expect(configuration.logger.level).to eq(Logger::DEBUG)
+    end
+
+    it "handles all MCP log levels" do
+      {
+        "debug" => Logger::DEBUG,
+        "info" => Logger::INFO,
+        "notice" => Logger::INFO,
+        "warning" => Logger::WARN,
+        "error" => Logger::ERROR,
+        "critical" => Logger::FATAL,
+        "alert" => Logger::FATAL,
+        "emergency" => Logger::UNKNOWN
+      }.each do |mcp_level, logger_level|
+        configuration.default_log_level = mcp_level
+        expect(configuration.logger.level).to eq(logger_level)
       end
+    end
+
+    it "raises error for invalid log levels" do
+      expect {
+        configuration.default_log_level = "invalid"
+      }.to raise_error(
+        ModelContextProtocol::Server::Configuration::InvalidLogLevelError,
+        "Invalid log level: invalid. Valid levels are: debug, info, notice, warning, error, critical, alert, emergency"
+      )
+    end
+
+    it "accepts symbol log levels" do
+      configuration.default_log_level = :debug
+
+      expect(configuration.logger.level).to eq(Logger::DEBUG)
+    end
+
+    it "accepts string log levels" do
+      configuration.default_log_level = "warning"
+
+      expect(configuration.logger.level).to eq(Logger::WARN)
     end
   end
 

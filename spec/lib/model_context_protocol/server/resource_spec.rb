@@ -3,7 +3,9 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::Resource do
   describe ".call" do
     it "returns the response from the instance's call method" do
-      response = TestResource.call
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      response = TestResource.call(logger)
       aggregate_failures do
         expect(response.text).to eq("Nothing to see here, move along.")
         expect(response.serialized).to eq(
@@ -23,18 +25,24 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     let(:context) { {user_id: "123456"} }
 
     it "passes context to the instance" do
-      allow(TestResource).to receive(:new).with(context).and_call_original
-      response = TestResource.call(context)
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      allow(TestResource).to receive(:new).with(logger, context).and_call_original
+      response = TestResource.call(logger, context)
       expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
     end
 
     it "works with empty context" do
-      response = TestResource.call({})
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      response = TestResource.call(logger, {})
       expect(response.text).to eq("Nothing to see here, move along.")
     end
 
     it "works when context is not provided" do
-      response = TestResource.call
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      response = TestResource.call(logger)
       expect(response.text).to eq("Nothing to see here, move along.")
     end
   end
@@ -42,17 +50,23 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "#initialize" do
     it "stores context when provided" do
       context = {user_id: "123"}
-      resource = TestResource.new(context)
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      resource = TestResource.new(logger, context)
       expect(resource.context).to eq(context)
     end
 
     it "defaults to empty hash when no context provided" do
-      resource = TestResource.new
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      resource = TestResource.new(logger)
       expect(resource.context).to eq({})
     end
 
     it "sets mime_type and uri from class metadata" do
-      resource = TestResource.new
+      logger = double("logger")
+      allow(logger).to receive(:info)
+      resource = TestResource.new(logger)
       expect(resource.mime_type).to eq("text/plain")
       expect(resource.uri).to eq("file:///top-secret-plans.txt")
     end
@@ -61,7 +75,9 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        response = TestResource.call
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        response = TestResource.call(logger)
         expect(response.serialized).to eq(
           contents: [
             {
@@ -76,7 +92,9 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     describe "binary response" do
       it "formats binary responses correctly" do
-        response = TestBinaryResource.call
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        response = TestBinaryResource.call(logger)
 
         expect(response.serialized).to eq(
           contents: [
