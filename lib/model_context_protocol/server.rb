@@ -19,22 +19,20 @@ module ModelContextProtocol
 
     def start
       configuration.validate!
-      logdev = configuration.logging_enabled? ? $stderr : File::NULL
-      logger = Logger.new(logdev)
 
-      case configuration.transport_type
+      transport = case configuration.transport_type
       when :stdio, nil
-        StdioTransport.new(logger:, router:).begin
+        StdioTransport.new(router: @router, configuration: @configuration)
       when :streamable_http
-        transport = StreamableHttpTransport.new(
-          logger:,
-          router:,
-          configuration:
+        StreamableHttpTransport.new(
+          router: @router,
+          configuration: @configuration
         )
-        transport.handle_request
       else
         raise ArgumentError, "Unknown transport: #{configuration.transport_type}"
       end
+
+      transport.handle
     end
 
     private
@@ -58,6 +56,12 @@ module ModelContextProtocol
       end
     end
 
+    LoggingSetLevelResponse = Data.define do
+      def serialized
+        {}
+      end
+    end
+
     def map_handlers
       router.map("initialize") do |_message|
         InitializeResponse[
@@ -72,6 +76,17 @@ module ModelContextProtocol
 
       router.map("ping") do
         PingResponse[]
+      end
+
+      router.map("logging/setLevel") do |message|
+        level = message["params"]["level"]
+
+        unless Configuration::VALID_LOG_LEVELS.include?(level)
+          raise ParameterValidationError, "Invalid log level: #{level}. Valid levels are: #{Configuration::VALID_LOG_LEVELS.join(", ")}"
+        end
+
+        configuration.logger.set_mcp_level(level)
+        LoggingSetLevelResponse[]
       end
 
       router.map("completion/complete") do |message|
@@ -108,7 +123,7 @@ module ModelContextProtocol
           raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
 
-        resource.call(configuration.context)
+        resource.call(configuration.logger, configuration.context)
       end
 
       router.map("resources/templates/list") do |message|
@@ -125,7 +140,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_prompt(message["params"]["name"])
-          .call(symbolized_arguments, configuration.context)
+          .call(symbolized_arguments, configuration.logger, configuration.context)
       end
 
       router.map("tools/list") do
@@ -138,7 +153,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_tool(message["params"]["name"])
-          .call(symbolized_arguments, configuration.context)
+          .call(symbolized_arguments, configuration.logger, configuration.context)
       end
     end
 

@@ -283,7 +283,6 @@ RSpec.describe ModelContextProtocol::Server do
       expect do
         server = ModelContextProtocol::Server.new do |config|
           config.version = "1.0.0"
-          config.enable_log = true
           config.registry = ModelContextProtocol::Server::Registry.new
         end
         server.start
@@ -293,17 +292,17 @@ RSpec.describe ModelContextProtocol::Server do
     it "begins the StdioTransport" do
       transport = instance_double(ModelContextProtocol::Server::StdioTransport)
       allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
-      allow(transport).to receive(:begin)
+      allow(transport).to receive(:handle)
 
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.enable_log = true
+        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
       end
       server.start
 
-      expect(transport).to have_received(:begin)
+      expect(transport).to have_received(:handle)
     end
 
     it "handles StreamableHttpTransport requests" do
@@ -313,12 +312,12 @@ RSpec.describe ModelContextProtocol::Server do
 
       transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
       allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
-      allow(transport).to receive(:handle_request).and_return({json: {success: true}, status: 200})
+      allow(transport).to receive(:handle).and_return({json: {success: true}, status: 200})
 
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.enable_log = true
+        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
         config.transport = {
           type: :streamable_http,
@@ -328,7 +327,7 @@ RSpec.describe ModelContextProtocol::Server do
 
       result = server.start
 
-      expect(transport).to have_received(:handle_request)
+      expect(transport).to have_received(:handle)
       expect(result).to eq({json: {success: true}, status: 200})
     end
 
@@ -336,7 +335,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.enable_log = true
+        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
         config.transport = :unknown_transport
       end
@@ -347,47 +346,39 @@ RSpec.describe ModelContextProtocol::Server do
       )
     end
 
-    context "when logging is not enabled" do
-      it "initializes the StdioTransport logger with a null logdev" do
-        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
-        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
-        allow(transport).to receive(:begin)
-
-        logger_class = class_double(Logger)
-        allow(logger_class).to receive(:new)
-        stub_const("Logger", logger_class)
-
-        server = ModelContextProtocol::Server.new do |config|
-          config.name = "MCP Development Server"
+    context "logging/setLevel handler" do
+      it "sets the log level when valid" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
           config.version = "1.0.0"
-          config.enable_log = false
           config.registry = ModelContextProtocol::Server::Registry.new
         end
-        server.start
 
-        expect(logger_class).to have_received(:new).with(File::NULL)
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "debug"}
+        }
+
+        expect(server.configuration.logger).to receive(:set_mcp_level).with("debug")
+        response = server.router.route(message)
+        expect(response.serialized).to eq({})
       end
-    end
 
-    context "when logging is enabled" do
-      it "initializes the StdioTransport logger with a $stderr logdev" do
-        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
-        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
-        allow(transport).to receive(:begin)
-
-        logger_class = class_double(Logger)
-        allow(logger_class).to receive(:new)
-        stub_const("Logger", logger_class)
-
-        server = ModelContextProtocol::Server.new do |config|
-          config.name = "MCP Development Server"
+      it "raises error for invalid log level" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
           config.version = "1.0.0"
-          config.enable_log = true
           config.registry = ModelContextProtocol::Server::Registry.new
         end
-        server.start
 
-        expect(logger_class).to have_received(:new).with($stderr)
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "invalid"}
+        }
+
+        expect {
+          server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid log level: invalid/)
       end
     end
   end
