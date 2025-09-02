@@ -30,7 +30,7 @@ Build a simple MCP server by registering your prompts, resources, resource templ
 server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
-  config.enable_log = true
+  config.logging_enabled = true
 
   # Environment Variables - https://modelcontextprotocol.io/docs/tools/debugging#environment-variables
   # Require specific environment variables to be set
@@ -119,6 +119,7 @@ result = server.start
 - **Cross-Server Routing**: Messages are routed between servers via Redis pub/sub
 
 **Integration Example (Rails):**
+
 ```ruby
 class McpController < ApplicationController
   def handle
@@ -142,6 +143,8 @@ end
 
 Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
+### Server features
+
 #### Prompts
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
@@ -149,6 +152,8 @@ The `ModelContextProtocol::Server::Prompt` base class allows subclasses to defin
 Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
 Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+
+You can also log from within your prompt by calling a valid logger level method on the `logger` and passing a string message.
 
 This is an example prompt that returns a properly formatted response:
 
@@ -180,6 +185,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   end
 
   def call
+    logger.info("Brainstorming excuses...")
     messages = [
       {
         role: "user",
@@ -229,6 +235,8 @@ The `ModelContextProtocol::Server::Resource` base class allows subclasses to def
 
 Then, implement the `call` method to build your resource. Any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
+You can also log from within your resource by calling a valid logger level method on the `logger` and passing a string message.
+
 This is an example resource that returns a text response:
 
 ```ruby
@@ -242,6 +250,7 @@ class TestResource < ModelContextProtocol::Server::Resource
 
   def call
     unless authorized?(context[:user_id])
+      logger.info("This fool thinks he can get my top secret plans...")
       return respond_with :text, text: "Nothing to see here, move along."
     end
 
@@ -311,6 +320,8 @@ The `ModelContextProtocol::Server::Tool` base class allows subclasses to define 
 
 Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
+You can also log from within your tool by calling a valid logger level method on the `logger` and passing a string message.
+
 This is an example tool that returns a text response:
 
 ```ruby
@@ -334,6 +345,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   def call
     user_id = context[:user_id]
     number = arguments[:number].to_i
+    logger.info("Silly user doesn't know how to double a number")
     calculation = number * 2
     salutation = user_id ? "User #{user_id}, " : ""
     respond_with :text, text: salutation << "#{number} doubled is #{calculation}"
