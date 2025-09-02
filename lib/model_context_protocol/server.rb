@@ -20,7 +20,8 @@ module ModelContextProtocol
     def start
       configuration.validate!
       logdev = configuration.logging_enabled? ? $stderr : File::NULL
-      Transports::Stdio.new(logger: Logger.new(logdev), router:).begin
+      logger = Logger.new(logdev)
+      StdioTransport.new(logger:, router:).begin
     end
 
     private

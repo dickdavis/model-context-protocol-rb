@@ -291,8 +291,8 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     it "begins the StdioTransport" do
-      transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-      allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+      transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+      allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
       allow(transport).to receive(:begin)
 
       server = ModelContextProtocol::Server.new do |config|
@@ -308,8 +308,8 @@ RSpec.describe ModelContextProtocol::Server do
 
     context "when logging is not enabled" do
       it "initializes the StdioTransport logger with a null logdev" do
-        transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-        allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
         allow(transport).to receive(:begin)
 
         logger_class = class_double(Logger)
@@ -330,8 +330,8 @@ RSpec.describe ModelContextProtocol::Server do
 
     context "when logging is enabled" do
       it "initializes the StdioTransport logger with a $stderr logdev" do
-        transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-        allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
         allow(transport).to receive(:begin)
 
         logger_class = class_double(Logger)
