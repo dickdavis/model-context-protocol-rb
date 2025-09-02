@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+## [0.3.3] - 2025-09-02
+
+- (Breaking) Added logging support.
+  - Requires updating the `enable_log` configuration option to `logging_enabled`.
+- Added experimental Streamable HTTP transport.
+- (Breaking) Renamed params to arguments in prompts, resources, and tools.
+  - Requires updating all references to `params` in prompts, resources, and tools to `arguments` with symbolized keys.
+- Improved ergonomics of completions and resource templates.
+- Added support for providing context to prompts, resources, and tools.
+
 ## [0.3.2] - 2025-05-10
 
 - Added resource template support.
@@ -37,8 +47,9 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.2...HEAD
-[0.3.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.1...v0.3.2
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.1.0...v0.2.0
