@@ -31,7 +31,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         role: "user",
         content: {
           type: "text",
-          text: "My wife wants me to: #{params[:undesirable_activity]}... Can you believe it?"
+          text: "My wife wants me to: #{arguments[:undesirable_activity]}... Can you believe it?"
         }
       },
       {
@@ -59,7 +59,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         role: "user",
         content: {
           type: "text",
-          text: "Can you generate some excuses for me?" + (params[:tone] ? "Make them as #{params[:tone]} as possible." : "")
+          text: "Can you generate some excuses for me?" + (arguments[:tone] ? "Make them as #{arguments[:tone]} as possible." : "")
         }
       }
     ]
