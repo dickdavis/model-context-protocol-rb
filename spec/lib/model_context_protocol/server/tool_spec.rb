@@ -83,7 +83,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       logger = double("logger")
       allow(logger).to receive(:info)
       tool = TestToolWithTextResponse.new({number: "42"}, logger)
-      expect(tool.params).to eq({number: "42"})
+      expect(tool.arguments).to eq({number: "42"})
     end
 
     it "stores context when provided" do

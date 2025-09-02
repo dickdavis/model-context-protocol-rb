@@ -17,7 +17,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    title = params[:title].downcase
+    title = arguments[:title].downcase
     # In a real implementation, we would do a lookup to get the document data
     document = "richtextdata"
     respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
