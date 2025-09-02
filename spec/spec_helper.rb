@@ -3,6 +3,8 @@
 Dir[File.expand_path("../lib/**/*.rb", __dir__)].sort.each { |f| require f }
 Dir[File.expand_path("spec/support/**/*.rb")].sort.each { |file| require file }
 
+require "mock_redis"
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"

@@ -18,4 +18,5 @@ end
 
 group :test do
   gem "rspec"
+  gem "mock_redis"
 end
