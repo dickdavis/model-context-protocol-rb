@@ -1,3 +1,5 @@
+require_relative "mcp_logger"
+
 module ModelContextProtocol
   class Server::Configuration
     # Raised when configured with invalid name.
@@ -15,10 +17,46 @@ module ModelContextProtocol
     # Raised when transport configuration is invalid
     class InvalidTransportError < StandardError; end
 
-    attr_accessor :enable_log, :name, :registry, :version, :transport
+    # Raised when an invalid log level is provided
+    class InvalidLogLevelError < StandardError; end
+
+    # Valid MCP log levels per the specification
+    VALID_LOG_LEVELS = %w[debug info notice warning error critical alert emergency].freeze
+
+    attr_accessor :name, :registry, :version, :transport
+    attr_reader :logger
+
+    def initialize
+      # Always create a logger - enabled by default
+      @logging_enabled = true
+      @default_log_level = "info"
+      @logger = ModelContextProtocol::Server::MCPLogger.new(
+        logger_name: "server",
+        level: @default_log_level,
+        enabled: @logging_enabled
+      )
+    end
 
     def logging_enabled?
-      enable_log || false
+      @logging_enabled
+    end
+
+    def logging_enabled=(value)
+      @logging_enabled = value
+      @logger = ModelContextProtocol::Server::MCPLogger.new(
+        logger_name: "server",
+        level: @default_log_level,
+        enabled: value
+      )
+    end
+
+    def default_log_level=(level)
+      unless VALID_LOG_LEVELS.include?(level.to_s)
+        raise InvalidLogLevelError, "Invalid log level: #{level}. Valid levels are: #{VALID_LOG_LEVELS.join(", ")}"
+      end
+
+      @default_log_level = level.to_s
+      @logger.set_mcp_level(@default_log_level)
     end
 
     def transport_type
