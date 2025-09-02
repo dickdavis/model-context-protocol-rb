@@ -9,7 +9,7 @@ Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
 server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
-  config.enable_log = true
+  config.logging_enabled = true
 
   config.set_environment_variable("MCP_ENV", "development")
 

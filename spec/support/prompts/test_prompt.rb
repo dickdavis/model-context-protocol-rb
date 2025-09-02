@@ -25,6 +25,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   end
 
   def call
+    logger.info("Brainstorming excuses...")
     messages = [
       {
         role: "user",

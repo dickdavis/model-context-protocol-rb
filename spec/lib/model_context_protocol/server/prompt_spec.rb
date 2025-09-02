@@ -7,7 +7,9 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
       it "raises a ParameterValidationError" do
         expect {
-          TestPrompt.call(invalid_arguments, double("logger"))
+          logger = double("logger")
+          allow(logger).to receive(:info)
+          TestPrompt.call(invalid_arguments, logger)
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
@@ -17,12 +19,15 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
       it "instantiates the prompt with the provided arguments" do
         logger = double("logger")
+        allow(logger).to receive(:info)
+        allow(logger).to receive(:info)
         expect(TestPrompt).to receive(:new).with(valid_arguments, logger, {}).and_call_original
         TestPrompt.call(valid_arguments, logger)
       end
 
       it "returns the response from the instance's call method" do
         logger = double("logger")
+        allow(logger).to receive(:info)
         response = TestPrompt.call(valid_arguments, logger)
         aggregate_failures do
           expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
@@ -40,18 +45,21 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     it "passes context to the instance" do
       logger = double("logger")
+      allow(logger).to receive(:info)
       expect(TestPrompt).to receive(:new).with(valid_arguments, logger, context).and_call_original
       TestPrompt.call(valid_arguments, logger, context)
     end
 
     it "works with empty context" do
       logger = double("logger")
+      allow(logger).to receive(:info)
       response = TestPrompt.call(valid_arguments, logger, {})
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
 
     it "works when context is not provided" do
       logger = double("logger")
+      allow(logger).to receive(:info)
       response = TestPrompt.call(valid_arguments, logger)
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
@@ -66,13 +74,16 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when invalid arguments are provided" do
       it "raises an ArgumentError" do
-        expect { TestPrompt.new({foo: "bar"}, double("logger")) }.to raise_error(ArgumentError)
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        expect { TestPrompt.new({foo: "bar"}, logger) }.to raise_error(ArgumentError)
       end
     end
 
     context "when valid arguments are provided" do
       it "stores the arguments" do
         logger = double("logger")
+        allow(logger).to receive(:info)
         prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, logger)
         expect(prompt.params).to eq({undesirable_activity: "clean the garage"})
       end
@@ -80,12 +91,14 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       it "stores context when provided" do
         context = {"user_id" => "123", "session" => "abc"}
         logger = double("logger")
+        allow(logger).to receive(:info)
         prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, logger, context)
         expect(prompt.context).to eq(context)
       end
 
       it "defaults to empty hash when no context provided" do
         logger = double("logger")
+        allow(logger).to receive(:info)
         prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, logger)
         expect(prompt.context).to eq({})
       end
@@ -93,6 +106,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       context "when optional arguments are provided" do
         it "stores the arguments" do
           logger = double("logger")
+          allow(logger).to receive(:info)
           prompt = TestPrompt.new({undesirable_activity: "clean the garage", tone: "whiny"}, logger)
           expect(prompt.params).to eq({undesirable_activity: "clean the garage", tone: "whiny"})
         end

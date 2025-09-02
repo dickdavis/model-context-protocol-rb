@@ -8,6 +8,7 @@ class TestResource < ModelContextProtocol::Server::Resource
 
   def call
     unless authorized?(context[:user_id])
+      logger.info("This fool thinks he can get my top secret plans...")
       return respond_with :text, text: "Nothing to see here, move along."
     end
 
