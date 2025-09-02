@@ -3,6 +3,17 @@ require "securerandom"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
+    Response = Data.define(:id, :result) do
+      def serialized
+        {jsonrpc: "2.0", id:, result:}
+      end
+    end
+
+    ErrorResponse = Data.define(:id, :error) do
+      def serialized
+        {jsonrpc: "2.0", id:, error:}
+      end
+    end
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
@@ -40,7 +51,8 @@ module ModelContextProtocol
       when "DELETE"
         handle_delete_request(request)
       else
-        {json: {error: "Method not allowed"}, status: 405}
+        error_response = ErrorResponse[id: nil, error: {code: -32601, message: "Method not allowed"}]
+        {json: error_response.serialized, status: 405}
       end
     end
 
@@ -72,10 +84,16 @@ module ModelContextProtocol
         handle_regular_request(body, session_id)
       end
     rescue JSON::ParserError
-      {json: {error: "Invalid JSON"}, status: 400}
+      error_response = ErrorResponse[id: "", error: {code: -32700, message: "Parse error"}]
+      {json: error_response.serialized, status: 400}
+    rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
+      @configuration.logger.error("Validation error", error: validation_error.message)
+      error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32602, message: validation_error.message}]
+      {json: error_response.serialized, status: 400}
     rescue => e
       @configuration.logger.error("Error handling POST request", error: e.message, backtrace: e.backtrace.first(5))
-      {json: {error: "Internal server error"}, status: 500}
+      error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32603, message: "Internal error"}]
+      {json: error_response.serialized, status: 500}
     end
 
     def handle_initialization(body)
@@ -88,9 +106,10 @@ module ModelContextProtocol
       })
 
       result = @router.route(body)
+      response = Response[id: body["id"], result: result.serialized]
 
       {
-        json: result.serialized,
+        json: response.serialized,
         status: 200,
         headers: {"Mcp-Session-Id" => session_id}
       }
@@ -98,16 +117,18 @@ module ModelContextProtocol
 
     def handle_regular_request(body, session_id)
       unless session_id && @session_store.session_exists?(session_id)
-        return {json: {error: "Invalid or missing session ID"}, status: 400}
+        error_response = ErrorResponse[id: body["id"], error: {code: -32600, message: "Invalid or missing session ID"}]
+        return {json: error_response.serialized, status: 400}
       end
 
       result = @router.route(body)
+      response = Response[id: body["id"], result: result.serialized]
 
       if @session_store.session_has_active_stream?(session_id)
-        deliver_to_session_stream(session_id, result.serialized)
+        deliver_to_session_stream(session_id, response.serialized)
         {json: {accepted: true}, status: 200}
       else
-        {json: result.serialized, status: 200}
+        {json: response.serialized, status: 200}
       end
     end
 
@@ -115,7 +136,8 @@ module ModelContextProtocol
       session_id = request.headers["Mcp-Session-Id"]
 
       unless session_id && @session_store.session_exists?(session_id)
-        return {json: {error: "Invalid or missing session ID"}, status: 400}
+        error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid or missing session ID"}]
+        return {json: error_response.serialized, status: 400}
       end
 
       @session_store.mark_stream_active(session_id, @server_instance)

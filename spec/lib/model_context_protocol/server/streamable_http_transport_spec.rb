@@ -86,7 +86,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       context "for initialization request" do
-        let(:init_request) { {"method" => "initialize", "params" => {}} }
+        let(:init_request) { {"method" => "initialize", "params" => {}, "id" => "init-1"} }
 
         before do
           mock_body.string = init_request.to_json
@@ -97,7 +97,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to include(text: "initialized")
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "init-1",
+              result: {text: "initialized"}
+            })
             expect(result[:status]).to eq(200)
             expect(result[:headers]).to have_key("Mcp-Session-Id")
 
@@ -115,7 +119,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       context "for regular request without session" do
-        let(:regular_request) { {"method" => "test_method", "params" => {}} }
+        let(:regular_request) { {"method" => "test_method", "params" => {}, "id" => "req-1"} }
 
         before do
           mock_body.string = regular_request.to_json
@@ -126,14 +130,18 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to eq({error: "Invalid or missing session ID"})
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "req-1",
+              error: {code: -32600, message: "Invalid or missing session ID"}
+            })
             expect(result[:status]).to eq(400)
           end
         end
       end
 
       context "for regular request with valid session" do
-        let(:regular_request) { {"method" => "ping", "params" => {}} }
+        let(:regular_request) { {"method" => "ping", "params" => {}, "id" => "ping-1"} }
 
         before do
           mock_body.string = regular_request.to_json
@@ -155,7 +163,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to include(text: "pong")
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "ping-1",
+              result: {text: "pong"}
+            })
             expect(result[:status]).to eq(200)
           end
         end
@@ -182,14 +194,18 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to eq({error: "Invalid JSON"})
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "",
+              error: {code: -32700, message: "Parse error"}
+            })
             expect(result[:status]).to eq(400)
           end
         end
       end
 
       context "with internal error" do
-        let(:error_request) { {"method" => "error_method", "params" => {}} }
+        let(:error_request) { {"method" => "error_method", "params" => {}, "id" => "error-1"} }
 
         before do
           mock_body.string = error_request.to_json
@@ -212,7 +228,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to eq({error: "Internal server error"})
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "error-1",
+              error: {code: -32603, message: "Internal error"}
+            })
             expect(result[:status]).to eq(500)
             expect(mcp_logger).to have_received(:error).with("Error handling POST request",
               error: String,
@@ -267,7 +287,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to eq({error: "Invalid or missing session ID"})
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: nil,
+              error: {code: -32600, message: "Invalid or missing session ID"}
+            })
             expect(result[:status]).to eq(400)
           end
         end
@@ -324,7 +348,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         result = transport.handle
 
         aggregate_failures do
-          expect(result[:json]).to eq({error: "Method not allowed"})
+          expect(result[:json]).to eq({
+            jsonrpc: "2.0",
+            id: nil,
+            error: {code: -32601, message: "Method not allowed"}
+          })
           expect(result[:status]).to eq(405)
         end
       end
@@ -436,7 +464,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "routes messages between server instances via Redis" do
-      mock_body.string = {"method" => "initialize"}.to_json
+      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
       mock_body.rewind
       allow(mock_request).to receive(:method).and_return("POST")
       allow(mock_request).to receive(:body).and_return(mock_body)
@@ -454,7 +482,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         TestResponse[text: "pong"]
       end
 
-      other_mock_body = StringIO.new({"method" => "ping"}.to_json)
+      other_mock_body = StringIO.new({"method" => "ping", "id" => "ping-1"}.to_json)
       other_mock_request = double("other_request")
       allow(other_mock_request).to receive(:method).and_return("POST")
       allow(other_mock_request).to receive(:body).and_return(other_mock_body)
@@ -485,7 +513,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     it "creates sessions with server context" do
       configuration.context = {user_id: "test-user", app: "test-app"}
 
-      mock_body.string = {"method" => "initialize"}.to_json
+      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
       mock_body.rewind
 
       result = transport.handle
@@ -496,7 +524,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "handles session cleanup on DELETE" do
-      mock_body.string = {"method" => "initialize"}.to_json
+      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
       mock_body.rewind
 
       result = transport.handle
