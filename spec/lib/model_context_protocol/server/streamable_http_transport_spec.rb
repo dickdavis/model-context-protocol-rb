@@ -9,15 +9,13 @@ end
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   subject(:transport) do
     described_class.new(
-      logger: logger,
       router: router,
       configuration: configuration
     )
   end
-
-  let(:logger) { Logger.new(StringIO.new) }
   let(:router) { ModelContextProtocol::Server::Router.new(configuration: configuration) }
   let(:mock_redis) { MockRedis.new }
+  let(:mcp_logger) { configuration.logger }
   let(:configuration) do
     config = ModelContextProtocol::Server::Configuration.new
     config.name = "test-server"
@@ -207,7 +205,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             "active_stream" => false.to_json
           })
 
-          allow(logger).to receive(:error)
+          allow(mcp_logger).to receive(:error)
         end
 
         it "returns internal server error" do
@@ -216,8 +214,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           aggregate_failures do
             expect(result[:json]).to eq({error: "Internal server error"})
             expect(result[:status]).to eq(500)
-            expect(logger).to have_received(:error).with(/Error handling POST request/)
-            expect(logger).to have_received(:error).with(kind_of(Array)) # backtrace
+            expect(mcp_logger).to have_received(:error).with("Error handling POST request",
+              error: String,
+              backtrace: kind_of(Array))
           end
         end
       end
@@ -431,7 +430,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_redis).to receive(:subscribe)
 
       described_class.new(
-        logger: logger,
         router: ModelContextProtocol::Server::Router.new(configuration: other_config),
         configuration: other_config
       )
@@ -515,6 +513,142 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         expect(result[:json]).to eq({success: true})
         expect(result[:status]).to eq(200)
         expect(mock_redis.exists("session:#{session_id}")).to eq(0)
+      end
+    end
+  end
+
+  describe "MCP logging integration" do
+    before do
+      allow(mock_request).to receive(:method).and_return("GET")
+      allow(mock_request).to receive(:headers).and_return({})
+    end
+
+    it "connects the logger to the transport when handle starts" do
+      expect(mcp_logger).to receive(:connect_transport).with(transport)
+
+      transport.handle
+    end
+
+    describe "#send_notification" do
+      let(:mock_stream) { StringIO.new }
+      let(:session_id) { "test-session-123" }
+
+      before do
+        mcp_logger.connect_transport(transport)
+      end
+
+      context "when there are active streams" do
+        before do
+          transport.instance_variable_get(:@local_streams)[session_id] = mock_stream
+        end
+
+        it "delivers notifications to active streams" do
+          transport.send_notification("notifications/message", {
+            level: "info",
+            logger: "test",
+            data: {message: "test notification"}
+          })
+
+          mock_stream.rewind
+          output = mock_stream.read
+
+          expect(output).to include("data: ")
+          notification = JSON.parse(output.gsub("data: ", "").strip)
+
+          aggregate_failures do
+            expect(notification["jsonrpc"]).to eq("2.0")
+            expect(notification["method"]).to eq("notifications/message")
+            expect(notification["params"]["level"]).to eq("info")
+            expect(notification["params"]["logger"]).to eq("test")
+            expect(notification["params"]["data"]["message"]).to eq("test notification")
+          end
+        end
+
+        it "handles broken stream connections gracefully" do
+          allow(mock_stream).to receive(:write).and_raise(IOError, "broken pipe")
+
+          expect {
+            transport.send_notification("notifications/message", {level: "error", data: {}})
+          }.not_to raise_error
+        end
+      end
+
+      context "when there are no active streams" do
+        it "queues notifications" do
+          transport.send_notification("notifications/message", {
+            level: "warning",
+            logger: "test",
+            data: {message: "queued notification"}
+          })
+
+          notification_queue = transport.instance_variable_get(:@notification_queue)
+          expect(notification_queue.size).to eq(1)
+
+          queued_notification = notification_queue.first
+          aggregate_failures do
+            expect(queued_notification[:jsonrpc]).to eq("2.0")
+            expect(queued_notification[:method]).to eq("notifications/message")
+            expect(queued_notification[:params][:level]).to eq("warning")
+            expect(queued_notification[:params][:data][:message]).to eq("queued notification")
+          end
+        end
+      end
+
+      context "when stream connects later" do
+        it "flushes queued notifications to new stream" do
+          transport.send_notification("notifications/message", {
+            level: "info",
+            data: {message: "queued message"}
+          })
+
+          transport.send(:flush_notifications_to_stream, mock_stream)
+
+          mock_stream.rewind
+          output = mock_stream.read
+
+          expect(output).to include("data: ")
+          notification = JSON.parse(output.gsub("data: ", "").strip)
+          expect(notification["params"]["data"]["message"]).to eq("queued message")
+        end
+      end
+    end
+
+    describe "logging error handling" do
+      let(:test_stream) { StringIO.new }
+
+      before do
+        allow(mock_request).to receive(:method).and_return("POST")
+        allow(mock_request).to receive(:headers).and_return({})
+        allow(mock_request).to receive(:body).and_return(mock_body)
+      end
+
+      it "uses MCP logger for keepalive thread errors" do
+        allow(mcp_logger).to receive(:error)
+
+        original_sleep = method(:sleep)
+        allow(transport).to receive(:sleep) do |duration|
+          raise StandardError, "keepalive error" if duration == 30
+          original_sleep.call(duration) if duration < 30
+        end
+
+        transport.send(:start_keepalive_thread, "session-id", test_stream)
+
+        sleep(0.01)
+
+        expect(mcp_logger).to have_received(:error).with("Keepalive thread error", error: "keepalive error")
+      end
+
+      it "uses MCP logger for Redis subscriber errors" do
+        allow(mcp_logger).to receive(:error)
+        allow(mock_redis).to receive(:subscribe).and_raise(StandardError, "redis error")
+
+        transport.send(:setup_redis_subscriber)
+
+        sleep(0.01)
+
+        expect(mcp_logger).to have_received(:error).at_least(1).times.with("Redis subscriber error",
+          error: "redis error",
+          backtrace: kind_of(Array))
       end
     end
   end

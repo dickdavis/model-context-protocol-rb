@@ -1,16 +1,12 @@
-# frozen_string_literal: true
-
 require "json"
 require "securerandom"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
-    def initialize(logger:, router:, configuration:)
-      @logger = logger
+    def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
 
-      # Redis client is required and provided by user
       transport_options = @configuration.transport_options
       @redis = transport_options[:redis_client]
 
@@ -20,12 +16,15 @@ module ModelContextProtocol
       )
 
       @server_instance = "#{Socket.gethostname}-#{Process.pid}-#{SecureRandom.hex(4)}"
-      @local_streams = {} # session_id => stream
+      @local_streams = {}
+      @notification_queue = []
 
       setup_redis_subscriber
     end
 
     def handle
+      @configuration.logger.connect_transport(self)
+
       request = @configuration.transport_options[:request]
       response = @configuration.transport_options[:response]
 
@@ -45,6 +44,20 @@ module ModelContextProtocol
       end
     end
 
+    def send_notification(method, params)
+      notification = {
+        jsonrpc: "2.0",
+        method: method,
+        params: params
+      }
+
+      if has_active_streams?
+        deliver_to_active_streams(notification)
+      else
+        @notification_queue << notification
+      end
+    end
+
     private
 
     def handle_post_request(request)
@@ -61,22 +74,19 @@ module ModelContextProtocol
     rescue JSON::ParserError
       {json: {error: "Invalid JSON"}, status: 400}
     rescue => e
-      @logger.error("Error handling POST request: #{e.message}")
-      @logger.error(e.backtrace)
+      @configuration.logger.error("Error handling POST request", error: e.message, backtrace: e.backtrace.first(5))
       {json: {error: "Internal server error"}, status: 500}
     end
 
     def handle_initialization(body)
       session_id = SecureRandom.uuid
 
-      # Store session with user context
       @session_store.create_session(session_id, {
         server_instance: @server_instance,
         context: @configuration.context || {},
         created_at: Time.now.to_f
       })
 
-      # Process the initialize request
       result = @router.route(body)
 
       {
@@ -91,16 +101,12 @@ module ModelContextProtocol
         return {json: {error: "Invalid or missing session ID"}, status: 400}
       end
 
-      # Process the request
       result = @router.route(body)
 
-      # Check if session has active stream
       if @session_store.session_has_active_stream?(session_id)
-        # Send response via SSE stream
         deliver_to_session_stream(session_id, result.serialized)
         {json: {accepted: true}, status: 200}
       else
-        # Return response directly
         {json: result.serialized, status: 200}
       end
     end
@@ -112,7 +118,6 @@ module ModelContextProtocol
         return {json: {error: "Invalid or missing session ID"}, status: 400}
       end
 
-      # Mark session as having active stream
       @session_store.mark_stream_active(session_id, @server_instance)
 
       {
@@ -139,9 +144,11 @@ module ModelContextProtocol
     def create_sse_stream_proc(session_id)
       proc do |stream|
         register_local_stream(session_id, stream)
+
+        flush_notifications_to_stream(stream)
+
         start_keepalive_thread(session_id, stream)
 
-        # Keep connection alive until closed
         loop do
           break unless stream_connected?(stream)
           sleep 0.1
@@ -161,11 +168,9 @@ module ModelContextProtocol
     end
 
     def stream_connected?(stream)
-      # Check if stream is still connected
       return false unless stream
 
       begin
-        # Try to write a ping to detect closed connections
         stream.write(": ping\n\n")
         stream.flush if stream.respond_to?(:flush)
         true
@@ -187,7 +192,7 @@ module ModelContextProtocol
           end
         end
       rescue => e
-        @logger.error("Keepalive thread error: #{e.message}")
+        @configuration.logger.error("Keepalive thread error", error: e.message)
       ensure
         cleanup_local_stream(session_id)
       end
@@ -205,7 +210,6 @@ module ModelContextProtocol
     end
 
     def deliver_to_session_stream(session_id, data)
-      # Try local stream first
       if @local_streams[session_id]
         begin
           send_to_stream(@local_streams[session_id], data)
@@ -215,7 +219,6 @@ module ModelContextProtocol
         end
       end
 
-      # Route via Redis to other servers
       @session_store.route_message_to_session(session_id, data)
     end
 
@@ -239,11 +242,27 @@ module ModelContextProtocol
           end
         end
       rescue => e
-        @logger.error("Redis subscriber error: #{e.message}")
-        @logger.error(e.backtrace)
-        # Try to reconnect after a delay
+        @configuration.logger.error("Redis subscriber error", error: e.message, backtrace: e.backtrace.first(5))
         sleep 5
         retry
+      end
+    end
+
+    def has_active_streams?
+      @local_streams.any?
+    end
+
+    def deliver_to_active_streams(notification)
+      @local_streams.each do |session_id, stream|
+        send_to_stream(stream, notification)
+      rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+        cleanup_local_stream(session_id)
+      end
+    end
+
+    def flush_notifications_to_stream(stream)
+      while (notification = @notification_queue.shift)
+        send_to_stream(stream, notification)
       end
     end
   end
