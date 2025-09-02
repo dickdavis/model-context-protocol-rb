@@ -67,6 +67,79 @@ end
 server.start
 ```
 
+### Transport Configuration
+
+The MCP server supports different transport mechanisms for communication with clients. By default, it uses stdio (standard input/output), but you can also configure it to use streamable HTTP transport for distributed deployments.
+
+#### Stdio Transport (Default)
+
+When no transport is specified, the server uses stdio transport, which is suitable for single-process communication:
+
+```ruby
+server = ModelContextProtocol::Server.new do |config|
+  config.name = "MCP Development Server"
+  config.version = "1.0.0"
+  # No transport specified - uses stdio by default
+  config.registry = ModelContextProtocol::Server::Registry.new
+end
+
+server.start
+```
+
+#### Streamable HTTP Transport
+
+For distributed deployments with load balancers and multiple server instances, use the streamable HTTP transport with Redis-backed session management:
+
+```ruby
+require 'redis'
+
+server = ModelContextProtocol::Server.new do |config|
+  config.name = "MCP Development Server"
+  config.version = "1.0.0"
+
+  # Configure streamable HTTP transport
+  config.transport = {
+    type: :streamable_http,
+    redis_client: Redis.new(url: ENV['REDIS_URL']),
+    session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
+  }
+
+  config.registry = ModelContextProtocol::Server::Registry.new
+end
+
+# For HTTP frameworks, handle the request and return the response
+result = server.start
+# result will be a hash like: {json: {...}, status: 200, headers: {...}}
+```
+
+**Key Features:**
+- **Distributed Sessions**: Redis-backed session storage enables multiple server instances
+- **Load Balancer Support**: Sessions persist across different server instances  
+- **HTTP Methods**: Supports POST (requests), GET (Server-Sent Events), DELETE (cleanup)
+- **Cross-Server Routing**: Messages are routed between servers via Redis pub/sub
+
+**Integration Example (Rails):**
+```ruby
+class McpController < ApplicationController
+  def handle
+    server = ModelContextProtocol::Server.new do |config|
+      config.name = "Rails MCP Server"
+      config.version = "1.0.0"
+      config.transport = {
+        type: :streamable_http,
+        redis_client: Redis.new(url: ENV['REDIS_URL']),
+        request: request,
+        response: response
+      }
+      config.registry = build_registry
+    end
+
+    result = server.start
+    render json: result[:json], status: result[:status], headers: result[:headers]
+  end
+end
+```
+
 Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
 #### Prompts

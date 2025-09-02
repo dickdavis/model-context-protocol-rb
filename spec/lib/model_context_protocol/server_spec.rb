@@ -291,8 +291,8 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     it "begins the StdioTransport" do
-      transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-      allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+      transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+      allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
       allow(transport).to receive(:begin)
 
       server = ModelContextProtocol::Server.new do |config|
@@ -306,10 +306,51 @@ RSpec.describe ModelContextProtocol::Server do
       expect(transport).to have_received(:begin)
     end
 
+    it "handles StreamableHttpTransport requests" do
+      mock_redis = MockRedis.new
+      allow(mock_redis).to receive(:publish)
+      allow(mock_redis).to receive(:subscribe)
+
+      transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
+      allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
+      allow(transport).to receive(:handle_request).and_return({json: {success: true}, status: 200})
+
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.enable_log = true
+        config.registry = ModelContextProtocol::Server::Registry.new
+        config.transport = {
+          type: :streamable_http,
+          redis_client: mock_redis
+        }
+      end
+
+      result = server.start
+
+      expect(transport).to have_received(:handle_request)
+      expect(result).to eq({json: {success: true}, status: 200})
+    end
+
+    it "raises an error for unknown transport types" do
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.enable_log = true
+        config.registry = ModelContextProtocol::Server::Registry.new
+        config.transport = :unknown_transport
+      end
+
+      expect { server.start }.to raise_error(
+        ModelContextProtocol::Server::Configuration::InvalidTransportError,
+        "Unknown transport type: unknown_transport"
+      )
+    end
+
     context "when logging is not enabled" do
       it "initializes the StdioTransport logger with a null logdev" do
-        transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-        allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
         allow(transport).to receive(:begin)
 
         logger_class = class_double(Logger)
@@ -330,8 +371,8 @@ RSpec.describe ModelContextProtocol::Server do
 
     context "when logging is enabled" do
       it "initializes the StdioTransport logger with a $stderr logdev" do
-        transport = instance_double(ModelContextProtocol::Server::Transports::Stdio)
-        allow(ModelContextProtocol::Server::Transports::Stdio).to receive(:new).and_return(transport)
+        transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+        allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
         allow(transport).to receive(:begin)
 
         logger_class = class_double(Logger)

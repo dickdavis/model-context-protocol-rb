@@ -6,7 +6,7 @@ TestResponse = Data.define(:text) do
   end
 end
 
-RSpec.describe ModelContextProtocol::Server::Transports::Stdio do
+RSpec.describe ModelContextProtocol::Server::StdioTransport do
   subject(:transport) { described_class.new(logger: logger, router: router) }
 
   let(:logger) { Logger.new(StringIO.new) }
