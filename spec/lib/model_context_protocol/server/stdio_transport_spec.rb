@@ -36,7 +36,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
     $stdout = @original_stdout
   end
 
-  describe "#begin" do
+  describe "#handle" do
     context "with a valid request" do
       let(:request) { {"jsonrpc" => "2.0", "id" => 1, "method" => "test_method"} }
 
@@ -47,7 +47,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "processes the request and sends a response" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected to raise EOFError when stdin is exhausted
         end
@@ -72,7 +72,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "does not process notifications" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -99,7 +99,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
         allow(logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -131,7 +131,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
         allow(logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -161,7 +161,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
         allow(logger).to receive(:error)
 
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end
@@ -197,7 +197,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
       it "processes all requests in sequence" do
         begin
-          transport.begin
+          transport.handle
         rescue EOFError
           # Expected
         end

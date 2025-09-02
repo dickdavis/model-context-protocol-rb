@@ -63,7 +63,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     }
   end
 
-  describe "#handle_request" do
+  describe "#handle" do
     context "when request and response objects are missing" do
       before do
         configuration.transport = {
@@ -73,7 +73,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "raises ArgumentError" do
-        expect { transport.handle_request }.to raise_error(
+        expect { transport.handle }.to raise_error(
           ArgumentError,
           "StreamableHTTP transport requires request and response objects in transport_options"
         )
@@ -96,7 +96,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "creates a session and returns response with session ID" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to include(text: "initialized")
@@ -109,7 +109,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "creates session in Redis" do
-          result = transport.handle_request
+          result = transport.handle
           session_id = result[:headers]["Mcp-Session-Id"]
 
           expect(mock_redis.exists("session:#{session_id}")).to eq(1)
@@ -125,7 +125,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns error for missing session ID" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid or missing session ID"})
@@ -154,7 +154,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns response directly when no active stream" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to include(text: "pong")
@@ -165,7 +165,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         it "routes to stream when session has active stream" do
           mock_redis.hset("session:#{session_id}", "active_stream", true.to_json)
 
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({accepted: true})
@@ -181,7 +181,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns JSON parse error" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid JSON"})
@@ -211,7 +211,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns internal server error" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Internal server error"})
@@ -239,7 +239,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "returns SSE stream configuration" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:stream]).to be true
@@ -253,7 +253,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "marks session as having active stream" do
-        transport.handle_request
+        transport.handle
 
         stream_data = mock_redis.hget("session:#{session_id}", "active_stream")
         expect(JSON.parse(stream_data)).to be true
@@ -265,7 +265,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "returns error for invalid session" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({error: "Invalid or missing session ID"})
@@ -291,7 +291,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "cleans up session and returns success" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:json]).to eq({success: true})
@@ -306,7 +306,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "still returns success" do
-          result = transport.handle_request
+          result = transport.handle
 
           aggregate_failures do
             expect(result[:json]).to eq({success: true})
@@ -322,7 +322,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "returns method not allowed error" do
-        result = transport.handle_request
+        result = transport.handle
 
         aggregate_failures do
           expect(result[:json]).to eq({error: "Method not allowed"})
@@ -351,7 +351,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     describe "stream connection handling" do
       it "registers local stream when SSE connection starts" do
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         allow(mock_stream).to receive(:write)
@@ -379,7 +379,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "sends ping messages to detect connection status" do
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         expect(mock_stream).to receive(:write).with(": ping\n\n")
@@ -398,7 +398,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       it "detects broken connections" do
         allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
 
-        result = transport.handle_request
+        result = transport.handle
         stream_proc = result[:stream_proc]
 
         stream_thread = Thread.new do
@@ -444,7 +444,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_request).to receive(:body).and_return(mock_body)
       allow(mock_request).to receive(:headers).and_return({})
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
 
       first_server_instance = transport.instance_variable_get(:@server_instance)
@@ -472,7 +472,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       expect(mock_redis).to receive(:publish)
 
-      result = other_server_transport.handle_request
+      result = other_server_transport.handle
       expect(result[:json]).to eq({accepted: true})
     end
   end
@@ -490,7 +490,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       mock_body.string = {"method" => "initialize"}.to_json
       mock_body.rewind
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
       context_data = mock_redis.hget("session:#{session_id}", "context")
       parsed_context = JSON.parse(context_data)
@@ -501,7 +501,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       mock_body.string = {"method" => "initialize"}.to_json
       mock_body.rewind
 
-      result = transport.handle_request
+      result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
 
       expect(mock_redis.exists("session:#{session_id}")).to eq(1)
@@ -509,7 +509,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       allow(mock_request).to receive(:method).and_return("DELETE")
       allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
 
-      result = transport.handle_request
+      result = transport.handle
 
       aggregate_failures do
         expect(result[:json]).to eq({success: true})

@@ -19,7 +19,7 @@ module ModelContextProtocol
       @router = router
     end
 
-    def begin
+    def handle
       loop do
         line = receive_message
         break unless line

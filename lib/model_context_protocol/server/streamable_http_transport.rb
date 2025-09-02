@@ -25,7 +25,7 @@ module ModelContextProtocol
       setup_redis_subscriber
     end
 
-    def handle_request
+    def handle
       request = @configuration.transport_options[:request]
       response = @configuration.transport_options[:response]
 
