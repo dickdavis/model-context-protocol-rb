@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    model-context-protocol-rb (0.3.3)
+    model-context-protocol-rb (0.3.4)
       addressable (~> 2.8)
       json-schema (~> 5.1)
 
