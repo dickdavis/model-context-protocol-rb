@@ -33,13 +33,10 @@ module ModelContextProtocol
     end
     private_constant :ImageResponse
 
-    ResourceResponse = Data.define(:uri, :text, :mime_type) do
-      def initialize(uri:, text:, mime_type: "text/plain")
-        super
-      end
-
+    ResourceResponse = Data.define(:resource_klass, :logger, :context) do
       def serialized
-        {content: [{type: "resource", resource: {uri:, mimeType: mime_type, text:}}], isError: false}
+        resource_data = resource_klass.new(logger, context).call
+        {content: [{type: "resource", resource: resource_data.serialized[:contents].first}], isError: false}
       end
     end
     private_constant :ResourceResponse
@@ -59,10 +56,8 @@ module ModelContextProtocol
         ImageResponse[data:, mime_type:]
       in [:image, {data:}]
         ImageResponse[data:]
-      in [:resource, {mime_type:, text:, uri:}]
-        ResourceResponse[mime_type:, text:, uri:]
-      in [:resource, {text:, uri:}]
-        ResourceResponse[text:, uri:]
+      in [:resource, {resource:}]
+        ResourceResponse[resource_klass: resource, logger:, context:]
       in [:error, {text:}]
         ToolErrorResponse[text:]
       else

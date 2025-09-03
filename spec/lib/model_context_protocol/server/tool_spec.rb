@@ -188,40 +188,49 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
 
     describe "resource response" do
-      it "formats resource responses correctly" do
-        arguments = {title: "Foobar"}
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestToolWithResourceResponse.call(arguments, logger)
-        expect(response.serialized).to eq(
-          content: [
-            type: "resource",
-            resource: {
-              uri: "resource://document/foobar",
-              mimeType: "application/rtf",
-              text: "richtextdata"
-            }
-          ],
-          isError: false
-        )
+      context "when resource does not have annotations" do
+        it "formats resource responses correctly" do
+          arguments = {name: "test_resource"}
+          logger = double("logger")
+          allow(logger).to receive(:info)
+          response = TestToolWithResourceResponse.call(arguments, logger)
+          expect(response.serialized).to eq(
+            content: [
+              type: "resource",
+              resource: {
+                mimeType: "text/plain",
+                text: "Nothing to see here, move along.",
+                uri: "file:///top-secret-plans.txt"
+              }
+            ],
+            isError: false
+          )
+        end
       end
 
-      it "defaults to text/plain mime type" do
-        arguments = {title: "foobar", content: "baz"}
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestToolWithResourceResponseDefaultMimeType.call(arguments, logger)
-        expect(response.serialized).to eq(
-          content: [
-            type: "resource",
-            resource: {
-              uri: "note://notes/foobar",
-              mimeType: "text/plain",
-              text: "baz"
-            }
-          ],
-          isError: false
-        )
+      context "when resource has annotations" do
+        it "formats resource responses correctly" do
+          arguments = {name: "test_annotated_resource"}
+          logger = double("logger")
+          allow(logger).to receive(:info)
+          response = TestToolWithResourceResponse.call(arguments, logger)
+          expect(response.serialized).to eq(
+            content: [
+              type: "resource",
+              resource: {
+                mimeType: "text/markdown",
+                text: "# Annotated Document\n\nThis document has annotations.",
+                uri: "file:///docs/annotated-document.md",
+                annotations: {
+                  audience: ["user", "assistant"],
+                  priority: 0.9,
+                  lastModified: "2025-01-12T15:00:58Z"
+                }
+              }
+            ],
+            isError: false
+          )
+        end
       end
     end
 
