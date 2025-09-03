@@ -130,4 +130,157 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       )
     end
   end
+
+  describe "annotations" do
+    describe "with annotations" do
+      it "includes annotations in metadata" do
+        expect(TestAnnotatedResource.metadata).to include(
+          annotations: {
+            audience: ["user", "assistant"],
+            priority: 0.9,
+            lastModified: "2025-01-12T15:00:58Z"
+          }
+        )
+      end
+
+      it "includes annotations in serialized response" do
+        logger = double("logger")
+        response = TestAnnotatedResource.call(logger)
+
+        expect(response.serialized).to eq(
+          contents: [
+            {
+              mimeType: "text/markdown",
+              text: "# Annotated Document\n\nThis document has annotations.",
+              uri: "file:///docs/annotated-document.md",
+              annotations: {
+                audience: ["user", "assistant"],
+                priority: 0.9,
+                lastModified: "2025-01-12T15:00:58Z"
+              }
+            }
+          ]
+        )
+      end
+    end
+
+    describe "without annotations" do
+      it "does not include annotations in metadata" do
+        expect(TestResource.metadata).not_to have_key(:annotations)
+      end
+
+      it "does not include annotations in serialized response" do
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        response = TestResource.call(logger)
+
+        content = response.serialized[:contents].first
+        expect(content).not_to have_key(:annotations)
+      end
+    end
+
+    describe "AnnotationsDSL" do
+      describe "audience validation" do
+        it "accepts valid audience values" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  audience :user
+                end
+              end
+            end
+          }.not_to raise_error
+        end
+
+        it "accepts array of valid audience values" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  audience [:user, :assistant]
+                end
+              end
+            end
+          }.not_to raise_error
+        end
+
+        it "rejects invalid audience values" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  audience :invalid
+                end
+              end
+            end
+          }.to raise_error(ArgumentError, /Invalid audience values: invalid/)
+        end
+      end
+
+      describe "priority validation" do
+        it "accepts valid priority values" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  priority 0.5
+                end
+              end
+            end
+          }.not_to raise_error
+        end
+
+        it "rejects priority below 0" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  priority(-0.1)
+                end
+              end
+            end
+          }.to raise_error(ArgumentError, /Priority must be a number between 0.0 and 1.0/)
+        end
+
+        it "rejects priority above 1" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  priority 1.1
+                end
+              end
+            end
+          }.to raise_error(ArgumentError, /Priority must be a number between 0.0 and 1.0/)
+        end
+      end
+
+      describe "last_modified validation" do
+        it "accepts valid ISO 8601 format" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  last_modified "2025-01-12T15:00:58Z"
+                end
+              end
+            end
+          }.not_to raise_error
+        end
+
+        it "rejects invalid date format" do
+          expect {
+            Class.new(ModelContextProtocol::Server::Resource) do
+              with_metadata do
+                with_annotations do
+                  last_modified "not-a-date"
+                end
+              end
+            end
+          }.to raise_error(ArgumentError, /lastModified must be in ISO 8601 format/)
+        end
+      end
+    end
+  end
 end
