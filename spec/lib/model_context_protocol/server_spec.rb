@@ -382,4 +382,302 @@ RSpec.describe ModelContextProtocol::Server do
       end
     end
   end
+
+  describe "pagination integration tests" do
+    let(:registry) do
+      ModelContextProtocol::Server::Registry.new do
+        resources do
+          25.times do |i|
+            resource_class = Class.new(ModelContextProtocol::Server::Resource) do
+              define_method(:call) do |logger, context|
+                ModelContextProtocol::Server::ReadResourceResponse[
+                  contents: [
+                    {
+                      uri: "file:///resource_#{i}.txt",
+                      mimeType: "text/plain",
+                      text: "Content #{i}"
+                    }
+                  ]
+                ]
+              end
+            end
+            resource_class.define_singleton_method(:metadata) do
+              {
+                name: "resource_#{i}",
+                description: "Test resource #{i}",
+                uri: "file:///resource_#{i}.txt",
+                mimeType: "text/plain"
+              }
+            end
+            register resource_class
+          end
+        end
+
+        tools do
+          15.times do |i|
+            tool_class = Class.new(ModelContextProtocol::Server::Tool) do
+              define_method(:call) do |args, logger, context|
+                ModelContextProtocol::Server::CallToolResponse[
+                  content: [
+                    {
+                      type: "text",
+                      text: "Tool #{i} executed with args: #{args}"
+                    }
+                  ]
+                ]
+              end
+            end
+            tool_class.define_singleton_method(:metadata) do
+              {
+                name: "tool_#{i}",
+                description: "Test tool #{i}",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    input: {type: "string"}
+                  }
+                }
+              }
+            end
+            register tool_class
+          end
+        end
+
+        prompts do
+          30.times do |i|
+            prompt_class = Class.new(ModelContextProtocol::Server::Prompt) do
+              define_method(:call) do |args, logger, context|
+                ModelContextProtocol::Server::GetPromptResponse[
+                  description: "Test prompt #{i}",
+                  messages: [
+                    {
+                      role: "user",
+                      content: {
+                        type: "text",
+                        text: "Test prompt #{i} with args: #{args}"
+                      }
+                    }
+                  ]
+                ]
+              end
+            end
+            prompt_class.define_singleton_method(:metadata) do
+              {
+                name: "prompt_#{i}",
+                description: "Test prompt #{i}",
+                arguments: [{name: "input", description: "Input parameter"}]
+              }
+            end
+            register prompt_class
+          end
+        end
+      end
+    end
+
+    let(:server) do
+      described_class.new do |config|
+        config.name = "Pagination Test Server"
+        config.version = "1.0.0"
+        config.registry = registry
+        config.pagination = {
+          enabled: true,
+          default_page_size: 10,
+          max_page_size: 50
+        }
+      end
+    end
+
+    describe "resources/list with pagination" do
+      it "returns first page when pageSize is specified" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }
+
+        response = server.router.route(message)
+        result = response.serialized
+
+        aggregate_failures do
+          expect(result[:resources].length).to eq(10)
+          expect(result[:nextCursor]).not_to be_nil
+          expect(result[:resources].first[:name]).to eq("resource_0")
+          expect(result[:resources].last[:name]).to eq("resource_9")
+        end
+      end
+
+      it "returns subsequent page using cursor" do
+        first_message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }
+        first_response = server.router.route(first_message).serialized
+
+        second_message = {
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => first_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }
+        second_response = server.router.route(second_message).serialized
+
+        aggregate_failures do
+          expect(second_response[:resources].length).to eq(10)
+          expect(second_response[:resources].first[:name]).to eq("resource_10")
+          expect(second_response[:resources].last[:name]).to eq("resource_19")
+          expect(second_response[:nextCursor]).not_to be_nil
+        end
+      end
+
+      it "returns last page with no nextCursor" do
+        first_response = server.router.route({
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }).serialized
+
+        second_response = server.router.route({
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => first_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }).serialized
+
+        third_response = server.router.route({
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => second_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }).serialized
+
+        aggregate_failures do
+          expect(third_response[:resources].length).to eq(5)
+          expect(third_response[:nextCursor]).to be_nil
+          expect(third_response[:resources].first[:name]).to eq("resource_20")
+          expect(third_response[:resources].last[:name]).to eq("resource_24")
+        end
+      end
+
+      it "returns all resources when no pagination params provided" do
+        message = {"method" => "resources/list", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:resources].length).to eq(25)
+          expect(response).not_to have_key(:nextCursor)
+        end
+      end
+
+      it "respects max page size" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 100}
+        }
+
+        response = server.router.route(message).serialized
+
+        expect(response[:resources].length).to eq(25)
+      end
+
+      it "raises error for invalid cursor" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"cursor" => "invalid_cursor"}
+        }
+
+        expect {
+          server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid cursor format/)
+      end
+    end
+
+    describe "tools/list with pagination" do
+      it "paginates tools correctly" do
+        message = {
+          "method" => "tools/list",
+          "params" => {"pageSize" => 5}
+        }
+
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:tools].length).to eq(5)
+          expect(response[:nextCursor]).not_to be_nil
+          expect(response[:tools].first[:name]).to eq("tool_0")
+          expect(response[:tools].last[:name]).to eq("tool_4")
+        end
+      end
+    end
+
+    describe "prompts/list with pagination" do
+      it "paginates prompts correctly" do
+        message = {
+          "method" => "prompts/list",
+          "params" => {"pageSize" => 8}
+        }
+
+        response = server.router.route(message).serialized
+
+        expect(response[:prompts].length).to eq(8)
+        expect(response[:nextCursor]).not_to be_nil
+        expect(response[:prompts].first[:name]).to eq("prompt_0")
+        expect(response[:prompts].last[:name]).to eq("prompt_7")
+      end
+    end
+
+    describe "capabilities" do
+      it "does not include pagination capability (per MCP spec)" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        expect(response[:capabilities]).not_to have_key(:pagination)
+      end
+
+      it "includes standard capabilities" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities]).to have_key(:completions)
+          expect(response[:capabilities]).to have_key(:logging)
+        end
+      end
+    end
+
+    describe "cursor TTL functionality" do
+      let(:short_ttl_server) do
+        described_class.new do |config|
+          config.name = "Short TTL Server"
+          config.version = "1.0.0"
+          config.registry = registry
+          config.pagination = {
+            enabled: true,
+            default_page_size: 10,
+            cursor_ttl: 1
+          }
+        end
+      end
+
+      it "handles expired cursors gracefully" do
+        first_response = short_ttl_server.router.route({
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }).serialized
+
+        cursor = first_response[:nextCursor]
+
+        sleep(2)
+
+        message = {
+          "method" => "resources/list",
+          "params" => {"cursor" => cursor}
+        }
+
+        expect {
+          short_ttl_server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /expired/)
+      end
+    end
+  end
 end

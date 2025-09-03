@@ -112,8 +112,28 @@ module ModelContextProtocol
         end
       end
 
-      router.map("resources/list") do
-        configuration.registry.resources_data
+      router.map("resources/list") do |message|
+        params = message["params"] || {}
+
+        if configuration.pagination_enabled? && Server::Pagination.pagination_requested?(params)
+          opts = configuration.pagination_options
+
+          pagination_params = Server::Pagination.extract_pagination_params(
+            params,
+            default_page_size: opts[:default_page_size],
+            max_page_size: opts[:max_page_size]
+          )
+
+          configuration.registry.resources_data(
+            cursor: pagination_params[:cursor],
+            page_size: pagination_params[:page_size],
+            cursor_ttl: opts[:cursor_ttl]
+          )
+        else
+          configuration.registry.resources_data
+        end
+      rescue Server::Pagination::InvalidCursorError => e
+        raise ParameterValidationError, e.message
       end
 
       router.map("resources/read") do |message|
@@ -127,11 +147,51 @@ module ModelContextProtocol
       end
 
       router.map("resources/templates/list") do |message|
-        configuration.registry.resource_templates_data
+        params = message["params"] || {}
+
+        if configuration.pagination_enabled? && Server::Pagination.pagination_requested?(params)
+          opts = configuration.pagination_options
+
+          pagination_params = Server::Pagination.extract_pagination_params(
+            params,
+            default_page_size: opts[:default_page_size],
+            max_page_size: opts[:max_page_size]
+          )
+
+          configuration.registry.resource_templates_data(
+            cursor: pagination_params[:cursor],
+            page_size: pagination_params[:page_size],
+            cursor_ttl: opts[:cursor_ttl]
+          )
+        else
+          configuration.registry.resource_templates_data
+        end
+      rescue Server::Pagination::InvalidCursorError => e
+        raise ParameterValidationError, e.message
       end
 
-      router.map("prompts/list") do
-        configuration.registry.prompts_data
+      router.map("prompts/list") do |message|
+        params = message["params"] || {}
+
+        if configuration.pagination_enabled? && Server::Pagination.pagination_requested?(params)
+          opts = configuration.pagination_options
+
+          pagination_params = Server::Pagination.extract_pagination_params(
+            params,
+            default_page_size: opts[:default_page_size],
+            max_page_size: opts[:max_page_size]
+          )
+
+          configuration.registry.prompts_data(
+            cursor: pagination_params[:cursor],
+            page_size: pagination_params[:page_size],
+            cursor_ttl: opts[:cursor_ttl]
+          )
+        else
+          configuration.registry.prompts_data
+        end
+      rescue Server::Pagination::InvalidCursorError => e
+        raise ParameterValidationError, e.message
       end
 
       router.map("prompts/get") do |message|
@@ -143,8 +203,28 @@ module ModelContextProtocol
           .call(symbolized_arguments, configuration.logger, configuration.context)
       end
 
-      router.map("tools/list") do
-        configuration.registry.tools_data
+      router.map("tools/list") do |message|
+        params = message["params"] || {}
+
+        if configuration.pagination_enabled? && Server::Pagination.pagination_requested?(params)
+          opts = configuration.pagination_options
+
+          pagination_params = Server::Pagination.extract_pagination_params(
+            params,
+            default_page_size: opts[:default_page_size],
+            max_page_size: opts[:max_page_size]
+          )
+
+          configuration.registry.tools_data(
+            cursor: pagination_params[:cursor],
+            page_size: pagination_params[:page_size],
+            cursor_ttl: opts[:cursor_ttl]
+          )
+        else
+          configuration.registry.tools_data
+        end
+      rescue Server::Pagination::InvalidCursorError => e
+        raise ParameterValidationError, e.message
       end
 
       router.map("tools/call") do |message|
