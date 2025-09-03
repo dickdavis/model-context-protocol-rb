@@ -10,26 +10,23 @@ You are welcome to contribute.
 
 | Status | Feature |
 |--------|---------|
-| ✅ | Prompts |
-| ✅ | Resources |
-| ✅ | Resource Templates |
-| ✅ | Tools |
-| ✅ | Completion |
-| ✅ | Logging |
-| ✅ | Pagination |
-| ✅ | STDIO Transport|
-| 🚧 | Streamable HTTP Transport|
-| ❌ | List Changed Notification (Prompts) |
-| ❌ | List Changed Notification (Resources) |
-| ❌ | Subscriptions (Resources) |
-| ❌ | List Changed Notification (Tools) |
-
-TODO's:
-
-* [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
-* [Resource list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#list-changed-notification)
-* [Resource subscriptions](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#subscriptions)
-* [Tool list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/#list-changed-notification)
+| ✅ | [Prompts](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts) |
+| ✅ | [Resources](https://modelcontextprotocol.io/specification/2025-06-18/server/resources) |
+| ✅ | [Resource Templates](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates) |
+| ✅ | [Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) |
+| ✅ | [Completion](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/completion) |
+| ✅ | [Logging](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging) |
+| ✅ | [Pagination](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination) |
+| ✅ | [Environment Variables](https://modelcontextprotocol.io/legacy/tools/debugging#environment-variables) |
+| ✅ | [STDIO Transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio) |
+| 🚧 | [Streamable HTTP Transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) |
+| ❌ | [List Changed Notification (Prompts)](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts#list-changed-notification) |
+| ❌ | [List Changed Notification (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#list-changed-notification) |
+| ❌ | [Subscriptions (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#subscriptions) |
+| ❌ | [List Changed Notification (Tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#list-changed-notification) |
+| ❌ | [Cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) |
+| 🚧 | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
+| ❌ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
 
 ## Usage
 
