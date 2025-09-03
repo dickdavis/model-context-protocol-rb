@@ -8,6 +8,12 @@ module ModelContextProtocol
     # Raised when configured with invalid version.
     class InvalidServerVersionError < StandardError; end
 
+    # Raised when configured with invalid title.
+    class InvalidServerTitleError < StandardError; end
+
+    # Raised when configured with invalid instructions.
+    class InvalidServerInstructionsError < StandardError; end
+
     # Raised when configured with invalid registry.
     class InvalidRegistryError < StandardError; end
 
@@ -26,7 +32,7 @@ module ModelContextProtocol
     # Valid MCP log levels per the specification
     VALID_LOG_LEVELS = %w[debug info notice warning error critical alert emergency].freeze
 
-    attr_accessor :name, :registry, :version, :transport, :pagination
+    attr_accessor :name, :registry, :version, :transport, :pagination, :title, :instructions
     attr_reader :logger
 
     def initialize
@@ -119,6 +125,8 @@ module ModelContextProtocol
       raise InvalidServerVersionError unless valid_version?
       validate_transport!
       validate_pagination!
+      validate_title!
+      validate_instructions!
 
       validate_environment_variables!
     end
@@ -220,6 +228,20 @@ module ModelContextProtocol
       if opts[:cursor_ttl] && opts[:cursor_ttl] <= 0
         raise InvalidPaginationError, "Invalid pagination cursor_ttl: must be positive or nil"
       end
+    end
+
+    def validate_title!
+      return if title.nil?
+      return if title.is_a?(String)
+
+      raise InvalidServerTitleError, "Server title must be a string"
+    end
+
+    def validate_instructions!
+      return if instructions.nil?
+      return if instructions.is_a?(String)
+
+      raise InvalidServerInstructionsError, "Server instructions must be a string"
     end
   end
 end

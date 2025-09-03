@@ -401,6 +401,112 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
         expect { configuration.validate! }.not_to raise_error
       end
     end
+
+    context "with title" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+      end
+
+      it "validates successfully when title is a string" do
+        configuration.title = "My Test Server"
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "validates successfully when title is nil" do
+        configuration.title = nil
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "raises error when title is not a string" do
+        configuration.title = 123
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerTitleError,
+          "Server title must be a string"
+        )
+      end
+
+      it "raises error when title is an array" do
+        configuration.title = ["not", "a", "string"]
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerTitleError,
+          "Server title must be a string"
+        )
+      end
+
+      it "raises error when title is a hash" do
+        configuration.title = {name: "test"}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerTitleError,
+          "Server title must be a string"
+        )
+      end
+    end
+
+    context "with instructions" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+      end
+
+      it "validates successfully when instructions is a string" do
+        configuration.instructions = "Use this server for testing."
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "validates successfully when instructions is nil" do
+        configuration.instructions = nil
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "validates successfully when instructions is a multi-line string" do
+        configuration.instructions = <<~INSTRUCTIONS
+          This server provides test capabilities.
+          
+          Key features:
+          - Feature one
+          - Feature two
+        INSTRUCTIONS
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "raises error when instructions is not a string" do
+        configuration.instructions = []
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerInstructionsError,
+          "Server instructions must be a string"
+        )
+      end
+
+      it "raises error when instructions is a number" do
+        configuration.instructions = 456
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerInstructionsError,
+          "Server instructions must be a string"
+        )
+      end
+
+      it "raises error when instructions is a hash" do
+        configuration.instructions = {message: "test instructions"}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidServerInstructionsError,
+          "Server instructions must be a string"
+        )
+      end
+    end
   end
 
   describe "environment variables" do

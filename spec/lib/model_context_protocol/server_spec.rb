@@ -645,6 +645,96 @@ RSpec.describe ModelContextProtocol::Server do
       end
     end
 
+    describe "initialization response" do
+      let(:registry) do
+        ModelContextProtocol::Server::Registry.new do
+          prompts do
+            register TestPrompt
+          end
+        end
+      end
+
+      it "includes only required fields when title and instructions are not configured" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = registry
+        end
+
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo]).not_to have_key(:title)
+          expect(response).not_to have_key(:instructions)
+          expect(response[:protocolVersion]).to eq("2025-06-18")
+          expect(response[:capabilities]).to be_a(Hash)
+        end
+      end
+
+      it "includes title in serverInfo when configured" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.title = "My Awesome Test Server"
+          config.registry = registry
+        end
+
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo][:title]).to eq("My Awesome Test Server")
+          expect(response).not_to have_key(:instructions)
+        end
+      end
+
+      it "includes instructions when configured" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.instructions = "This server provides test prompts and resources for development."
+          config.registry = registry
+        end
+
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo]).not_to have_key(:title)
+          expect(response[:instructions]).to eq("This server provides test prompts and resources for development.")
+        end
+      end
+
+      it "includes both title and instructions when both are configured" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.title = "Development Test Server"
+          config.instructions = "Use this server for testing MCP functionality. Available tools include prompt completion and resource access."
+          config.registry = registry
+        end
+
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo][:title]).to eq("Development Test Server")
+          expect(response[:instructions]).to eq("Use this server for testing MCP functionality. Available tools include prompt completion and resource access.")
+          expect(response[:protocolVersion]).to eq("2025-06-18")
+          expect(response[:capabilities]).to be_a(Hash)
+        end
+      end
+    end
+
     describe "cursor TTL functionality" do
       let(:short_ttl_server) do
         described_class.new do |config|
