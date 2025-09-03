@@ -281,4 +281,401 @@ RSpec.describe ModelContextProtocol::Server::Registry do
       end
     end
   end
+
+  describe "pagination support" do
+    let(:large_registry) do
+      described_class.new do
+        prompts do
+          15.times do |i|
+            prompt_class = Class.new(ModelContextProtocol::Server::Prompt) do
+              define_method(:call) do |args, logger, context|
+                ModelContextProtocol::Server::GetPromptResponse[
+                  description: "Test prompt #{i}",
+                  messages: [
+                    {
+                      role: "user",
+                      content: {
+                        type: "text",
+                        text: "Test prompt #{i} content"
+                      }
+                    }
+                  ]
+                ]
+              end
+            end
+            prompt_class.define_singleton_method(:metadata) do
+              {
+                name: "prompt_#{i}",
+                description: "Test prompt #{i}",
+                arguments: [{name: "input", description: "Input parameter"}]
+              }
+            end
+            register prompt_class
+          end
+        end
+
+        resources do
+          12.times do |i|
+            resource_class = Class.new(ModelContextProtocol::Server::Resource) do
+              define_method(:call) do |logger, context|
+                ModelContextProtocol::Server::ReadResourceResponse[
+                  contents: [
+                    {
+                      uri: "file:///resource_#{i}.txt",
+                      mimeType: "text/plain",
+                      text: "Content #{i}"
+                    }
+                  ]
+                ]
+              end
+            end
+            resource_class.define_singleton_method(:metadata) do
+              {
+                name: "resource_#{i}",
+                description: "Test resource #{i}",
+                uri: "file:///resource_#{i}.txt",
+                mimeType: "text/plain"
+              }
+            end
+            register resource_class
+          end
+        end
+
+        resource_templates do
+          8.times do |i|
+            template_class = Class.new(ModelContextProtocol::Server::ResourceTemplate)
+            template_class.define_singleton_method(:metadata) do
+              {
+                name: "template_#{i}",
+                description: "Test template #{i}",
+                uriTemplate: "file:///templates/{name}_#{i}",
+                mimeType: "text/plain"
+              }
+            end
+            register template_class
+          end
+        end
+
+        tools do
+          20.times do |i|
+            tool_class = Class.new(ModelContextProtocol::Server::Tool) do
+              define_method(:call) do |args, logger, context|
+                ModelContextProtocol::Server::CallToolResponse[
+                  content: [
+                    {
+                      type: "text",
+                      text: "Tool #{i} executed"
+                    }
+                  ]
+                ]
+              end
+            end
+            tool_class.define_singleton_method(:metadata) do
+              {
+                name: "tool_#{i}",
+                description: "Test tool #{i}",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    input: {type: "string"}
+                  }
+                }
+              }
+            end
+            register tool_class
+          end
+        end
+      end
+    end
+
+    describe "#prompts_data with pagination" do
+      it "returns all prompts without pagination parameters" do
+        result = large_registry.prompts_data
+
+        aggregate_failures do
+          expect(result.prompts.length).to eq(15)
+          expect(result.next_cursor).to be_nil
+          expect(result.serialized).not_to have_key(:nextCursor)
+        end
+      end
+
+      it "returns first page when page_size is provided" do
+        result = large_registry.prompts_data(page_size: 5)
+
+        aggregate_failures do
+          expect(result.prompts.length).to eq(5)
+          expect(result.prompts.first[:name]).to eq("prompt_0")
+          expect(result.prompts.last[:name]).to eq("prompt_4")
+          expect(result.next_cursor).not_to be_nil
+          expect(result.serialized[:nextCursor]).not_to be_nil
+        end
+      end
+
+      it "returns subsequent page with cursor" do
+        first_page = large_registry.prompts_data(page_size: 5)
+        second_page = large_registry.prompts_data(
+          cursor: first_page.next_cursor,
+          page_size: 5
+        )
+
+        aggregate_failures do
+          expect(second_page.prompts.length).to eq(5)
+          expect(second_page.prompts.first[:name]).to eq("prompt_5")
+          expect(second_page.prompts.last[:name]).to eq("prompt_9")
+          expect(second_page.next_cursor).not_to be_nil
+        end
+      end
+
+      it "returns last page with no cursor" do
+        first_page = large_registry.prompts_data(page_size: 5)
+        second_page = large_registry.prompts_data(
+          cursor: first_page.next_cursor,
+          page_size: 5
+        )
+        last_page = large_registry.prompts_data(
+          cursor: second_page.next_cursor,
+          page_size: 5
+        )
+
+        aggregate_failures do
+          expect(last_page.prompts.length).to eq(5)
+          expect(last_page.prompts.first[:name]).to eq("prompt_10")
+          expect(last_page.prompts.last[:name]).to eq("prompt_14")
+          expect(last_page.next_cursor).to be_nil
+          expect(last_page.serialized).not_to have_key(:nextCursor)
+        end
+      end
+
+      it "applies cursor TTL when provided" do
+        result = large_registry.prompts_data(page_size: 5, cursor_ttl: 1800)
+        cursor_data = JSON.parse(Base64.urlsafe_decode64(result.next_cursor))
+
+        aggregate_failures do
+          expect(result.next_cursor).not_to be_nil
+          expect(cursor_data["expires_at"]).to be > Time.now.to_i
+        end
+      end
+
+      it "excludes klass from paginated results" do
+        result = large_registry.prompts_data(page_size: 3)
+
+        result.prompts.each do |prompt|
+          aggregate_failures do
+            expect(prompt).not_to have_key(:klass)
+            expect(prompt).to have_key(:name)
+            expect(prompt).to have_key(:description)
+          end
+        end
+      end
+    end
+
+    describe "#resources_data with pagination" do
+      it "returns all resources without pagination parameters" do
+        result = large_registry.resources_data
+
+        aggregate_failures do
+          expect(result.resources.length).to eq(12)
+          expect(result.next_cursor).to be_nil
+        end
+      end
+
+      it "paginates resources correctly" do
+        result = large_registry.resources_data(page_size: 4)
+
+        aggregate_failures do
+          expect(result.resources.length).to eq(4)
+          expect(result.resources.first[:name]).to eq("resource_0")
+          expect(result.resources.last[:name]).to eq("resource_3")
+          expect(result.next_cursor).not_to be_nil
+        end
+      end
+
+      it "handles last page correctly" do
+        page1 = large_registry.resources_data(page_size: 4)
+        page2 = large_registry.resources_data(cursor: page1.next_cursor, page_size: 4)
+        page3 = large_registry.resources_data(cursor: page2.next_cursor, page_size: 4)
+
+        aggregate_failures do
+          expect(page3.resources.length).to eq(4)
+          expect(page3.resources.first[:name]).to eq("resource_8")
+          expect(page3.resources.last[:name]).to eq("resource_11")
+          expect(page3.next_cursor).to be_nil
+        end
+      end
+
+      it "serializes paginated resources correctly" do
+        result = large_registry.resources_data(page_size: 3)
+        serialized = result.serialized
+
+        aggregate_failures do
+          expect(serialized[:resources].length).to eq(3)
+          expect(serialized[:nextCursor]).to be_a(String)
+          expect(serialized[:resources].first).to include(:name, :uri, :description, :mimeType)
+          expect(serialized[:resources].first).not_to have_key(:klass)
+        end
+      end
+    end
+
+    describe "#resource_templates_data with pagination" do
+      it "returns all templates without pagination parameters" do
+        result = large_registry.resource_templates_data
+
+        aggregate_failures do
+          expect(result.resource_templates.length).to eq(8)
+          expect(result.next_cursor).to be_nil
+        end
+      end
+
+      it "paginates resource templates correctly" do
+        result = large_registry.resource_templates_data(page_size: 3)
+
+        aggregate_failures do
+          expect(result.resource_templates.length).to eq(3)
+          expect(result.resource_templates.first[:name]).to eq("template_0")
+          expect(result.resource_templates.last[:name]).to eq("template_2")
+          expect(result.next_cursor).not_to be_nil
+        end
+      end
+
+      it "handles multiple pages correctly" do
+        page1 = large_registry.resource_templates_data(page_size: 3)
+        page2 = large_registry.resource_templates_data(
+          cursor: page1.next_cursor,
+          page_size: 3
+        )
+
+        aggregate_failures do
+          expect(page2.resource_templates.length).to eq(3)
+          expect(page2.resource_templates.first[:name]).to eq("template_3")
+          expect(page2.resource_templates.last[:name]).to eq("template_5")
+          expect(page2.next_cursor).not_to be_nil
+        end
+      end
+
+      it "excludes completions and klass from results" do
+        result = large_registry.resource_templates_data(page_size: 2)
+
+        result.resource_templates.each do |template|
+          aggregate_failures do
+            expect(template).not_to have_key(:klass)
+            expect(template).not_to have_key(:completions)
+            expect(template).to have_key(:name)
+            expect(template).to have_key(:uriTemplate)
+          end
+        end
+      end
+    end
+
+    describe "#tools_data with pagination" do
+      it "returns all tools without pagination parameters" do
+        result = large_registry.tools_data
+
+        aggregate_failures do
+          expect(result.tools.length).to eq(20)
+          expect(result.next_cursor).to be_nil
+        end
+      end
+
+      it "paginates tools correctly" do
+        result = large_registry.tools_data(page_size: 6)
+
+        aggregate_failures do
+          expect(result.tools.length).to eq(6)
+          expect(result.tools.first[:name]).to eq("tool_0")
+          expect(result.tools.last[:name]).to eq("tool_5")
+          expect(result.next_cursor).not_to be_nil
+        end
+      end
+
+      it "handles remainder pages correctly" do
+        page1 = large_registry.tools_data(page_size: 6)
+        page2 = large_registry.tools_data(cursor: page1.next_cursor, page_size: 6)
+        page3 = large_registry.tools_data(cursor: page2.next_cursor, page_size: 6)
+        page4 = large_registry.tools_data(cursor: page3.next_cursor, page_size: 6)
+
+        aggregate_failures do
+          expect(page1.tools.length).to eq(6)
+          expect(page2.tools.length).to eq(6)
+          expect(page3.tools.length).to eq(6)
+          expect(page4.tools.length).to eq(2)
+          expect(page4.tools.first[:name]).to eq("tool_18")
+          expect(page4.tools.last[:name]).to eq("tool_19")
+          expect(page4.next_cursor).to be_nil
+        end
+      end
+
+      it "serializes with proper nextCursor format" do
+        result = large_registry.tools_data(page_size: 5)
+        serialized = result.serialized
+
+        aggregate_failures do
+          expect(serialized).to have_key(:tools)
+          expect(serialized).to have_key(:nextCursor)
+          expect(serialized[:tools]).to be_an(Array)
+          expect(serialized[:nextCursor]).to be_a(String)
+          expect(serialized[:nextCursor]).not_to be_empty
+        end
+      end
+    end
+
+    describe "cursor edge cases" do
+      it "handles invalid cursors gracefully" do
+        expect {
+          large_registry.prompts_data(cursor: "invalid_cursor")
+        }.to raise_error(ModelContextProtocol::Server::Pagination::InvalidCursorError)
+      end
+
+      it "handles cursor pointing beyond collection" do
+        fake_cursor = ModelContextProtocol::Server::Pagination.encode_cursor(999, 1000)
+        result = large_registry.prompts_data(cursor: fake_cursor, page_size: 5)
+
+        aggregate_failures do
+          expect(result.prompts).to be_empty
+          expect(result.next_cursor).to be_nil
+        end
+      end
+
+      it "respects page size limits" do
+        result = large_registry.prompts_data(page_size: 100)
+
+        aggregate_failures do
+          expect(result.prompts.length).to eq(15) # All items
+          expect(result.next_cursor).to be_nil
+        end
+      end
+    end
+
+    describe "mixed pagination parameters" do
+      it "processes cursor with custom page_size" do
+        first_page = large_registry.tools_data(page_size: 3)
+        second_page = large_registry.tools_data(
+          cursor: first_page.next_cursor,
+          page_size: 5
+        )
+
+        aggregate_failures do
+          expect(first_page.tools.length).to eq(3)
+          expect(second_page.tools.length).to eq(5)
+          expect(second_page.tools.first[:name]).to eq("tool_3")
+          expect(second_page.tools.last[:name]).to eq("tool_7")
+        end
+      end
+
+      it "uses provided cursor_ttl parameter" do
+        custom_ttl = 7200
+        result = large_registry.resources_data(page_size: 4, cursor_ttl: custom_ttl)
+        cursor_data = JSON.parse(Base64.urlsafe_decode64(result.next_cursor))
+        expected_expiry = Time.now.to_i + custom_ttl
+
+        expect(cursor_data["expires_at"]).to be_within(5).of(expected_expiry)
+      end
+
+      it "handles nil cursor_ttl (no expiration)" do
+        result = large_registry.prompts_data(page_size: 3, cursor_ttl: nil)
+        cursor_data = JSON.parse(Base64.urlsafe_decode64(result.next_cursor))
+
+        expect(cursor_data).not_to have_key("expires_at")
+      end
+    end
+  end
 end
