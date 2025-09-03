@@ -6,6 +6,24 @@ This SDK is experimental and subject to change. The initial focus is to implemen
 
 You are welcome to contribute.
 
+## Feature Support (Server)
+
+| Status | Feature |
+|--------|---------|
+| ✅ | Prompts |
+| ✅ | Resources |
+| ✅ | Resource Templates |
+| ✅ | Tools |
+| ✅ | Completion |
+| ✅ | Logging |
+| ✅ | Pagination |
+| ✅ | STDIO Transport|
+| 🚧 | Streamable HTTP Transport|
+| ❌ | List Changed Notification (Prompts) |
+| ❌ | List Changed Notification (Resources) |
+| ❌ | Subscriptions (Resources) |
+| ❌ | List Changed Notification (Tools) |
+
 TODO's:
 
 * [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
