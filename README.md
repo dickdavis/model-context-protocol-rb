@@ -1,6 +1,6 @@
 # model-context-protocol-rb
 
-An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2024-11-05/) in Ruby.
+An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2025-06-18/) in Ruby.
 
 This SDK is experimental and subject to change. The initial focus is to implement MCP server support with the goal of providing a stable API by version `0.4`. MCP client support will follow. 
 
@@ -191,7 +191,7 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 #### Prompts
 
-The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/) in the `with_metadata` block.
+The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) in the `with_metadata` block.
 
 Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
@@ -275,7 +275,7 @@ end
 
 #### Resources
 
-The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/) in the `with_metadata` block.
+The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `with_metadata` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `with_annotations` block.
 
 Then, implement the `call` method to build your resource. Any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
@@ -310,6 +310,29 @@ class TestResource < ModelContextProtocol::Server::Resource
 end
 ```
 
+This is an example resource with annotations:
+
+```ruby
+class TestAnnotatedResource < ModelContextProtocol::Server::Resource
+  with_metadata do
+    name "annotated-document.md"
+    description "A document with annotations showing priority and audience"
+    mime_type "text/markdown"
+    uri "file:///docs/annotated-document.md"
+
+    with_annotations do
+      audience [:user, :assistant]
+      priority 0.9
+      last_modified "2025-01-12T15:00:58Z"
+    end
+  end
+
+  def call
+    respond_with :text, text: "# Annotated Document\n\nThis document has annotations."
+  end
+end
+```
+
 This is an example resource that returns binary data:
 
 ```ruby
@@ -332,7 +355,7 @@ end
 
 #### Resource Templates
 
-The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2024-11-05/server/resources#resource-templates) in the `with_metadata` block.
+The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates) in the `with_metadata` block.
 
 This is an example resource template that provides a completion for a parameter of the URI template:
 
@@ -360,7 +383,7 @@ end
 
 #### Tools
 
-The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/tools/) in the `with_metadata` block.
+The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) in the `with_metadata` block.
 
 Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
@@ -476,27 +499,37 @@ This is an example of a tool that returns a resource response:
 ```ruby
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    name "document-finder"
-    description "Finds a the document with the given title"
+    name "resource-finder"
+    description "Finds a resource given a name"
     input_schema do
       {
         type: "object",
         properties: {
-          title: {
+          name: {
             type: "string",
-            description: "The title of the document"
+            description: "The name of the resource"
           }
         },
-        required: ["title"]
+        required: ["name"]
       }
     end
   end
 
+  RESOURCE_MAPPINGS = {
+    test_annotated_resource: TestAnnotatedResource,
+    test_binary_resource: TestBinaryResource,
+    test_resource: TestResource
+  }.freeze
+
   def call
-    title = arguments[:title].downcase
-    # In a real implementation, we would do a lookup to get the document data
-    document = "richtextdata"
-    respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
+    name = arguments[:name]
+    resource_klass = RESOURCE_MAPPINGS[name.downcase.to_sym]
+
+    if resource_klass
+      respond_with :resource, resource: resource_klass
+    else
+      respond_with :error, text: "Resource `#{name}` not found"
+    end
   end
 end
 ```
