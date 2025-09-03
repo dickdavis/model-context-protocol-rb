@@ -42,8 +42,28 @@ Build a simple MCP server by registering your prompts, resources, resource templ
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
-  config.name = "MCP Development Server"
+  # Name of the MCP server (intended for programmatic use)
+  config.name = "MCPDevelopmentServer"
+
+  # Version of the MCP server
   config.version = "1.0.0"
+
+  # Optional: human-readable display name for the MCP server
+  config.title = "My Awesome Server"
+
+  # Optional: instuctions for how the MCP server should be used by LLMs
+  config.instructions = <<~INSTRUCTIONS
+    This server provides file system access and development tools.
+
+    Key capabilities:
+    - Read and write files in the project directory
+    - Execute shell commands for development tasks
+    - Analyze code structure and dependencies
+
+    Use this server when you need to interact with the local development environment.
+  INSTRUCTIONS
+
+  # Enable or disable MCP server logging
   config.logging_enabled = true
 
   # Configure pagination options for the following methods:
@@ -54,22 +74,33 @@ server = ModelContextProtocol::Server.new do |config|
     cursor_ttl: 1800         # Cursor expiry in seconds (30 minutes)
   }
 
-  # Disable pagination support
+  # Disable pagination support (enabled by default)
   # config.pagination = false
 
-  # Environment Variables - https://modelcontextprotocol.io/docs/tools/debugging#environment-variables
-  # Require specific environment variables to be set
+  # Optional: require specific environment variables to be set
   config.require_environment_variable("API_KEY")
 
-  # Set environment variables programmatically
+  # Optional: set environment variables programmatically
   config.set_environment_variable("DEBUG_MODE", "true")
 
-  # Provide prompts, resources, and tools with contextual variables
+  # Optional: provide prompts, resources, and tools with contextual variables
   config.context = {
     user_id: "123456",
     request_id: SecureRandom.uuid
   }
 
+  # Optional: explicitly specify STDIO as the transport
+  # This is not necessary as STDIO is the default transport
+  # config.transport = { type: :stdio }
+ 
+  # Optional: configure streamable HTTP transport if required
+  # config.transport = {
+  #   type: :streamable_http,
+  #   redis_client: Redis.new(url: ENV['REDIS_URL']),
+  #   session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
+  # }
+
+  # Register prompts, resources, resource templates, and tools
   config.registry = ModelContextProtocol::Server::Registry.new do
     prompts list_changed: true do
       register TestPrompt
@@ -89,79 +120,67 @@ server = ModelContextProtocol::Server.new do |config|
   end
 end
 
+# Start the MCP server
 server.start
 ```
-
-### Transport Configuration
-
-The MCP server supports different transport mechanisms for communication with clients. By default, it uses stdio (standard input/output), but you can also configure it to use streamable HTTP transport for distributed deployments.
-
-#### Stdio Transport (Default)
-
-When no transport is specified, the server uses stdio transport, which is suitable for single-process communication:
-
-```ruby
-server = ModelContextProtocol::Server.new do |config|
-  config.name = "MCP Development Server"
-  config.version = "1.0.0"
-  # No transport specified - uses stdio by default
-  config.registry = ModelContextProtocol::Server::Registry.new
-end
-
-server.start
-```
-
-#### Streamable HTTP Transport
-
-For distributed deployments with load balancers and multiple server instances, use the streamable HTTP transport with Redis-backed session management:
-
-```ruby
-require 'redis'
-
-server = ModelContextProtocol::Server.new do |config|
-  config.name = "MCP Development Server"
-  config.version = "1.0.0"
-
-  # Configure streamable HTTP transport
-  config.transport = {
-    type: :streamable_http,
-    redis_client: Redis.new(url: ENV['REDIS_URL']),
-    session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
-  }
-
-  config.registry = ModelContextProtocol::Server::Registry.new
-end
-
-# For HTTP frameworks, handle the request and return the response
-result = server.start
-# result will be a hash like: {json: {...}, status: 200, headers: {...}}
-```
-
-**Key Features:**
-- **Distributed Sessions**: Redis-backed session storage enables multiple server instances
-- **Load Balancer Support**: Sessions persist across different server instances  
-- **HTTP Methods**: Supports POST (requests), GET (Server-Sent Events), DELETE (cleanup)
-- **Cross-Server Routing**: Messages are routed between servers via Redis pub/sub
 
 **Integration Example (Rails):**
 
+First, set the routes:
+
 ```ruby
-class McpController < ApplicationController
+constraints format: :json do
+  get "/mcp", to: "model_context_protocol#handle", as: :mcp_get
+  post "/mcp", to: "model_context_protocol#handle", as: :mcp_post
+  delete "/mcp", to: "model_context_protocol#handle", as: :mcp_delete
+end
+```
+
+Then, implement a controller endpoint to handle the requests.
+
+```ruby
+require 'model_context_protocol'
+
+class ModelContextProtocolController < ApplicationController
   def handle
     server = ModelContextProtocol::Server.new do |config|
-      config.name = "Rails MCP Server"
+      config.name = "MyMCPServer"
+      config.title = "My MCP Server"
       config.version = "1.0.0"
+      config.logging_enabled = true
+      config.context = { user_id: current_user.id }
+      config.registry = build_registry
       config.transport = {
         type: :streamable_http,
         redis_client: Redis.new(url: ENV['REDIS_URL']),
         request: request,
         response: response
       }
-      config.registry = build_registry
+      config.instructions = <<~INSTRUCTIONS
+        This server provides prompts, tools, and resources for interacting with my app.
+
+        Key capabilities:
+        - Does this one thing
+        - Does this other thing
+        - Oh, yeah, and it does that one thing, too
+
+        Use this server when you need to do stuff.
+      INSTRUCTIONS
     end
 
     result = server.start
     render json: result[:json], status: result[:status], headers: result[:headers]
+  end
+
+  private
+
+  def build_registry
+    ModelContextProtocol::Server::Registry.new do
+      tools do
+        # Implement user authorization logic to dynamically build registry
+        register TestTool if current_user.authorized_for?(TestTool)
+      end
+    end
   end
 end
 ```
