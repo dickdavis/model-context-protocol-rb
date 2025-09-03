@@ -31,6 +31,7 @@ server = ModelContextProtocol::Server.new do |config|
 
     resources list_changed: true, subscribe: true do
       register TestResource
+      register TestAnnotatedResource
       register TestBinaryResource
     end
 
@@ -43,7 +44,6 @@ server = ModelContextProtocol::Server.new do |config|
       register TestToolWithImageResponse
       register TestToolWithImageResponseDefaultMimeType
       register TestToolWithResourceResponse
-      register TestToolWithResourceResponseDefaultMimeType
       register TestToolWithToolErrorResponse
     end
   end

@@ -1,25 +1,35 @@
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   with_metadata do
-    name "document-finder"
-    description "Finds a the document with the given title"
+    name "resource-finder"
+    description "Finds a resource given a name"
     input_schema do
       {
         type: "object",
         properties: {
-          title: {
+          name: {
             type: "string",
-            description: "The title of the document"
+            description: "The name of the resource"
           }
         },
-        required: ["title"]
+        required: ["name"]
       }
     end
   end
 
+  RESOURCE_MAPPINGS = {
+    test_annotated_resource: TestAnnotatedResource,
+    test_binary_resource: TestBinaryResource,
+    test_resource: TestResource
+  }.freeze
+
   def call
-    title = arguments[:title].downcase
-    # In a real implementation, we would do a lookup to get the document data
-    document = "richtextdata"
-    respond_with :resource, uri: "resource://document/#{title}", text: document, mime_type: "application/rtf"
+    name = arguments[:name]
+    resource_klass = RESOURCE_MAPPINGS[name.downcase.to_sym]
+
+    if resource_klass
+      respond_with :resource, resource: resource_klass
+    else
+      respond_with :error, text: "Resource `#{name}` not found"
+    end
   end
 end
