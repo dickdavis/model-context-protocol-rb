@@ -293,6 +293,114 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
         end
       end
     end
+
+    context "with valid pagination settings" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+      end
+
+      it "validates successfully with defaults" do
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "validates successfully with custom settings" do
+        configuration.pagination = {
+          default_page_size: 50,
+          max_page_size: 500,
+          cursor_ttl: 1800
+        }
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+
+      it "validates successfully when disabled" do
+        configuration.pagination = false
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+    end
+
+    context "with invalid pagination settings" do
+      before do
+        configuration.name = "test-server"
+        configuration.registry = registry
+        configuration.version = "1.0.0"
+      end
+
+      it "raises error when default_page_size is zero" do
+        configuration.pagination = {default_page_size: 0}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination default_page_size: must be between 1 and 1000/
+        )
+      end
+
+      it "raises error when default_page_size is negative" do
+        configuration.pagination = {default_page_size: -10}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination default_page_size: must be between 1 and 1000/
+        )
+      end
+
+      it "raises error when default_page_size exceeds max_page_size" do
+        configuration.pagination = {
+          default_page_size: 1000,
+          max_page_size: 100
+        }
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination default_page_size: must be between 1 and 100/
+        )
+      end
+
+      it "raises error when max_page_size is zero" do
+        configuration.pagination = {max_page_size: 0}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination max_page_size: must be positive/
+        )
+      end
+
+      it "raises error when max_page_size is negative" do
+        configuration.pagination = {max_page_size: -5}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination max_page_size: must be positive/
+        )
+      end
+
+      it "raises error when cursor_ttl is zero" do
+        configuration.pagination = {cursor_ttl: 0}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination cursor_ttl: must be positive or nil/
+        )
+      end
+
+      it "raises error when cursor_ttl is negative" do
+        configuration.pagination = {cursor_ttl: -100}
+
+        expect { configuration.validate! }.to raise_error(
+          described_class::InvalidPaginationError,
+          /Invalid pagination cursor_ttl: must be positive or nil/
+        )
+      end
+
+      it "allows cursor_ttl to be nil" do
+        configuration.pagination = {cursor_ttl: nil}
+
+        expect { configuration.validate! }.not_to raise_error
+      end
+    end
   end
 
   describe "environment variables" do
@@ -471,6 +579,108 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       it "returns empty hash for nil transport" do
         configuration.transport = nil
         expect(configuration.transport_options).to eq({})
+      end
+    end
+  end
+
+  describe "#pagination_enabled?" do
+    it "returns true by default" do
+      expect(configuration.pagination_enabled?).to be true
+    end
+
+    it "returns true when pagination is nil" do
+      configuration.pagination = nil
+      expect(configuration.pagination_enabled?).to be true
+    end
+
+    it "returns true when pagination is empty hash" do
+      configuration.pagination = {}
+      expect(configuration.pagination_enabled?).to be true
+    end
+
+    it "returns true when pagination hash has enabled: true" do
+      configuration.pagination = {enabled: true}
+      expect(configuration.pagination_enabled?).to be true
+    end
+
+    it "returns false when pagination hash has enabled: false" do
+      configuration.pagination = {enabled: false}
+      expect(configuration.pagination_enabled?).to be false
+    end
+
+    it "returns false when pagination is false" do
+      configuration.pagination = false
+      expect(configuration.pagination_enabled?).to be false
+    end
+
+    it "returns true for any other value" do
+      configuration.pagination = "anything"
+      expect(configuration.pagination_enabled?).to be true
+    end
+  end
+
+  describe "#pagination_options" do
+    context "when pagination is not set" do
+      it "returns default options" do
+        expect(configuration.pagination_options).to eq({
+          enabled: true,
+          default_page_size: 100,
+          max_page_size: 1000,
+          cursor_ttl: 3600
+        })
+      end
+    end
+
+    context "when pagination is false" do
+      it "returns disabled options" do
+        configuration.pagination = false
+        expect(configuration.pagination_options).to eq({enabled: false})
+      end
+    end
+
+    context "when pagination is a hash" do
+      it "merges with defaults" do
+        configuration.pagination = {
+          default_page_size: 50,
+          max_page_size: 500
+        }
+
+        expect(configuration.pagination_options).to eq({
+          enabled: true,
+          default_page_size: 50,
+          max_page_size: 500,
+          cursor_ttl: 3600
+        })
+      end
+
+      it "respects explicit enabled: false" do
+        configuration.pagination = {
+          enabled: false,
+          default_page_size: 25
+        }
+
+        expect(configuration.pagination_options).to eq({
+          enabled: false,
+          default_page_size: 25,
+          max_page_size: 1000,
+          cursor_ttl: 3600
+        })
+      end
+
+      it "handles all custom options" do
+        configuration.pagination = {
+          enabled: true,
+          default_page_size: 20,
+          max_page_size: 200,
+          cursor_ttl: 1800
+        }
+
+        expect(configuration.pagination_options).to eq({
+          enabled: true,
+          default_page_size: 20,
+          max_page_size: 200,
+          cursor_ttl: 1800
+        })
       end
     end
   end

@@ -20,14 +20,16 @@ module ModelContextProtocol
     # Raised when an invalid log level is provided
     class InvalidLogLevelError < StandardError; end
 
+    # Raised when pagination configuration is invalid
+    class InvalidPaginationError < StandardError; end
+
     # Valid MCP log levels per the specification
     VALID_LOG_LEVELS = %w[debug info notice warning error critical alert emergency].freeze
 
-    attr_accessor :name, :registry, :version, :transport
+    attr_accessor :name, :registry, :version, :transport, :pagination
     attr_reader :logger
 
     def initialize
-      # Always create a logger - enabled by default
       @logging_enabled = true
       @default_log_level = "info"
       @logger = ModelContextProtocol::Server::MCPLogger.new(
@@ -77,11 +79,46 @@ module ModelContextProtocol
       end
     end
 
+    def pagination_enabled?
+      return true if pagination.nil?
+
+      case pagination
+      when Hash
+        pagination[:enabled] != false
+      when false
+        false
+      else
+        true
+      end
+    end
+
+    def pagination_options
+      case pagination
+      when Hash
+        {
+          enabled: pagination[:enabled] != false,
+          default_page_size: pagination[:default_page_size] || 100,
+          max_page_size: pagination[:max_page_size] || 1000,
+          cursor_ttl: pagination[:cursor_ttl] || 3600
+        }
+      when false
+        {enabled: false}
+      else
+        {
+          enabled: true,
+          default_page_size: 100,
+          max_page_size: 1000,
+          cursor_ttl: 3600
+        }
+      end
+    end
+
     def validate!
       raise InvalidServerNameError unless valid_name?
       raise InvalidRegistryError unless valid_registry?
       raise InvalidServerVersionError unless valid_version?
       validate_transport!
+      validate_pagination!
 
       validate_environment_variables!
     end
@@ -164,6 +201,24 @@ module ModelContextProtocol
       redis_client = options[:redis_client]
       unless redis_client.respond_to?(:hset) && redis_client.respond_to?(:expire)
         raise InvalidTransportError, "redis_client must be a Redis-compatible client"
+      end
+    end
+
+    def validate_pagination!
+      return unless pagination_enabled?
+
+      opts = pagination_options
+
+      if opts[:max_page_size] <= 0
+        raise InvalidPaginationError, "Invalid pagination max_page_size: must be positive"
+      end
+
+      if opts[:default_page_size] <= 0 || opts[:default_page_size] > opts[:max_page_size]
+        raise InvalidPaginationError, "Invalid pagination default_page_size: must be between 1 and #{opts[:max_page_size]}"
+      end
+
+      if opts[:cursor_ttl] && opts[:cursor_ttl] <= 0
+        raise InvalidPaginationError, "Invalid pagination cursor_ttl: must be positive or nil"
       end
     end
   end

@@ -74,45 +74,121 @@ module ModelContextProtocol
       find_by_name(@tools, name)
     end
 
-    def prompts_data
-      PromptsData[prompts: @prompts.map { |entry| entry.except(:klass) }]
+    def prompts_data(cursor: nil, page_size: nil, cursor_ttl: nil)
+      items = @prompts.map { |entry| entry.except(:klass) }
+
+      if cursor || page_size
+        paginated = Server::Pagination.paginate(
+          items,
+          cursor: cursor,
+          page_size: page_size || 100,
+          cursor_ttl: cursor_ttl
+        )
+
+        PromptsData[prompts: paginated.items, next_cursor: paginated.next_cursor]
+      else
+        PromptsData[prompts: items]
+      end
     end
 
-    def resources_data
-      ResourcesData[resources: @resources.map { |entry| entry.except(:klass) }]
+    def resources_data(cursor: nil, page_size: nil, cursor_ttl: nil)
+      items = @resources.map { |entry| entry.except(:klass) }
+
+      if cursor || page_size
+        paginated = Server::Pagination.paginate(
+          items,
+          cursor: cursor,
+          page_size: page_size || 100,
+          cursor_ttl: cursor_ttl
+        )
+
+        ResourcesData[resources: paginated.items, next_cursor: paginated.next_cursor]
+      else
+        ResourcesData[resources: items]
+      end
     end
 
-    def resource_templates_data
-      ResourceTemplatesData[resource_templates: @resource_templates.map { |entry| entry.except(:klass, :completions) }]
+    def resource_templates_data(cursor: nil, page_size: nil, cursor_ttl: nil)
+      items = @resource_templates.map { |entry| entry.except(:klass, :completions) }
+
+      if cursor || page_size
+        paginated = Server::Pagination.paginate(
+          items,
+          cursor: cursor,
+          page_size: page_size || 100,
+          cursor_ttl: cursor_ttl
+        )
+
+        ResourceTemplatesData[resource_templates: paginated.items, next_cursor: paginated.next_cursor]
+      else
+        ResourceTemplatesData[resource_templates: items]
+      end
     end
 
-    def tools_data
-      ToolsData[tools: @tools.map { |entry| entry.except(:klass) }]
+    def tools_data(cursor: nil, page_size: nil, cursor_ttl: nil)
+      items = @tools.map { |entry| entry.except(:klass) }
+
+      if cursor || page_size
+        paginated = Server::Pagination.paginate(
+          items,
+          cursor: cursor,
+          page_size: page_size || 100,
+          cursor_ttl: cursor_ttl
+        )
+
+        ToolsData[tools: paginated.items, next_cursor: paginated.next_cursor]
+      else
+        ToolsData[tools: items]
+      end
     end
 
     private
 
-    PromptsData = Data.define(:prompts) do
+    PromptsData = Data.define(:prompts, :next_cursor) do
+      def initialize(prompts:, next_cursor: nil)
+        super
+      end
+
       def serialized
-        {prompts:}
+        result = {prompts:}
+        result[:nextCursor] = next_cursor if next_cursor
+        result
       end
     end
 
-    ResourcesData = Data.define(:resources) do
+    ResourcesData = Data.define(:resources, :next_cursor) do
+      def initialize(resources:, next_cursor: nil)
+        super
+      end
+
       def serialized
-        {resources:}
+        result = {resources:}
+        result[:nextCursor] = next_cursor if next_cursor
+        result
       end
     end
 
-    ResourceTemplatesData = Data.define(:resource_templates) do
+    ResourceTemplatesData = Data.define(:resource_templates, :next_cursor) do
+      def initialize(resource_templates:, next_cursor: nil)
+        super
+      end
+
       def serialized
-        {resourceTemplates: resource_templates}
+        result = {resourceTemplates: resource_templates}
+        result[:nextCursor] = next_cursor if next_cursor
+        result
       end
     end
 
-    ToolsData = Data.define(:tools) do
+    ToolsData = Data.define(:tools, :next_cursor) do
+      def initialize(tools:, next_cursor: nil)
+        super
+      end
+
       def serialized
-        {tools:}
+        result = {tools:}
+        result[:nextCursor] = next_cursor if next_cursor
+        result
       end
     end
 

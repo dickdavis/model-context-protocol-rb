@@ -8,7 +8,6 @@ You are welcome to contribute.
 
 TODO's:
 
-* [Pagination](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/utilities/pagination/)
 * [Prompt list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/prompts/#list-changed-notification)
 * [Resource list changed notifications](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#list-changed-notification)
 * [Resource subscriptions](https://spec.modelcontextprotocol.io/specification/2024-11-05/server/resources/#subscriptions)
@@ -31,6 +30,17 @@ server = ModelContextProtocol::Server.new do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
   config.logging_enabled = true
+
+  # Configure pagination options for the following methods:
+  # prompts/list, resources/list, resource_template/list, tools/list
+  config.pagination = {
+    default_page_size: 50,   # Default items per page
+    max_page_size: 500,      # Maximum allowed page size
+    cursor_ttl: 1800         # Cursor expiry in seconds (30 minutes)
+  }
+
+  # Disable pagination support
+  # config.pagination = false
 
   # Environment Variables - https://modelcontextprotocol.io/docs/tools/debugging#environment-variables
   # Require specific environment variables to be set
@@ -141,9 +151,9 @@ class McpController < ApplicationController
 end
 ```
 
-Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
-
 ### Server features
+
+Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
 #### Prompts
 

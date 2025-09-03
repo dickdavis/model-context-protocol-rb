@@ -11,6 +11,12 @@ server = ModelContextProtocol::Server.new do |config|
   config.version = "1.0.0"
   config.logging_enabled = true
 
+  config.pagination = {
+    default_page_size: 10,
+    max_page_size: 20,
+    cursor_ttl: 1800
+  }
+
   config.set_environment_variable("MCP_ENV", "development")
 
   config.context = {
