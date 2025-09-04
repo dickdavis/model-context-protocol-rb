@@ -199,7 +199,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
               type: "resource",
               resource: {
                 mimeType: "text/plain",
-                text: "Nothing to see here, move along.",
+                text: "I'm finna eat all my wife's leftovers.",
                 uri: "file:///top-secret-plans.txt"
               }
             ],

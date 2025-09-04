@@ -277,9 +277,7 @@ end
 
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `with_metadata` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `with_annotations` block.
 
-Then, implement the `call` method to build your resource. Any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
-
-You can also log from within your resource by calling a valid logger level method on the `logger` and passing a string message.
+Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
 This is an example resource that returns a text response:
 
@@ -293,19 +291,7 @@ class TestResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    unless authorized?(context[:user_id])
-      logger.info("This fool thinks he can get my top secret plans...")
-      return respond_with :text, text: "Nothing to see here, move along."
-    end
-
     respond_with :text, text: "I'm finna eat all my wife's leftovers."
-  end
-
-  private
-
-  def authorized?(user_id)
-    authorized_users = ["42", "123456"]
-    authorized_users.any?(user_id)
   end
 end
 ```

@@ -240,7 +240,7 @@ RSpec.describe ModelContextProtocol::Server do
           contents: [
             {
               mimeType: "text/plain",
-              text: "Nothing to see here, move along.",
+              text: "I'm finna eat all my wife's leftovers.",
               uri: "file:///top-secret-plans.txt"
             }
           ]
