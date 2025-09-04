@@ -3,16 +3,14 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::Resource do
   describe ".call" do
     it "returns the response from the instance's call method" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      response = TestResource.call(logger)
+      response = TestResource.call
       aggregate_failures do
-        expect(response.text).to eq("Nothing to see here, move along.")
+        expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Nothing to see here, move along.",
+              text: "I'm finna eat all my wife's leftovers.",
               uri: "file:///top-secret-plans.txt"
             }
           ]
@@ -21,52 +19,9 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
   end
 
-  describe ".call with context" do
-    let(:context) { {user_id: "123456"} }
-
-    it "passes context to the instance" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      allow(TestResource).to receive(:new).with(logger, context).and_call_original
-      response = TestResource.call(logger, context)
-      expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
-    end
-
-    it "works with empty context" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      response = TestResource.call(logger, {})
-      expect(response.text).to eq("Nothing to see here, move along.")
-    end
-
-    it "works when context is not provided" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      response = TestResource.call(logger)
-      expect(response.text).to eq("Nothing to see here, move along.")
-    end
-  end
-
   describe "#initialize" do
-    it "stores context when provided" do
-      context = {user_id: "123"}
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      resource = TestResource.new(logger, context)
-      expect(resource.context).to eq(context)
-    end
-
-    it "defaults to empty hash when no context provided" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      resource = TestResource.new(logger)
-      expect(resource.context).to eq({})
-    end
-
     it "sets mime_type and uri from class metadata" do
-      logger = double("logger")
-      allow(logger).to receive(:info)
-      resource = TestResource.new(logger)
+      resource = TestResource.new
       expect(resource.mime_type).to eq("text/plain")
       expect(resource.uri).to eq("file:///top-secret-plans.txt")
     end
@@ -75,14 +30,12 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestResource.call(logger)
+        response = TestResource.call
         expect(response.serialized).to eq(
           contents: [
             {
               mimeType: "text/plain",
-              text: "Nothing to see here, move along.",
+              text: "I'm finna eat all my wife's leftovers.",
               uri: "file:///top-secret-plans.txt"
             }
           ]
@@ -92,9 +45,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     describe "binary response" do
       it "formats binary responses correctly" do
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestBinaryResource.call(logger)
+        response = TestBinaryResource.call
 
         expect(response.serialized).to eq(
           contents: [
@@ -144,8 +95,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "includes annotations in serialized response" do
-        logger = double("logger")
-        response = TestAnnotatedResource.call(logger)
+        response = TestAnnotatedResource.call
 
         expect(response.serialized).to eq(
           contents: [
@@ -170,9 +120,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "does not include annotations in serialized response" do
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestResource.call(logger)
+        response = TestResource.call
 
         content = response.serialized[:contents].first
         expect(content).not_to have_key(:annotations)
