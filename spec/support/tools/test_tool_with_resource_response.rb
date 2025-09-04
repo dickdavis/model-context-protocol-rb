@@ -25,11 +25,12 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   def call
     name = arguments[:name]
     resource_klass = RESOURCE_MAPPINGS[name.downcase.to_sym]
-
-    if resource_klass
-      respond_with :resource, resource: resource_klass
-    else
-      respond_with :error, text: "Resource `#{name}` not found"
+    unless resource_klass
+      return respond_with :error, text: "Resource `#{name}` not found"
     end
+
+    resource_data = resource_klass.new(logger, context).call
+
+    respond_with :content, embedded_resource(resource: resource_data)
   end
 end

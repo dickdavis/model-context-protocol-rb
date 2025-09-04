@@ -22,6 +22,6 @@ class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
 
   def call
     # Simulate an API call failure
-    respond_with :error, text: "Failed to call API at #{arguments[:api_endpoint]}: Connection timed out"
+    respond_with error: "Failed to call API at #{arguments[:api_endpoint]}: Connection timed out"
   end
 end

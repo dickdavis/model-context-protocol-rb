@@ -33,7 +33,8 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
 
     # In a real implementation, we would generate an actual chart
     # This is a small valid base64 encoded string (represents "test")
-    chart_data = "dGVzdA=="
-    respond_with :image, data: chart_data, mime_type:
+    data = "dGVzdA=="
+    image_content = image_content(data:, mime_type:)
+    respond_with content: image_content
   end
 end
