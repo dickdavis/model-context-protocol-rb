@@ -44,17 +44,21 @@ module ModelContextProtocol
       ]
     end
 
-    def embedded_resource_content(resource:, meta: nil, annotations: {})
+    def embedded_resource_content(resource:)
+      extracted_resource = resource.serialized[:contents].first
+      annotations = extracted_resource.key?(:annotations) ? extracted_resource.delete(:annotations) : {}
+
       serialized_annotations = ModelContextProtocol::Server::Content::Annotations[
         audience: annotations[:audience],
-        last_modified: annotations[:last_modified],
+        last_modified: annotations[:lastModified],
         priority: annotations[:priority]
       ].serialized
 
+      extracted_resource[:annotations] = serialized_annotations if serialized_annotations
+
       ModelContextProtocol::Server::Content::EmbeddedResource[
-        meta:,
-        annotations: serialized_annotations,
-        resource:
+        meta: nil,
+        resource: extracted_resource
       ]
     end
 

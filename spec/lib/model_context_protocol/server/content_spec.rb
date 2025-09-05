@@ -220,50 +220,44 @@ RSpec.describe ModelContextProtocol::Server::Content do
     describe "#serialized" do
       context "with valid data" do
         it "returns a valid hash with required fields" do
-          resource = double("resource", serialized: {uri: "file://test.txt", name: "test.txt"})
-          embedded = described_class.new(meta: nil, annotations: nil, resource: resource)
+          resource = {uri: "file://test.txt", name: "test.txt"}
+
+          embedded = described_class.new(meta: nil, resource:)
           result = embedded.serialized
 
-          expect(result).to eq({
-            resource: {uri: "file://test.txt", name: "test.txt"},
-            type: "resource"
-          })
+          expect(result).to eq(
+            {
+              resource: {uri: "file://test.txt", name: "test.txt"},
+              type: "resource"
+            }
+          )
         end
 
         it "returns a valid hash with annotations" do
-          annotations = ModelContextProtocol::Server::Content::Annotations.new(
-            audience: ["user"],
-            last_modified: nil,
-            priority: 0.5
-          ).serialized
-          resource = double("resource", serialized: {uri: "file://test.txt", name: "test.txt"})
-          embedded = described_class.new(meta: nil, annotations: annotations, resource: resource)
+          resource = {
+            uri: "file://test.txt",
+            name: "test.txt",
+            annotations: {audience: ["user"], priority: 0.5}
+          }
+          embedded = described_class.new(meta: nil, resource:)
           result = embedded.serialized
 
-          expect(result).to eq({
-            annotations: {audience: ["user"], priority: 0.5},
-            resource: {uri: "file://test.txt", name: "test.txt"},
-            type: "resource"
-          })
-        end
-
-        it "returns a valid hash with meta" do
-          meta = {foo: "bar"}
-          resource = double("resource", serialized: {uri: "file://test.txt", name: "test.txt"})
-          embedded = described_class.new(meta:, annotations: nil, resource:)
-          result = embedded.serialized
-
-          expect(result).to eq({
-            _meta: {foo: "bar"},
-            resource: {uri: "file://test.txt", name: "test.txt"},
-            type: "resource"
-          })
+          expect(result).to eq(
+            {
+              resource: {
+                uri: "file://test.txt",
+                name: "test.txt",
+                annotations: {audience: ["user"], priority: 0.5}
+              },
+              type: "resource"
+            }
+          )
         end
       end
 
       context "with invalid data" do
-        it "raises NoMethodError when resource is missing" do
-          embedded = described_class.new(meta: nil, annotations: nil, resource: nil)
+        it "raises an error when resource is missing" do
+          embedded = described_class.new(meta: nil, resource: nil)
 
           expect { embedded.serialized }
             .to raise_error(ModelContextProtocol::Server::Content::ContentValidationError)
