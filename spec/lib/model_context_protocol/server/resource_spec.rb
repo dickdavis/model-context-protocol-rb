@@ -133,7 +133,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   audience :user
                 end
               end
@@ -145,7 +145,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   audience [:user, :assistant]
                 end
               end
@@ -157,7 +157,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   audience :invalid
                 end
               end
@@ -171,7 +171,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   priority 0.5
                 end
               end
@@ -183,7 +183,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   priority(-0.1)
                 end
               end
@@ -195,7 +195,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   priority 1.1
                 end
               end
@@ -209,7 +209,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   last_modified "2025-01-12T15:00:58Z"
                 end
               end
@@ -221,7 +221,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
               with_metadata do
-                with_annotations do
+                annotations do
                   last_modified "not-a-date"
                 end
               end

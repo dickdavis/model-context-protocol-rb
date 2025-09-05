@@ -53,7 +53,7 @@ module ModelContextProtocol
         @description = metadata_dsl.description
         @mime_type = metadata_dsl.mime_type
         @uri = metadata_dsl.uri
-        @annotations = metadata_dsl.annotations
+        @annotations = metadata_dsl.defined_annotations
       end
 
       def inherited(subclass)
@@ -76,7 +76,7 @@ module ModelContextProtocol
     end
 
     class MetadataDSL
-      attr_reader :annotations
+      attr_reader :defined_annotations
 
       def name(value = nil)
         @name = value if value
@@ -98,10 +98,10 @@ module ModelContextProtocol
         @uri
       end
 
-      def with_annotations(&block)
-        @annotations = AnnotationsDSL.new
-        @annotations.instance_eval(&block)
-        @annotations
+      def annotations(&block)
+        @defined_annotations = AnnotationsDSL.new
+        @defined_annotations.instance_eval(&block)
+        @defined_annotations
       end
     end
 
