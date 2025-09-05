@@ -7,6 +7,6 @@ class TestResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    respond_with :text, text: "I'm finna eat all my wife's leftovers."
+    respond_with text: "I'm finna eat all my wife's leftovers."
   end
 end

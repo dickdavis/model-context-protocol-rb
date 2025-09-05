@@ -31,14 +31,14 @@ module ModelContextProtocol
     end
     private_constant :BinaryResponse
 
-    private def respond_with(type, **options)
-      case [type, options]
-      in [:text, {text:}]
+    private def respond_with(**kwargs)
+      case [kwargs]
+      in [{text:}]
         TextResponse[resource: self, text:]
-      in [:binary, {blob:}]
-        BinaryResponse[blob:, resource: self]
+      in [{binary:}]
+        BinaryResponse[blob: binary, resource: self]
       else
-        raise ModelContextProtocol::Server::ResponseArgumentsError, "Invalid arguments: #{type}, #{options}"
+        raise ModelContextProtocol::Server::ResponseArgumentsError, "Invalid arguments: #{options}"
       end
     end
 

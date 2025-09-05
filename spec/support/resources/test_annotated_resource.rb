@@ -13,6 +13,6 @@ class TestAnnotatedResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    respond_with :text, text: "# Annotated Document\n\nThis document has annotations."
+    respond_with text: "# Annotated Document\n\nThis document has annotations."
   end
 end
