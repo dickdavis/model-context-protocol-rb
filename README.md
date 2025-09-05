@@ -193,7 +193,7 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) in the `with_metadata` block.
 
-Define any arguments using the `with_argument` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
+Define any arguments using `argument` blocks nested within the `with_metadata` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
 Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
@@ -213,19 +213,19 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   with_metadata do
     name "brainstorm_excuses"
     description "A prompt for brainstorming excuses to get out of something"
-  end
 
-  with_argument do
-    name "undesirable_activity"
-    description "The thing to get out of"
-    required true
-  end
+    argument do
+      name "undesirable_activity"
+      description "The thing to get out of"
+      required true
+    end
 
-  with_argument do
-    name "tone"
-    description "The general tone to be used in the generated excuses"
-    required false
-    completion ToneCompletion
+    argument do
+      name "tone"
+      description "The general tone to be used in the generated excuses"
+      required false
+      completion ToneCompletion
+    end
   end
 
   def call

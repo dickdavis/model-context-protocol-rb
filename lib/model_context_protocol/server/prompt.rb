@@ -53,6 +53,7 @@ module ModelContextProtocol
 
         @name = metadata_dsl.name
         @description = metadata_dsl.description
+        @defined_arguments.concat(metadata_dsl.arguments)
       end
 
       def with_argument(&block)
@@ -93,6 +94,12 @@ module ModelContextProtocol
     end
 
     class MetadataDSL
+      attr_reader :arguments
+
+      def initialize
+        @arguments = []
+      end
+
       def name(value = nil)
         @name = value if value
         @name
@@ -101,6 +108,18 @@ module ModelContextProtocol
       def description(value = nil)
         @description = value if value
         @description
+      end
+
+      def argument(&block)
+        argument_dsl = ArgumentDSL.new
+        argument_dsl.instance_eval(&block)
+
+        @arguments << {
+          name: argument_dsl.name,
+          description: argument_dsl.description,
+          required: argument_dsl.required,
+          completion: argument_dsl.completion
+        }
       end
     end
 
