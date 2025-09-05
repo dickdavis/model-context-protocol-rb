@@ -2,6 +2,8 @@ require "json-schema"
 
 module ModelContextProtocol
   class Server::Tool
+    include ModelContextProtocol::Server::ContentHelpers
+
     attr_reader :arguments, :context, :logger
 
     def initialize(arguments, logger, context = {})
@@ -15,53 +17,30 @@ module ModelContextProtocol
       raise NotImplementedError, "Subclasses must implement the call method"
     end
 
-    TextResponse = Data.define(:text) do
+    Response = Data.define(:content) do
       def serialized
-        {content: [{type: "text", text:}], isError: false}
+        serialized_contents = content.map(&:serialized)
+        {content: serialized_contents, isError: false}
       end
     end
-    private_constant :TextResponse
+    private_constant :Response
 
-    ImageResponse = Data.define(:data, :mime_type) do
-      def initialize(data:, mime_type: "image/png")
-        super
-      end
-
+    ErrorResponse = Data.define(:error) do
       def serialized
-        {content: [{type: "image", data:, mimeType: mime_type}], isError: false}
+        {content: [{type: "text", text: error}], isError: true}
       end
     end
-    private_constant :ImageResponse
+    private_constant :ErrorResponse
 
-    ResourceResponse = Data.define(:resource_klass) do
-      def serialized
-        resource_data = resource_klass.call
-        {content: [{type: "resource", resource: resource_data.serialized[:contents].first}], isError: false}
-      end
-    end
-    private_constant :ResourceResponse
-
-    ToolErrorResponse = Data.define(:text) do
-      def serialized
-        {content: [{type: "text", text:}], isError: true}
-      end
-    end
-    private_constant :ToolErrorResponse
-
-    private def respond_with(type, **options)
-      case [type, options]
-      in [:text, {text:}]
-        TextResponse[text:]
-      in [:image, {data:, mime_type:}]
-        ImageResponse[data:, mime_type:]
-      in [:image, {data:}]
-        ImageResponse[data:]
-      in [:resource, {resource:}]
-        ResourceResponse[resource_klass: resource]
-      in [:error, {text:}]
-        ToolErrorResponse[text:]
+    private def respond_with(**kwargs)
+      case [kwargs]
+      in [{content:}]
+        content_array = content.is_a?(Array) ? content : [content]
+        Response[content: content_array]
+      in [{error:}]
+        ErrorResponse[error:]
       else
-        raise ModelContextProtocol::Server::ResponseArgumentsError, "Invalid arguments: #{type}, #{options}"
+        raise ModelContextProtocol::Server::ResponseArgumentsError, "Invalid arguments: #{kwargs.inspect}"
       end
     end
 
@@ -94,7 +73,7 @@ module ModelContextProtocol
       rescue ModelContextProtocol::Server::ResponseArgumentsError => response_arguments_error
         raise response_arguments_error
       rescue => error
-        ToolErrorResponse[text: error.message]
+        ErrorResponse[error: error.message]
       end
 
       def metadata

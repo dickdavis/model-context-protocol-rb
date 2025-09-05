@@ -29,7 +29,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         allow(logger).to receive(:info)
         response = TestToolWithTextResponse.call(valid_arguments, logger)
         aggregate_failures do
-          expect(response.text).to eq("21 doubled is 42")
+          expect(response.content.first.text).to eq("21 doubled is 42")
           expect(response.serialized).to eq(
             content: [
               {
@@ -52,7 +52,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           allow(logger).to receive(:info)
           response = TestToolWithTextResponse.call(valid_arguments, logger)
           aggregate_failures do
-            expect(response.text).to eq("Test error")
+            expect(response.error).to eq("Test error")
             expect(response.serialized).to eq(
               content: [
                 {
@@ -113,7 +113,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       response = TestToolWithTextResponse.call(valid_arguments, logger, context)
       aggregate_failures do
         expect(TestToolWithTextResponse).to have_received(:new).with(valid_arguments, logger, context)
-        expect(response.text).to eq("User 123456, 21 doubled is 42")
+        expect(response.content.first.text).to eq("User 123456, 21 doubled is 42")
       end
     end
 
@@ -121,14 +121,14 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       logger = double("logger")
       allow(logger).to receive(:info)
       response = TestToolWithTextResponse.call(valid_arguments, logger, {})
-      expect(response.text).to eq("21 doubled is 42")
+      expect(response.content.first.text).to eq("21 doubled is 42")
     end
 
     it "works when context is not provided" do
       logger = double("logger")
       allow(logger).to receive(:info)
       response = TestToolWithTextResponse.call(valid_arguments, logger)
-      expect(response.text).to eq("21 doubled is 42")
+      expect(response.content.first.text).to eq("21 doubled is 42")
     end
   end
 
@@ -163,23 +163,6 @@ RSpec.describe ModelContextProtocol::Server::Tool do
               type: "image",
               data: "dGVzdA==",
               mimeType: "image/jpeg"
-            }
-          ],
-          isError: false
-        )
-      end
-
-      it "defaults to PNG mime type" do
-        arguments = {chart_type: "bar"}
-        logger = double("logger")
-        allow(logger).to receive(:info)
-        response = TestToolWithImageResponseDefaultMimeType.call(arguments, logger)
-        expect(response.serialized).to eq(
-          content: [
-            {
-              type: "image",
-              data: "dGVzdA==",
-              mimeType: "image/png"
             }
           ],
           isError: false
@@ -231,6 +214,29 @@ RSpec.describe ModelContextProtocol::Server::Tool do
             isError: false
           )
         end
+      end
+    end
+
+    describe "mixed content response" do
+      it "formats mixed content responses correctly" do
+        arguments = {zip: "12345"}
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        response = TestToolWithMixedContentResponse.call(arguments, logger)
+        expect(response.serialized).to eq(
+          content: [
+            {
+              type: "text",
+              text: "85.2, 87.4, 89.0, 95.3, 96.0"
+            },
+            {
+              type: "image",
+              data: "dGVzdA==",
+              mimeType: "image/png"
+            }
+          ],
+          isError: false
+        )
       end
     end
 

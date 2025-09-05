@@ -152,12 +152,11 @@ module ModelContextProtocol
       end
     end
 
-    EmbeddedResource = Data.define(:meta, :annotations, :resource) do
+    EmbeddedResource = Data.define(:meta, :resource) do
       def serialized
         serialized_data = {
           _meta: meta,
-          annotations:,
-          resource: resource&.serialized,
+          resource:,
           type: "resource"
         }.compact
 
@@ -179,10 +178,6 @@ module ModelContextProtocol
             _meta: {
               type: "object",
               description: "Contains metadata about the content block"
-            },
-            annotations: {
-              type: "object",
-              description: "Optional metadata about the purpose and use of the content block"
             },
             resource: {
               type: "object",

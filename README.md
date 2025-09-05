@@ -396,12 +396,15 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    user_id = context[:user_id]
-    number = arguments[:number].to_i
     logger.info("Silly user doesn't know how to double a number")
+    number = arguments[:number].to_i
     calculation = number * 2
+
+    user_id = context[:user_id]
     salutation = user_id ? "User #{user_id}, " : ""
-    respond_with :text, text: salutation << "#{number} doubled is #{calculation}"
+    text_content = text_content(text: salutation << "#{number} doubled is #{calculation}")
+
+    respond_with content: text_content
   end
 end
 ```
@@ -444,43 +447,14 @@ class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
 
     # In a real implementation, we would generate an actual chart
     # This is a small valid base64 encoded string (represents "test")
-    chart_data = "dGVzdA=="
-    respond_with :image, data: chart_data, mime_type:
+    data = "dGVzdA=="
+    image_content = image_content(data:, mime_type:)
+    respond_with content: image_content
   end
 end
 ```
 
-If you don't provide a mime type, it will default to `image/png`.
-
-```ruby
-class TestToolWithImageResponseDefaultMimeType < ModelContextProtocol::Server::Tool
-  with_metadata do
-    name "other-custom-chart-generator"
-    description "Generates a chart"
-    input_schema do
-      {
-        type: "object",
-        properties: {
-          chart_type: {
-            type: "string",
-            description: "Type of chart (pie, bar, line)"
-          }
-        },
-        required: ["chart_type"]
-      }
-    end
-  end
-
-  def call
-    # In a real implementation, we would generate an actual chart
-    # This is a small valid base64 encoded string (represents "test")
-    chart_data = "dGVzdA=="
-    respond_with :image, data: chart_data
-  end
-end
-```
-
-This is an example of a tool that returns a resource response:
+This is an example of a tool that returns an embedded resource response:
 
 ```ruby
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
@@ -510,12 +484,98 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
   def call
     name = arguments[:name]
     resource_klass = RESOURCE_MAPPINGS[name.downcase.to_sym]
-
-    if resource_klass
-      respond_with :resource, resource: resource_klass
-    else
-      respond_with :error, text: "Resource `#{name}` not found"
+    unless resource_klass
+      return respond_with :error, text: "Resource `#{name}` not found"
     end
+
+    resource_data = resource_klass.call
+
+    respond_with content: embedded_resource_content(resource: resource_data)
+  end
+end
+```
+
+This is an example of a tool that returns mixed content:
+
+```ruby
+class TestToolWithMixedContentResponse < ModelContextProtocol::Server::Tool
+  with_metadata do
+    name "get_temperature_history"
+    description "Gets comprehensive temperature history for a zip code"
+    input_schema do
+      {
+        type: "object",
+        properties: {
+          zip: {
+            type: "string"
+          }
+        },
+        required: ["zip"]
+      }
+    end
+  end
+
+  def call
+    logger.info("Getting comprehensive temperature history data")
+
+    zip = arguments[:zip]
+    temperature_history = retrieve_temperature_history(zip:)
+    temperature_history_block = text_content(text: temperature_history.join(", "))
+
+    temperature_chart = generate_weather_history_chart(temperature_history)
+    temperature_chart_block = image_content(
+      data: temperature_chart[:base64_chart_data],
+      mime_type: temperature_chart[:mime_type]
+    )
+
+    respond_with content: [temperature_history_block, temperature_chart_block]
+  end
+
+  private
+
+  def retrieve_temperature_history(zip:)
+    # Simulates a call to an API or DB to retrieve weather history
+    [85.2, 87.4, 89.0, 95.3, 96.0]
+  end
+
+  def generate_weather_history_chart(history)
+    # SImulate a call to generate a chart given the weather history
+    {
+      base64_chart_data: "dGVzdA==",
+      mime_type: "image/png"
+    }
+  end
+end
+```
+
+This is an example of a tool that returns a tool error response:
+
+```ruby
+class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
+  with_metadata do
+    name "api-caller"
+    description "Makes calls to external APIs"
+    input_schema do
+      {
+        type: "object",
+        properties: {
+          api_endpoint: {
+            type: "string",
+            description: "API endpoint URL"
+          },
+          method: {
+            type: "string",
+            description: "HTTP method (GET, POST, etc)"
+          }
+        },
+        required: ["api_endpoint", "method"]
+      }
+    end
+  end
+
+  def call
+    # Simulate an API call failure
+    respond_with error: "Failed to call API at #{arguments[:api_endpoint]}: Connection timed out"
   end
 end
 ```

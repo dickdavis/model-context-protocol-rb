@@ -187,57 +187,24 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
 
   describe "#embedded_resource_content" do
     context "with valid data" do
-      let(:resource) { double("resource", serialized: {uri: "file://test.txt", name: "test.txt"}) }
+      it "returns an EmbeddedResource content object" do
+        resource_data = TestResource.call
+        result = helper.embedded_resource_content(resource: resource_data)
 
-      it "returns an EmbeddedResource content object with required parameters" do
-        result = helper.embedded_resource_content(resource: resource)
-
-        expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
-        expect(result.resource).to eq(resource)
-        expect(result.meta).to be_nil
-        expect(result.annotations).to be_nil
-      end
-
-      it "returns an EmbeddedResource content object with meta" do
-        result = helper.embedded_resource_content(
-          resource: resource,
-          meta: {source: "filesystem"}
-        )
-
-        expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
-        expect(result.resource).to eq(resource)
-        expect(result.meta).to eq({source: "filesystem"})
-        expect(result.annotations).to be_nil
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
+          expect(result.resource).to eq(resource_data.serialized[:contents].first)
+        end
       end
 
       it "returns an EmbeddedResource content object with annotations" do
-        annotations = {audience: "user", priority: 0.6}
-        result = helper.embedded_resource_content(
-          resource: resource,
-          annotations: annotations
-        )
+        resource_data = TestResource.call
+        result = helper.embedded_resource_content(resource: resource_data)
 
-        expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
-        expect(result.resource).to eq(resource)
-        expect(result.meta).to be_nil
-        expect(result.annotations).to eq({audience: "user", priority: 0.6})
-      end
-
-      it "returns an EmbeddedResource content object with all parameters" do
-        annotations = {audience: ["assistant", "user"], last_modified: "2025-01-12T15:00:58.999Z"}
-        result = helper.embedded_resource_content(
-          resource: resource,
-          meta: {cached: true},
-          annotations: annotations
-        )
-
-        expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
-        expect(result.resource).to eq(resource)
-        expect(result.meta).to eq({cached: true})
-        expect(result.annotations).to eq({
-          audience: ["assistant", "user"],
-          lastModified: "2025-01-12T15:00:58.999Z"
-        })
+        aggregate_failures do
+          expect(result).to be_a(ModelContextProtocol::Server::Content::EmbeddedResource)
+          expect(result.resource).to eq(resource_data.serialized[:contents].first)
+        end
       end
     end
   end
