@@ -9,19 +9,19 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   with_metadata do
     name "brainstorm_excuses"
     description "A prompt for brainstorming excuses to get out of something"
-  end
 
-  with_argument do
-    name "undesirable_activity"
-    description "The thing to get out of"
-    required true
-  end
+    argument do
+      name "undesirable_activity"
+      description "The thing to get out of"
+      required true
+    end
 
-  with_argument do
-    name "tone"
-    description "The general tone to be used in the generated excuses"
-    required false
-    completion ToneCompletion
+    argument do
+      name "tone"
+      description "The general tone to be used in the generated excuses"
+      required false
+      completion ToneCompletion
+    end
   end
 
   def call
