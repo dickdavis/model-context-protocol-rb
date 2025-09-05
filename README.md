@@ -291,7 +291,7 @@ class TestResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    respond_with :text, text: "I'm finna eat all my wife's leftovers."
+    respond_with text: "I'm finna eat all my wife's leftovers."
   end
 end
 ```
@@ -314,7 +314,7 @@ class TestAnnotatedResource < ModelContextProtocol::Server::Resource
   end
 
   def call
-    respond_with :text, text: "# Annotated Document\n\nThis document has annotations."
+    respond_with text: "# Annotated Document\n\nThis document has annotations."
   end
 end
 ```
@@ -334,7 +334,7 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
     # In a real implementation, we would retrieve the binary resource
     # This is a small valid base64 encoded string (represents "test")
     data = "dGVzdA=="
-    respond_with :binary, blob: data
+    respond_with binary: data
   end
 end
 ```
