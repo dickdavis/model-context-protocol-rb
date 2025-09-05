@@ -275,7 +275,7 @@ end
 
 #### Resources
 
-The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `with_metadata` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `with_annotations` block.
+The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `with_metadata` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `annotations` block.
 
 Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
@@ -305,8 +305,7 @@ class TestAnnotatedResource < ModelContextProtocol::Server::Resource
     description "A document with annotations showing priority and audience"
     mime_type "text/markdown"
     uri "file:///docs/annotated-document.md"
-
-    with_annotations do
+    annotations do
       audience [:user, :assistant]
       priority 0.9
       last_modified "2025-01-12T15:00:58Z"
