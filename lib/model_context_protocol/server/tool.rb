@@ -51,14 +51,14 @@ module ModelContextProtocol
     class << self
       attr_reader :name, :description, :title, :input_schema
 
-      def with_metadata(&block)
-        metadata_dsl = MetadataDSL.new
-        metadata_dsl.instance_eval(&block)
+      def define(&block)
+        definition_dsl = DefinitionDSL.new
+        definition_dsl.instance_eval(&block)
 
-        @name = metadata_dsl.name
-        @description = metadata_dsl.description
-        @title = metadata_dsl.title
-        @input_schema = metadata_dsl.input_schema
+        @name = definition_dsl.name
+        @description = definition_dsl.description
+        @title = definition_dsl.title
+        @input_schema = definition_dsl.input_schema
       end
 
       def inherited(subclass)
@@ -78,14 +78,14 @@ module ModelContextProtocol
         ErrorResponse[error: error.message]
       end
 
-      def metadata
+      def definition
         result = {name: @name, description: @description, inputSchema: @input_schema}
         result[:title] = @title if @title
         result
       end
     end
 
-    class MetadataDSL
+    class DefinitionDSL
       def name(value = nil)
         @name = value if value
         @name

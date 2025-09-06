@@ -1,5 +1,5 @@
 class TestBinaryResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "project-logo.png"
     description "The logo for the project"
     mime_type "image/png"

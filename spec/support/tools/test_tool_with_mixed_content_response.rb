@@ -1,5 +1,5 @@
 class TestToolWithMixedContentResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "get_temperature_history"
     description "Gets comprehensive temperature history for a zip code"
     input_schema do

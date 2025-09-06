@@ -1,5 +1,5 @@
 class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
-  with_metadata do
+  define do
     name "project-document-resource-template"
     description "A resource template for retrieving project documents"
     mime_type "text/plain"
@@ -18,7 +18,7 @@ class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   #   respond_with values:
   # end
 
-  # with_metadata do
+  # define do
   #   name "project-document-resource-template"
   #   description "A resource template for retrieving project documents"
   #   mime_type "text/plain"

@@ -13,7 +13,7 @@ class TestOldStyleCompletionResourceTemplate < ModelContextProtocol::Server::Res
     respond_with values:
   end
 
-  with_metadata do
+  define do
     name "test-old-style-completion-resource-template"
     description "A resource template to test old-style completion classes"
     mime_type "application/json"

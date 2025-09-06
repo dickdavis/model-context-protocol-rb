@@ -402,7 +402,7 @@ RSpec.describe ModelContextProtocol::Server do
                 ]
               end
             end
-            resource_class.define_singleton_method(:metadata) do
+            resource_class.define_singleton_method(:definition) do
               {
                 name: "resource_#{i}",
                 description: "Test resource #{i}",
@@ -428,7 +428,7 @@ RSpec.describe ModelContextProtocol::Server do
                 ]
               end
             end
-            tool_class.define_singleton_method(:metadata) do
+            tool_class.define_singleton_method(:definition) do
               {
                 name: "tool_#{i}",
                 description: "Test tool #{i}",
@@ -462,7 +462,7 @@ RSpec.describe ModelContextProtocol::Server do
                 ]
               end
             end
-            prompt_class.define_singleton_method(:metadata) do
+            prompt_class.define_singleton_method(:definition) do
               {
                 name: "prompt_#{i}",
                 description: "Test prompt #{i}",

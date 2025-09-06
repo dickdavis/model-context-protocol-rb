@@ -1,5 +1,5 @@
 class TestAnnotatedResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "annotated-document.md"
     description "A document with annotations showing priority and audience"
     mime_type "text/markdown"

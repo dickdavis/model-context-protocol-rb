@@ -1,5 +1,5 @@
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "double"
     title "Number Doubler"
     description "Doubles the provided number"

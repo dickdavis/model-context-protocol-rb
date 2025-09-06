@@ -1,5 +1,5 @@
 class TestArrayCompletionResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
-  with_metadata do
+  define do
     name "test-array-completion-resource-template"
     description "A resource template to test array-based completions"
     mime_type "text/plain"
