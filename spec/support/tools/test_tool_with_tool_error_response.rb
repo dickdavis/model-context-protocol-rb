@@ -1,5 +1,5 @@
 class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "api-caller"
     description "Makes calls to external APIs"
     input_schema do

@@ -115,8 +115,8 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     end
   end
 
-  describe ".with_metadata" do
-    it "sets the class metadata" do
+  describe ".define" do
+    it "sets the class definition" do
       aggregate_failures do
         expect(TestPrompt.name).to eq("brainstorm_excuses")
         expect(TestPrompt.title).to eq("Brainstorm Excuses")
@@ -159,9 +159,9 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     end
   end
 
-  describe ".metadata" do
-    it "returns class metadata" do
-      metadata = TestPrompt.metadata
+  describe ".definition" do
+    it "returns class definition" do
+      metadata = TestPrompt.definition
       expect(metadata[:name]).to eq("brainstorm_excuses")
       expect(metadata[:title]).to eq("Brainstorm Excuses")
       expect(metadata[:description]).to eq("A prompt for brainstorming excuses to get out of something")
@@ -222,7 +222,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
   describe "optional title field" do
     let(:prompt_without_title) do
       Class.new(ModelContextProtocol::Server::Prompt) do
-        with_metadata do
+        define do
           name "test_prompt"
           description "A test prompt without title"
         end
@@ -233,8 +233,8 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       end
     end
 
-    it "does not include title in metadata when not provided" do
-      metadata = prompt_without_title.metadata
+    it "does not include title in definition when not provided" do
+      metadata = prompt_without_title.definition
       expect(metadata).not_to have_key(:title)
     end
 

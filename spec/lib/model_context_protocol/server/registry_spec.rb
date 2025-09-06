@@ -303,7 +303,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
                 ]
               end
             end
-            prompt_class.define_singleton_method(:metadata) do
+            prompt_class.define_singleton_method(:definition) do
               {
                 name: "prompt_#{i}",
                 description: "Test prompt #{i}",
@@ -329,7 +329,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
                 ]
               end
             end
-            resource_class.define_singleton_method(:metadata) do
+            resource_class.define_singleton_method(:definition) do
               {
                 name: "resource_#{i}",
                 description: "Test resource #{i}",
@@ -344,7 +344,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
         resource_templates do
           8.times do |i|
             template_class = Class.new(ModelContextProtocol::Server::ResourceTemplate)
-            template_class.define_singleton_method(:metadata) do
+            template_class.define_singleton_method(:definition) do
               {
                 name: "template_#{i}",
                 description: "Test template #{i}",
@@ -370,7 +370,7 @@ RSpec.describe ModelContextProtocol::Server::Registry do
                 ]
               end
             end
-            tool_class.define_singleton_method(:metadata) do
+            tool_class.define_singleton_method(:definition) do
               {
                 name: "tool_#{i}",
                 description: "Test tool #{i}",

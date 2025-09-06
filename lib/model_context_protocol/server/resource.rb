@@ -47,16 +47,16 @@ module ModelContextProtocol
     class << self
       attr_reader :name, :description, :title, :mime_type, :uri, :annotations
 
-      def with_metadata(&block)
-        metadata_dsl = MetadataDSL.new
-        metadata_dsl.instance_eval(&block)
+      def define(&block)
+        definition_dsl = DefinitionDSL.new
+        definition_dsl.instance_eval(&block)
 
-        @name = metadata_dsl.name
-        @description = metadata_dsl.description
-        @title = metadata_dsl.title
-        @mime_type = metadata_dsl.mime_type
-        @uri = metadata_dsl.uri
-        @annotations = metadata_dsl.defined_annotations
+        @name = definition_dsl.name
+        @description = definition_dsl.description
+        @title = definition_dsl.title
+        @mime_type = definition_dsl.mime_type
+        @uri = definition_dsl.uri
+        @annotations = definition_dsl.defined_annotations
       end
 
       def inherited(subclass)
@@ -72,7 +72,7 @@ module ModelContextProtocol
         new.call
       end
 
-      def metadata
+      def definition
         result = {name: @name, description: @description, mimeType: @mime_type, uri: @uri}
         result[:title] = @title if @title
         result[:annotations] = @annotations.serialized if @annotations
@@ -80,7 +80,7 @@ module ModelContextProtocol
       end
     end
 
-    class MetadataDSL
+    class DefinitionDSL
       attr_reader :defined_annotations
 
       def name(value = nil)

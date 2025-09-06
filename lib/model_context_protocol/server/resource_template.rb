@@ -3,15 +3,15 @@ module ModelContextProtocol
     class << self
       attr_reader :name, :description, :mime_type, :uri_template, :completions
 
-      def with_metadata(&block)
-        metadata_dsl = MetadataDSL.new
-        metadata_dsl.instance_eval(&block)
+      def define(&block)
+        definition_dsl = DefinitionDSL.new
+        definition_dsl.instance_eval(&block)
 
-        @name = metadata_dsl.name
-        @description = metadata_dsl.description
-        @mime_type = metadata_dsl.mime_type
-        @uri_template = metadata_dsl.uri_template
-        @completions = metadata_dsl.completions
+        @name = definition_dsl.name
+        @description = definition_dsl.description
+        @mime_type = definition_dsl.mime_type
+        @uri_template = definition_dsl.uri_template
+        @completions = definition_dsl.completions
       end
 
       def inherited(subclass)
@@ -32,7 +32,7 @@ module ModelContextProtocol
         completion.call(param_name.to_s, value)
       end
 
-      def metadata
+      def definition
         {
           name: @name,
           description: @description,
@@ -43,7 +43,7 @@ module ModelContextProtocol
       end
     end
 
-    class MetadataDSL
+    class DefinitionDSL
       attr_reader :completions
 
       def initialize

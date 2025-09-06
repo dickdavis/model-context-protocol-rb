@@ -47,16 +47,16 @@ module ModelContextProtocol
     class << self
       attr_reader :name, :description, :title, :defined_arguments
 
-      def with_metadata(&block)
+      def define(&block)
         @defined_arguments ||= []
 
-        metadata_dsl = MetadataDSL.new
-        metadata_dsl.instance_eval(&block)
+        definition_dsl = DefinitionDSL.new
+        definition_dsl.instance_eval(&block)
 
-        @name = metadata_dsl.name
-        @description = metadata_dsl.description
-        @title = metadata_dsl.title
-        @defined_arguments.concat(metadata_dsl.arguments)
+        @name = definition_dsl.name
+        @description = definition_dsl.description
+        @title = definition_dsl.title
+        @defined_arguments.concat(definition_dsl.arguments)
       end
 
       def with_argument(&block)
@@ -86,7 +86,7 @@ module ModelContextProtocol
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       end
 
-      def metadata
+      def definition
         result = {name: @name, description: @description, arguments: @defined_arguments}
         result[:title] = @title if @title
         result
@@ -99,7 +99,7 @@ module ModelContextProtocol
       end
     end
 
-    class MetadataDSL
+    class DefinitionDSL
       attr_reader :arguments
 
       def initialize

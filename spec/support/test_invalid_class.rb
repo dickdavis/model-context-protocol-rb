@@ -1,5 +1,5 @@
 class TestInvalidClass
-  def self.metadata
+  def self.definition
     {name: "invalid_class"}
   end
 end

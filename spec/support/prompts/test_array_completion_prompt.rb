@@ -1,5 +1,5 @@
 class TestArrayCompletionPrompt < ModelContextProtocol::Server::Prompt
-  with_metadata do
+  define do
     name "test_array_completion"
     description "A prompt to test array-based completions"
 

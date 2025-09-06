@@ -1,5 +1,5 @@
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "resource-finder"
     description "Finds a resource given a name"
     input_schema do

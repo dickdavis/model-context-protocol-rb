@@ -1,5 +1,5 @@
 class TestResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "top-secret-plans.txt"
     title "Top Secret Plans"
     description "Top secret plans to do top secret things"

@@ -191,9 +191,9 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 #### Prompts
 
-The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) in the `with_metadata` block.
+The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) in the `define` block.
 
-Define any arguments using `argument` blocks nested within the `with_metadata` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
+Define any arguments using `argument` blocks nested within the `define` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
 Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
@@ -203,7 +203,7 @@ This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
-  with_metadata do
+  define do
     name "brainstorm_excuses"
     title "Brainstorm Excuses"
     description "A prompt for brainstorming excuses to get out of something"
@@ -229,7 +229,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   #   respond_with values:
   # end
   #   ...
-  # with_metadata do
+  # define do
   #   argument do
   #     name "tone"
   #     description "The general tone to be used in the generated excuses"
@@ -285,7 +285,7 @@ end
 
 #### Resources
 
-The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `with_metadata` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `annotations` block.
+The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `define` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `annotations` block.
 
 Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
@@ -293,7 +293,7 @@ This is an example resource that returns a text response:
 
 ```ruby
 class TestResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "top-secret-plans.txt"
     title "Top Secret Plans"
     description "Top secret plans to do top secret things"
@@ -311,7 +311,7 @@ This is an example resource with annotations:
 
 ```ruby
 class TestAnnotatedResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "annotated-document.md"
     description "A document with annotations showing priority and audience"
     mime_type "text/markdown"
@@ -333,7 +333,7 @@ This is an example resource that returns binary data:
 
 ```ruby
 class TestBinaryResource < ModelContextProtocol::Server::Resource
-  with_metadata do
+  define do
     name "project-logo.png"
     description "The logo for the project"
     mime_type "image/png"
@@ -351,13 +351,13 @@ end
 
 #### Resource Templates
 
-The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates) in the `with_metadata` block.
+The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates) in the `define` block.
 
 This is an example resource template that provides a completion for a parameter of the URI template:
 
 ```ruby
 class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
-  with_metadata do
+  define do
     name "project-document-resource-template"
     description "A resource template for retrieving project documents"
     mime_type "text/plain"
@@ -376,7 +376,7 @@ class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
   #   respond_with values:
   # end
 
-  # with_metadata do
+  # define do
   #   name "project-document-resource-template"
   #   description "A resource template for retrieving project documents"
   #   mime_type "text/plain"
@@ -389,7 +389,7 @@ end
 
 #### Tools
 
-The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) in the `with_metadata` block.
+The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) in the `define` block.
 
 Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
 
@@ -399,7 +399,7 @@ This is an example tool that returns a text response:
 
 ```ruby
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "double"
     title "Number Doubler"
     description "Doubles the provided number"
@@ -434,7 +434,7 @@ This is an example of a tool that returns an image:
 
 ```ruby
 class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "custom-chart-generator"
     description "Generates a chart in various formats"
     input_schema do
@@ -479,7 +479,7 @@ This is an example of a tool that returns an embedded resource response:
 
 ```ruby
 class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "resource-finder"
     description "Finds a resource given a name"
     input_schema do
@@ -520,7 +520,7 @@ This is an example of a tool that returns mixed content:
 
 ```ruby
 class TestToolWithMixedContentResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "get_temperature_history"
     description "Gets comprehensive temperature history for a zip code"
     input_schema do
@@ -573,7 +573,7 @@ This is an example of a tool that returns a tool error response:
 
 ```ruby
 class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "api-caller"
     description "Makes calls to external APIs"
     input_schema do

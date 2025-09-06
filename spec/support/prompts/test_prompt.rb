@@ -6,7 +6,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
     respond_with values:
   end
 
-  with_metadata do
+  define do
     name "brainstorm_excuses"
     title "Brainstorm Excuses"
     description "A prompt for brainstorming excuses to get out of something"

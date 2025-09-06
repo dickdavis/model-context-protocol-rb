@@ -39,8 +39,8 @@ module ModelContextProtocol
     end
 
     def register(klass)
-      metadata = klass.metadata
-      entry = {klass: klass}.merge(metadata)
+      definition = klass.definition
+      entry = {klass: klass}.merge(definition)
 
       case klass.ancestors
       when ->(ancestors) { ancestors.include?(ModelContextProtocol::Server::Prompt) }

@@ -1,8 +1,8 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
-  describe "with_metadata" do
-    it "sets the class metadata" do
+  describe "define" do
+    it "sets the class definition" do
       aggregate_failures do
         expect(TestResourceTemplate.name).to eq("project-document-resource-template")
         expect(TestResourceTemplate.description).to eq("A resource template for retrieving project documents")
@@ -13,9 +13,9 @@ RSpec.describe ModelContextProtocol::Server::ResourceTemplate do
     end
   end
 
-  describe "metadata" do
-    it "returns class metadata" do
-      metadata = TestResourceTemplate.metadata
+  describe "definition" do
+    it "returns class definition" do
+      metadata = TestResourceTemplate.definition
       expect(metadata[:name]).to eq("project-document-resource-template")
       expect(metadata[:description]).to eq("A resource template for retrieving project documents")
       expect(metadata[:mimeType]).to eq("text/plain")

@@ -260,8 +260,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
   end
 
-  describe "with_metadata" do
-    it "sets the class metadata" do
+  describe "define" do
+    it "sets the class definition" do
       aggregate_failures do
         expect(TestToolWithTextResponse.name).to eq("double")
         expect(TestToolWithTextResponse.title).to eq("Number Doubler")
@@ -279,9 +279,9 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     end
   end
 
-  describe "metadata" do
-    it "returns class metadata" do
-      expect(TestToolWithTextResponse.metadata).to eq(
+  describe "definition" do
+    it "returns class definition" do
+      expect(TestToolWithTextResponse.definition).to eq(
         name: "double",
         title: "Number Doubler",
         description: "Doubles the provided number",
@@ -301,7 +301,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
   describe "optional title field" do
     let(:tool_without_title) do
       Class.new(ModelContextProtocol::Server::Tool) do
-        with_metadata do
+        define do
           name "test_tool"
           description "A test tool without title"
           input_schema do
@@ -315,8 +315,8 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       end
     end
 
-    it "does not include title in metadata when not provided" do
-      metadata = tool_without_title.metadata
+    it "does not include title in definition when not provided" do
+      metadata = tool_without_title.definition
       expect(metadata).not_to have_key(:title)
     end
   end

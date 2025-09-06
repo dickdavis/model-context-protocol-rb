@@ -21,7 +21,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   end
 
   describe "#initialize" do
-    it "sets mime_type and uri from class metadata" do
+    it "sets mime_type and uri from class definition" do
       resource = TestResource.new
       expect(resource.mime_type).to eq("text/plain")
       expect(resource.uri).to eq("file:///top-secret-plans.txt")
@@ -62,8 +62,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
   end
 
-  describe "with_metadata" do
-    it "sets the class metadata" do
+  describe "define" do
+    it "sets the class definition" do
       aggregate_failures do
         expect(TestResource.name).to eq("top-secret-plans.txt")
         expect(TestResource.description).to eq("Top secret plans to do top secret things")
@@ -73,9 +73,9 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
   end
 
-  describe "metadata" do
-    it "returns class metadata" do
-      expect(TestResource.metadata).to eq(
+  describe "definition" do
+    it "returns class definition" do
+      expect(TestResource.definition).to eq(
         name: "top-secret-plans.txt",
         title: "Top Secret Plans",
         description: "Top secret plans to do top secret things",
@@ -87,8 +87,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
   describe "annotations" do
     describe "with annotations" do
-      it "includes annotations in metadata" do
-        expect(TestAnnotatedResource.metadata).to include(
+      it "includes annotations in definition" do
+        expect(TestAnnotatedResource.definition).to include(
           annotations: {
             audience: ["user", "assistant"],
             priority: 0.9,
@@ -118,8 +118,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
 
     describe "without annotations" do
-      it "does not include annotations in metadata" do
-        expect(TestResource.metadata).not_to have_key(:annotations)
+      it "does not include annotations in definition" do
+        expect(TestResource.definition).not_to have_key(:annotations)
       end
 
       it "does not include annotations in serialized response" do
@@ -135,7 +135,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "accepts valid audience values" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   audience :user
                 end
@@ -147,7 +147,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "accepts array of valid audience values" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   audience [:user, :assistant]
                 end
@@ -159,7 +159,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "rejects invalid audience values" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   audience :invalid
                 end
@@ -173,7 +173,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "accepts valid priority values" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   priority 0.5
                 end
@@ -185,7 +185,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "rejects priority below 0" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   priority(-0.1)
                 end
@@ -197,7 +197,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "rejects priority above 1" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   priority 1.1
                 end
@@ -211,7 +211,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "accepts valid ISO 8601 format" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   last_modified "2025-01-12T15:00:58Z"
                 end
@@ -223,7 +223,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         it "rejects invalid date format" do
           expect {
             Class.new(ModelContextProtocol::Server::Resource) do
-              with_metadata do
+              define do
                 annotations do
                   last_modified "not-a-date"
                 end
@@ -238,7 +238,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "optional title field" do
     let(:resource_without_title) do
       Class.new(ModelContextProtocol::Server::Resource) do
-        with_metadata do
+        define do
           name "test-resource"
           description "A test resource without title"
           mime_type "text/plain"
@@ -251,8 +251,8 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
     end
 
-    it "does not include title in metadata when not provided" do
-      metadata = resource_without_title.metadata
+    it "does not include title in definition when not provided" do
+      metadata = resource_without_title.definition
       expect(metadata).not_to have_key(:title)
     end
 

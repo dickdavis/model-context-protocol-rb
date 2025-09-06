@@ -1,5 +1,5 @@
 class TestToolWithImageResponse < ModelContextProtocol::Server::Tool
-  with_metadata do
+  define do
     name "custom-chart-generator"
     description "Generates a chart in various formats"
     input_schema do
