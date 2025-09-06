@@ -382,6 +382,7 @@ This is an example tool that returns a text response:
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     name "double"
+    title "Number Doubler"
     description "Doubles the provided number"
     input_schema do
       {
