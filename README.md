@@ -212,6 +212,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 
   with_metadata do
     name "brainstorm_excuses"
+    title "Brainstorm Excuses"
     description "A prompt for brainstorming excuses to get out of something"
 
     argument do
@@ -285,6 +286,7 @@ This is an example resource that returns a text response:
 class TestResource < ModelContextProtocol::Server::Resource
   with_metadata do
     name "top-secret-plans.txt"
+    title "Top Secret Plans"
     description "Top secret plans to do top secret things"
     mime_type "text/plain"
     uri "file:///top-secret-plans.txt"
@@ -380,6 +382,7 @@ This is an example tool that returns a text response:
 class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   with_metadata do
     name "double"
+    title "Number Doubler"
     description "Doubles the provided number"
     input_schema do
       {

@@ -49,7 +49,7 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :input_schema
+      attr_reader :name, :description, :title, :input_schema
 
       def with_metadata(&block)
         metadata_dsl = MetadataDSL.new
@@ -57,12 +57,14 @@ module ModelContextProtocol
 
         @name = metadata_dsl.name
         @description = metadata_dsl.description
+        @title = metadata_dsl.title
         @input_schema = metadata_dsl.input_schema
       end
 
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)
+        subclass.instance_variable_set(:@title, @title)
         subclass.instance_variable_set(:@input_schema, @input_schema)
       end
 
@@ -77,7 +79,9 @@ module ModelContextProtocol
       end
 
       def metadata
-        {name: @name, description: @description, inputSchema: @input_schema}
+        result = {name: @name, description: @description, inputSchema: @input_schema}
+        result[:title] = @title if @title
+        result
       end
     end
 
@@ -90,6 +94,11 @@ module ModelContextProtocol
       def description(value = nil)
         @description = value if value
         @description
+      end
+
+      def title(value = nil)
+        @title = value if value
+        @title
       end
 
       def input_schema(&block)

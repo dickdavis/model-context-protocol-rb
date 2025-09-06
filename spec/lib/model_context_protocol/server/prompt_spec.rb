@@ -32,6 +32,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
         aggregate_failures do
           expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
           expect(response.serialized[:description]).to eq("A prompt for brainstorming excuses to get out of something")
+          expect(response.serialized[:title]).to eq("Brainstorm Excuses")
           expect(response.serialized[:messages]).to be_an(Array)
           expect(response.serialized[:messages].length).to eq(5)
         end
@@ -118,6 +119,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     it "sets the class metadata" do
       aggregate_failures do
         expect(TestPrompt.name).to eq("brainstorm_excuses")
+        expect(TestPrompt.title).to eq("Brainstorm Excuses")
         expect(TestPrompt.description).to eq("A prompt for brainstorming excuses to get out of something")
       end
     end
@@ -161,6 +163,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     it "returns class metadata" do
       metadata = TestPrompt.metadata
       expect(metadata[:name]).to eq("brainstorm_excuses")
+      expect(metadata[:title]).to eq("Brainstorm Excuses")
       expect(metadata[:description]).to eq("A prompt for brainstorming excuses to get out of something")
       expect(metadata[:arguments].size).to eq(2)
 
@@ -213,6 +216,32 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
         TestPrompt.complete_for(argument_name.to_sym, argument_value)
         expect(second_argument_completion).to have_received(:call).with(argument_name, argument_value)
       end
+    end
+  end
+
+  describe "optional title field" do
+    let(:prompt_without_title) do
+      Class.new(ModelContextProtocol::Server::Prompt) do
+        with_metadata do
+          name "test_prompt"
+          description "A test prompt without title"
+        end
+
+        def call
+          respond_with messages: []
+        end
+      end
+    end
+
+    it "does not include title in metadata when not provided" do
+      metadata = prompt_without_title.metadata
+      expect(metadata).not_to have_key(:title)
+    end
+
+    it "does not include title in serialized response when not provided" do
+      logger = double("logger")
+      response = prompt_without_title.call({}, logger)
+      expect(response.serialized).not_to have_key(:title)
     end
   end
 end

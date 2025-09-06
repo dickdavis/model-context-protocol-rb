@@ -11,6 +11,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
             {
               mimeType: "text/plain",
               text: "I'm finna eat all my wife's leftovers.",
+              title: "Top Secret Plans",
               uri: "file:///top-secret-plans.txt"
             }
           ]
@@ -36,6 +37,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
             {
               mimeType: "text/plain",
               text: "I'm finna eat all my wife's leftovers.",
+              title: "Top Secret Plans",
               uri: "file:///top-secret-plans.txt"
             }
           ]
@@ -75,6 +77,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     it "returns class metadata" do
       expect(TestResource.metadata).to eq(
         name: "top-secret-plans.txt",
+        title: "Top Secret Plans",
         description: "Top secret plans to do top secret things",
         mimeType: "text/plain",
         uri: "file:///top-secret-plans.txt"
@@ -229,6 +232,34 @@ RSpec.describe ModelContextProtocol::Server::Resource do
           }.to raise_error(ArgumentError, /lastModified must be in ISO 8601 format/)
         end
       end
+    end
+  end
+
+  describe "optional title field" do
+    let(:resource_without_title) do
+      Class.new(ModelContextProtocol::Server::Resource) do
+        with_metadata do
+          name "test-resource"
+          description "A test resource without title"
+          mime_type "text/plain"
+          uri "file:///test-resource"
+        end
+
+        def call
+          respond_with text: "test content"
+        end
+      end
+    end
+
+    it "does not include title in metadata when not provided" do
+      metadata = resource_without_title.metadata
+      expect(metadata).not_to have_key(:title)
+    end
+
+    it "does not include title in serialized response when not provided" do
+      response = resource_without_title.call
+      content = response.serialized[:contents].first
+      expect(content).not_to have_key(:title)
     end
   end
 end

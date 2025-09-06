@@ -13,15 +13,17 @@ module ModelContextProtocol
       raise NotImplementedError, "Subclasses must implement the call method"
     end
 
-    Response = Data.define(:messages, :description) do
+    Response = Data.define(:messages, :description, :title) do
       def serialized
-        {description:, messages:}
+        result = {description:, messages:}
+        result[:title] = title if title
+        result
       end
     end
     private_constant :Response
 
     private def respond_with(messages:)
-      Response[messages:, description: self.class.description]
+      Response[messages:, description: self.class.description, title: self.class.title]
     end
 
     private def validate!(arguments = {})
@@ -43,7 +45,7 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :defined_arguments
+      attr_reader :name, :description, :title, :defined_arguments
 
       def with_metadata(&block)
         @defined_arguments ||= []
@@ -53,6 +55,7 @@ module ModelContextProtocol
 
         @name = metadata_dsl.name
         @description = metadata_dsl.description
+        @title = metadata_dsl.title
         @defined_arguments.concat(metadata_dsl.arguments)
       end
 
@@ -73,6 +76,7 @@ module ModelContextProtocol
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)
+        subclass.instance_variable_set(:@title, @title)
         subclass.instance_variable_set(:@defined_arguments, @defined_arguments&.dup)
       end
 
@@ -83,7 +87,9 @@ module ModelContextProtocol
       end
 
       def metadata
-        {name: @name, description: @description, arguments: @defined_arguments}
+        result = {name: @name, description: @description, arguments: @defined_arguments}
+        result[:title] = @title if @title
+        result
       end
 
       def complete_for(arg_name, value)
@@ -108,6 +114,11 @@ module ModelContextProtocol
       def description(value = nil)
         @description = value if value
         @description
+      end
+
+      def title(value = nil)
+        @title = value if value
+        @title
       end
 
       def argument(&block)

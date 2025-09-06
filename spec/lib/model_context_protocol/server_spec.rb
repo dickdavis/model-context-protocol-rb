@@ -241,6 +241,7 @@ RSpec.describe ModelContextProtocol::Server do
             {
               mimeType: "text/plain",
               text: "I'm finna eat all my wife's leftovers.",
+              title: "Top Secret Plans",
               uri: "file:///top-secret-plans.txt"
             }
           ]
