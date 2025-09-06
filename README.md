@@ -203,13 +203,6 @@ This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
-  ToneCompletion = ModelContextProtocol::Server::Completion.define do
-    hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
-    values = hints.grep(/#{argument_value}/)
-
-    respond_with values:
-  end
-
   with_metadata do
     name "brainstorm_excuses"
     title "Brainstorm Excuses"
@@ -225,9 +218,25 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
       name "tone"
       description "The general tone to be used in the generated excuses"
       required false
-      completion ToneCompletion
+      completion ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
     end
   end
+
+  # You can optionally define a custom completion for an argument and pass it to completions.
+  # ToneCompletion = ModelContextProtocol::Server::Completion.define do
+  #   hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+  #   values = hints.grep(/#{argument_value}/)
+  #   respond_with values:
+  # end
+  #   ...
+  # with_metadata do
+  #   argument do
+  #     name "tone"
+  #     description "The general tone to be used in the generated excuses"
+  #     required false
+  #     completion ToneCompletion
+  #   end
+  # end
 
   def call
     logger.info("Brainstorming excuses...")
@@ -348,23 +357,33 @@ This is an example resource template that provides a completion for a parameter 
 
 ```ruby
 class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
-  Completion = ModelContextProtocol::Server::Completion.define do
-    hints = {
-      "name" => ["top-secret-plans.txt"]
-    }
-    values = hints[argument_name].grep(/#{argument_value}/)
-
-    respond_with values:
-  end
-
   with_metadata do
     name "project-document-resource-template"
     description "A resource template for retrieving project documents"
     mime_type "text/plain"
     uri_template "file:///{name}" do
-      completion :name, Completion
+      completion :name, ["top-secret-plans.txt"]
     end
   end
+
+  # You can optionally define a custom completion for an argument and pass it to completions.
+  # Completion = ModelContextProtocol::Server::Completion.define do
+  #   hints = {
+  #     "name" => ["top-secret-plans.txt"]
+  #   }
+  #   values = hints[argument_name].grep(/#{argument_value}/)
+
+  #   respond_with values:
+  # end
+
+  # with_metadata do
+  #   name "project-document-resource-template"
+  #   description "A resource template for retrieving project documents"
+  #   mime_type "text/plain"
+  #   uri_template "file:///{name}" do
+  #     completion :name, Completion
+  #   end
+  # end
 end
 ```
 
