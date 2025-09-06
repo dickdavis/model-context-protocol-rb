@@ -244,4 +244,32 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       expect(response.serialized).not_to have_key(:title)
     end
   end
+
+  describe "array-based completions" do
+    let(:test_array_prompt) { TestArrayCompletionPrompt }
+
+    it "creates a completion from an array of values" do
+      completion = test_array_prompt.defined_arguments.first[:completion]
+      expect(completion).to respond_to(:call)
+    end
+
+    it "filters completion values based on input" do
+      result = test_array_prompt.complete_for("flavor", "va")
+      expect(result.values).to eq(["vanilla"])
+      expect(result.total).to eq(1)
+      expect(result.hasMore).to be(false)
+    end
+
+    it "returns multiple matches when appropriate" do
+      result = test_array_prompt.complete_for("flavor", "a")
+      expect(result.values).to include("vanilla", "chocolate", "strawberry", "caramel")
+      expect(result.total).to eq(4)
+    end
+
+    it "returns empty array when no matches" do
+      result = test_array_prompt.complete_for("flavor", "xyz")
+      expect(result.values).to eq([])
+      expect(result.total).to eq(0)
+    end
+  end
 end

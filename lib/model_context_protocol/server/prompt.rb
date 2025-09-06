@@ -150,9 +150,24 @@ module ModelContextProtocol
         @required
       end
 
-      def completion(klass = nil)
-        @completion = klass unless klass.nil?
+      def completion(klass_or_values = nil)
+        unless klass_or_values.nil?
+          @completion = if klass_or_values.is_a?(Array)
+            create_array_completion(klass_or_values)
+          else
+            klass_or_values
+          end
+        end
         @completion
+      end
+
+      private
+
+      def create_array_completion(values)
+        ModelContextProtocol::Server::Completion.define do
+          filtered_values = values.grep(/#{argument_value}/)
+          respond_with values: filtered_values
+        end
       end
     end
   end

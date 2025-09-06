@@ -203,13 +203,6 @@ This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
-  ToneCompletion = ModelContextProtocol::Server::Completion.define do
-    hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
-    values = hints.grep(/#{argument_value}/)
-
-    respond_with values:
-  end
-
   with_metadata do
     name "brainstorm_excuses"
     title "Brainstorm Excuses"
@@ -225,9 +218,25 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
       name "tone"
       description "The general tone to be used in the generated excuses"
       required false
-      completion ToneCompletion
+      completion ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
     end
   end
+
+  # You can optionally define a custom completion for an argument and pass it to completions.
+  # ToneCompletion = ModelContextProtocol::Server::Completion.define do
+  #   hints = ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+  #   values = hints.grep(/#{argument_value}/)
+  #   respond_with values:
+  # end
+  #   ...
+  # with_metadata do
+  #   argument do
+  #     name "tone"
+  #     description "The general tone to be used in the generated excuses"
+  #     required false
+  #     completion ToneCompletion
+  #   end
+  # end
 
   def call
     logger.info("Brainstorming excuses...")
