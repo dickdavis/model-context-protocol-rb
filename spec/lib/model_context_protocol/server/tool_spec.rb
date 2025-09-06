@@ -258,6 +258,40 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         )
       end
     end
+
+    describe "structured content response" do
+      it "formats structured content responses correctly with backward compatibility" do
+        arguments = {location: "San Francisco"}
+        logger = double("logger")
+        allow(logger).to receive(:info)
+        response = TestToolWithStructuredContentResponse.call(arguments, logger)
+        expect(response.serialized).to eq(
+          content: [
+            {
+              type: "text",
+              text: '{"temperature":22.5,"conditions":"Partly cloudy","humidity":65}'
+            }
+          ],
+          structuredContent: {
+            temperature: 22.5,
+            conditions: "Partly cloudy",
+            humidity: 65
+          },
+          isError: false
+        )
+      end
+
+      it "raises OutputSchemaValidationError when structured content violates schema" do
+        arguments = {location: "San Francisco"}
+        logger = double("logger")
+        allow(logger).to receive(:info)
+
+        expect {
+          response = TestToolWithInvalidStructuredContent.call(arguments, logger)
+          response.serialized
+        }.to raise_error(ModelContextProtocol::Server::Tool::OutputSchemaValidationError)
+      end
+    end
   end
 
   describe "define" do
@@ -293,6 +327,42 @@ RSpec.describe ModelContextProtocol::Server::Tool do
             }
           },
           required: ["number"]
+        }
+      )
+    end
+
+    it "includes output schema when provided" do
+      expect(TestToolWithStructuredContentResponse.definition).to eq(
+        name: "get_weather_data",
+        title: "Weather Data Retriever",
+        description: "Get current weather data for a location",
+        inputSchema: {
+          type: "object",
+          properties: {
+            location: {
+              type: "string",
+              description: "City name or zip code"
+            }
+          },
+          required: ["location"]
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            temperature: {
+              type: "number",
+              description: "Temperature in celsius"
+            },
+            conditions: {
+              type: "string",
+              description: "Weather conditions description"
+            },
+            humidity: {
+              type: "number",
+              description: "Humidity percentage"
+            }
+          },
+          required: ["temperature", "conditions", "humidity"]
         }
       )
     end
