@@ -14,6 +14,7 @@ module ModelContextProtocol
     TextResponse = Data.define(:resource, :text) do
       def serialized
         content = {mimeType: resource.mime_type, text:, uri: resource.uri}
+        content[:title] = resource.class.title if resource.class.title
         annotations = resource.class.annotations&.serialized
         content[:annotations] = annotations if annotations
         {contents: [content]}
@@ -24,6 +25,7 @@ module ModelContextProtocol
     BinaryResponse = Data.define(:blob, :resource) do
       def serialized
         content = {blob:, mimeType: resource.mime_type, uri: resource.uri}
+        content[:title] = resource.class.title if resource.class.title
         annotations = resource.class.annotations&.serialized
         content[:annotations] = annotations if annotations
         {contents: [content]}
@@ -43,7 +45,7 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :mime_type, :uri, :annotations
+      attr_reader :name, :description, :title, :mime_type, :uri, :annotations
 
       def with_metadata(&block)
         metadata_dsl = MetadataDSL.new
@@ -51,6 +53,7 @@ module ModelContextProtocol
 
         @name = metadata_dsl.name
         @description = metadata_dsl.description
+        @title = metadata_dsl.title
         @mime_type = metadata_dsl.mime_type
         @uri = metadata_dsl.uri
         @annotations = metadata_dsl.defined_annotations
@@ -59,6 +62,7 @@ module ModelContextProtocol
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)
+        subclass.instance_variable_set(:@title, @title)
         subclass.instance_variable_set(:@mime_type, @mime_type)
         subclass.instance_variable_set(:@uri, @uri)
         subclass.instance_variable_set(:@annotations, @annotations&.dup)
@@ -70,6 +74,7 @@ module ModelContextProtocol
 
       def metadata
         result = {name: @name, description: @description, mimeType: @mime_type, uri: @uri}
+        result[:title] = @title if @title
         result[:annotations] = @annotations.serialized if @annotations
         result
       end
@@ -86,6 +91,11 @@ module ModelContextProtocol
       def description(value = nil)
         @description = value if value
         @description
+      end
+
+      def title(value = nil)
+        @title = value if value
+        @title
       end
 
       def mime_type(value = nil)
