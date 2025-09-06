@@ -199,26 +199,36 @@ Then implement the `call` method to build your prompt. Any arguments passed to t
 
 You can also log from within your prompt by calling a valid logger level method on the `logger` and passing a string message.
 
+Build a message history using the an intuitive DSL, creating an ordered history of user and assistant messages with flexible content blocks that can include text, image, audio, embedded resources, and resource links.
+
 This is an example prompt that returns a properly formatted response:
 
 ```ruby
 class TestPrompt < ModelContextProtocol::Server::Prompt
   define do
+    # The name of the prompt for programmatic use
     name "brainstorm_excuses"
+    # The human-readable prompt name for display in UI
     title "Brainstorm Excuses"
+    # A short description of what the tool does
     description "A prompt for brainstorming excuses to get out of something"
+
+    # Define arguments to be used with your prompt
+    argument do
+      # The name of the argument
+      name "tone"
+      # A short description of the argument
+      description "The general tone to be used in the generated excuses"
+      # If the argument is required
+      required false
+      # Available hints for completions
+      completion ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
+    end
 
     argument do
       name "undesirable_activity"
       description "The thing to get out of"
       required true
-    end
-
-    argument do
-      name "tone"
-      description "The general tone to be used in the generated excuses"
-      required false
-      completion ["whiny", "angry", "callous", "desperate", "nervous", "sneaky"]
     end
   end
 
@@ -238,47 +248,32 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
   #   end
   # end
 
+  # The call method is invoked by the MCP Server to generate a response to resource/read requests
   def call
+    # You can use the logger
     logger.info("Brainstorming excuses...")
-    messages = [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "My wife wants me to: #{arguments[:undesirable_activity]}... Can you believe it?"
-        }
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: "Oh, that's just downright awful. What are you going to do?"
-        }
-      },
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Well, I'd like to get out of it, but I'm going to need your help."
-        }
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: "Anything for you."
-        }
-      },
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: "Can you generate some excuses for me?" + (arguments[:tone] ? "Make them as #{arguments[:tone]} as possible." : "")
-        }
-      }
-    ]
 
-    respond_with messages: messages
+    # Build an array of user and assistant messages
+    messages = message_history do
+      # Create a message with the user role
+      user_message do
+        # Use any type of content block in a message (text, image, audio, embedded_resource, or resource_link)
+        text_content(text: "My wife wants me to: #{arguments[:undesirable_activity]}... Can you believe it?")
+      end
+
+      # You can also create messages with the assistant role
+      assistant_message do
+        text_content(text: "Oh, that's just downright awful. How can I help?")
+      end
+
+      user_message do
+        # Reference any inputs from the client by accessing the appropriate key in the arguments hash
+        text_content(text: "Can you generate some excuses for me?" + (arguments[:tone] ? " Make them as #{arguments[:tone]} as possible." : ""))
+      end
+    end
+
+    # Respond with the messages
+    respond_with messages:
   end
 end
 ```
