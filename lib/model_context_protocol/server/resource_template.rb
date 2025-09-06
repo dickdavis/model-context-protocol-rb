@@ -85,8 +85,21 @@ module ModelContextProtocol
         @completions = {}
       end
 
-      def completion(param_name, completion_class)
-        @completions[param_name.to_s] = completion_class
+      def completion(param_name, completion_class_or_values)
+        @completions[param_name.to_s] = if completion_class_or_values.is_a?(Array)
+          create_array_completion(completion_class_or_values)
+        else
+          completion_class_or_values
+        end
+      end
+
+      private
+
+      def create_array_completion(values)
+        ModelContextProtocol::Server::Completion.define do
+          filtered_values = values.grep(/#{argument_value}/)
+          respond_with values: filtered_values
+        end
       end
     end
   end
