@@ -2,6 +2,9 @@ require "json-schema"
 
 module ModelContextProtocol
   class Server::Tool
+    # Raised when output schema validation fails.
+    class OutputSchemaValidationError < StandardError; end
+
     include ModelContextProtocol::Server::ContentHelpers
 
     attr_reader :arguments, :context, :logger
@@ -25,6 +28,32 @@ module ModelContextProtocol
     end
     private_constant :Response
 
+    StructuredContentResponse = Data.define(:structured_content, :tool) do
+      def serialized
+        json_text = JSON.generate(structured_content)
+        text_content = ModelContextProtocol::Server::Content::Text[
+          meta: nil,
+          annotations: nil,
+          text: json_text
+        ]
+
+        validation_errors = JSON::Validator.fully_validate(
+          tool.class.definition[:outputSchema], structured_content
+        )
+
+        if validation_errors.empty?
+          {
+            structuredContent: structured_content,
+            content: [text_content.serialized],
+            isError: false
+          }
+        else
+          raise OutputSchemaValidationError, validation_errors.join(", ")
+        end
+      end
+    end
+    private_constant :StructuredContentResponse
+
     ErrorResponse = Data.define(:error) do
       def serialized
         {content: [{type: "text", text: error}], isError: true}
@@ -37,6 +66,8 @@ module ModelContextProtocol
       in [{content:}]
         content_array = content.is_a?(Array) ? content : [content]
         Response[content: content_array]
+      in [{structured_content:}]
+        StructuredContentResponse[structured_content:, tool: self]
       in [{error:}]
         ErrorResponse[error:]
       else
@@ -49,7 +80,7 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :title, :input_schema
+      attr_reader :name, :description, :title, :input_schema, :output_schema
 
       def define(&block)
         definition_dsl = DefinitionDSL.new
@@ -59,6 +90,7 @@ module ModelContextProtocol
         @description = definition_dsl.description
         @title = definition_dsl.title
         @input_schema = definition_dsl.input_schema
+        @output_schema = definition_dsl.output_schema
       end
 
       def inherited(subclass)
@@ -66,14 +98,15 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@description, @description)
         subclass.instance_variable_set(:@title, @title)
         subclass.instance_variable_set(:@input_schema, @input_schema)
+        subclass.instance_variable_set(:@output_schema, @output_schema)
       end
 
       def call(arguments, logger, context = {})
         new(arguments, logger, context).call
       rescue JSON::Schema::ValidationError => validation_error
         raise ModelContextProtocol::Server::ParameterValidationError, validation_error.message
-      rescue ModelContextProtocol::Server::ResponseArgumentsError => response_arguments_error
-        raise response_arguments_error
+      rescue OutputSchemaValidationError, ModelContextProtocol::Server::ResponseArgumentsError => tool_error
+        raise tool_error, tool_error.message
       rescue => error
         ErrorResponse[error: error.message]
       end
@@ -81,6 +114,7 @@ module ModelContextProtocol
       def definition
         result = {name: @name, description: @description, inputSchema: @input_schema}
         result[:title] = @title if @title
+        result[:outputSchema] = @output_schema if @output_schema
         result
       end
     end
@@ -104,6 +138,11 @@ module ModelContextProtocol
       def input_schema(&block)
         @input_schema = instance_eval(&block) if block_given?
         @input_schema
+      end
+
+      def output_schema(&block)
+        @output_schema = instance_eval(&block) if block_given?
+        @output_schema
       end
     end
   end
