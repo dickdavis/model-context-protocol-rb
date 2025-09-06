@@ -1,5 +1,7 @@
 module ModelContextProtocol
   class Server::Prompt
+    include Server::ContentHelpers
+
     attr_reader :arguments, :context, :logger
 
     def initialize(arguments, logger, context = {})
@@ -21,6 +23,12 @@ module ModelContextProtocol
       end
     end
     private_constant :Response
+
+    def message_history(&block)
+      builder = MessageHistoryBuilder.new(self)
+      builder.instance_eval(&block)
+      builder.messages
+    end
 
     private def respond_with(messages:)
       Response[messages:, description: self.class.description, title: self.class.title]
@@ -96,6 +104,45 @@ module ModelContextProtocol
         arg = @defined_arguments&.find { |a| a[:name] == arg_name.to_s }
         completion = (arg && arg[:completion]) ? arg[:completion] : ModelContextProtocol::Server::NullCompletion
         completion.call(arg_name.to_s, value)
+      end
+    end
+
+    class MessageHistoryBuilder
+      include Server::ContentHelpers
+
+      attr_reader :messages
+
+      def initialize(prompt_instance)
+        @messages = []
+        @prompt_instance = prompt_instance
+      end
+
+      def arguments
+        @prompt_instance.arguments
+      end
+
+      def context
+        @prompt_instance.context
+      end
+
+      def logger
+        @prompt_instance.logger
+      end
+
+      def user_message(&block)
+        content = instance_eval(&block).serialized
+        @messages << {
+          role: "user",
+          content: content
+        }
+      end
+
+      def assistant_message(&block)
+        content = instance_eval(&block).serialized
+        @messages << {
+          role: "assistant",
+          content: content
+        }
       end
     end
 

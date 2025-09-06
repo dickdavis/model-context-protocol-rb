@@ -34,7 +34,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
           expect(response.serialized[:description]).to eq("A prompt for brainstorming excuses to get out of something")
           expect(response.serialized[:title]).to eq("Brainstorm Excuses")
           expect(response.serialized[:messages]).to be_an(Array)
-          expect(response.serialized[:messages].length).to eq(5)
+          expect(response.serialized[:messages].length).to eq(3)
         end
       end
     end
@@ -132,30 +132,30 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     it "sets a required argument" do
       aggregate_failures do
-        first_argument = TestPrompt.defined_arguments[0]
-        expect(first_argument[:name]).to eq("undesirable_activity")
-        expect(first_argument[:description]).to eq("The thing to get out of")
-        expect(first_argument[:required]).to eq(true)
+        second_argument = TestPrompt.defined_arguments[1]
+        expect(second_argument[:name]).to eq("undesirable_activity")
+        expect(second_argument[:description]).to eq("The thing to get out of")
+        expect(second_argument[:required]).to eq(true)
       end
     end
 
     it "sets a optional argument" do
       aggregate_failures do
-        second_argument = TestPrompt.defined_arguments[1]
-        expect(second_argument[:name]).to eq("tone")
-        expect(second_argument[:description]).to eq("The general tone to be used in the generated excuses")
-        expect(second_argument[:required]).to eq(false)
+        first_argument = TestPrompt.defined_arguments[0]
+        expect(first_argument[:name]).to eq("tone")
+        expect(first_argument[:description]).to eq("The general tone to be used in the generated excuses")
+        expect(first_argument[:required]).to eq(false)
       end
     end
 
     it "sets an argument with a completion proc" do
-      second_argument = TestPrompt.defined_arguments[1]
-      expect(second_argument[:completion]).to be(TestPrompt::ToneCompletion)
+      second_argument = TestPromptWithCompletionClass.defined_arguments[1]
+      expect(second_argument[:completion]).to be(TestPromptWithCompletionClass::ToneCompletion)
     end
 
     it "sets an argument without a completion proc" do
-      first_argument = TestPrompt.defined_arguments[0]
-      expect(first_argument[:completion]).to be_nil
+      second_argument = TestPrompt.defined_arguments[1]
+      expect(second_argument[:completion]).to be_nil
     end
   end
 
@@ -168,16 +168,34 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       expect(metadata[:arguments].size).to eq(2)
 
       first_arg = metadata[:arguments][0]
-      expect(first_arg[:name]).to eq("undesirable_activity")
-      expect(first_arg[:description]).to eq("The thing to get out of")
-      expect(first_arg[:required]).to eq(true)
-      expect(first_arg[:completion]).to be_nil
+      expect(first_arg[:name]).to eq("tone")
+      expect(first_arg[:description]).to eq("The general tone to be used in the generated excuses")
+      expect(first_arg[:required]).to eq(false)
+      expect(first_arg[:completion]).to respond_to(:call)
+      completion_result = first_arg[:completion].call("tone", "an")
+      expect(completion_result.values).to eq(["angry"])
 
       second_arg = metadata[:arguments][1]
-      expect(second_arg[:name]).to eq("tone")
-      expect(second_arg[:description]).to eq("The general tone to be used in the generated excuses")
-      expect(second_arg[:required]).to eq(false)
-      expect(second_arg[:completion]).to be(TestPrompt::ToneCompletion)
+      expect(second_arg[:name]).to eq("undesirable_activity")
+      expect(second_arg[:description]).to eq("The thing to get out of")
+      expect(second_arg[:required]).to eq(true)
+      expect(second_arg[:completion]).to be_nil
+    end
+  end
+
+  describe "with class-based completion" do
+    it "returns class definition with completion class" do
+      metadata = TestPromptWithCompletionClass.definition
+      expect(metadata[:name]).to eq("test_with_completion_class")
+      expect(metadata[:title]).to eq("Test Prompt with Completion Class")
+      expect(metadata[:description]).to eq("A test prompt that uses a completion class")
+      expect(metadata[:arguments].size).to eq(2)
+
+      completion_arg = metadata[:arguments][1]
+      expect(completion_arg[:name]).to eq("completion_arg")
+      expect(completion_arg[:description]).to eq("An argument with a completion class")
+      expect(completion_arg[:required]).to eq(false)
+      expect(completion_arg[:completion]).to be(TestPromptWithCompletionClass::ToneCompletion)
     end
   end
 
@@ -198,23 +216,23 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     context "when the argument has a completion proc" do
       it "calls the completion proc with the argument name" do
-        second_argument_completion = TestPrompt.defined_arguments[1][:completion]
+        first_argument_completion = TestPrompt.defined_arguments[0][:completion]
         argument_name = "tone"
         argument_value = "w"
-        allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
+        allow(first_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
         TestPrompt.complete_for(argument_name, argument_value)
-        expect(second_argument_completion).to have_received(:call).with(argument_name, argument_value)
+        expect(first_argument_completion).to have_received(:call).with(argument_name, argument_value)
       end
     end
 
     context "when argument name is a symbol" do
       it "converts the symbol to a string" do
-        second_argument_completion = TestPrompt.defined_arguments[1][:completion]
+        first_argument_completion = TestPrompt.defined_arguments[0][:completion]
         argument_name = "tone"
         argument_value = "w"
-        allow(second_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
+        allow(first_argument_completion).to receive(:call).with(argument_name, argument_value).and_call_original
         TestPrompt.complete_for(argument_name.to_sym, argument_value)
-        expect(second_argument_completion).to have_received(:call).with(argument_name, argument_value)
+        expect(first_argument_completion).to have_received(:call).with(argument_name, argument_value)
       end
     end
   end
@@ -246,7 +264,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
   end
 
   describe "array-based completions" do
-    let(:test_array_prompt) { TestArrayCompletionPrompt }
+    let(:test_array_prompt) { TestPrompt }
 
     it "creates a completion from an array of values" do
       completion = test_array_prompt.defined_arguments.first[:completion]
@@ -254,20 +272,20 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     end
 
     it "filters completion values based on input" do
-      result = test_array_prompt.complete_for("flavor", "va")
-      expect(result.values).to eq(["vanilla"])
+      result = test_array_prompt.complete_for("tone", "an")
+      expect(result.values).to eq(["angry"])
       expect(result.total).to eq(1)
       expect(result.hasMore).to be(false)
     end
 
     it "returns multiple matches when appropriate" do
-      result = test_array_prompt.complete_for("flavor", "a")
-      expect(result.values).to include("vanilla", "chocolate", "strawberry", "caramel")
+      result = test_array_prompt.complete_for("tone", "n")
+      expect(result.values).to include("whiny", "angry", "nervous", "sneaky")
       expect(result.total).to eq(4)
     end
 
     it "returns empty array when no matches" do
-      result = test_array_prompt.complete_for("flavor", "xyz")
+      result = test_array_prompt.complete_for("tone", "xyz")
       expect(result.values).to eq([])
       expect(result.total).to eq(0)
     end
