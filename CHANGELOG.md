@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Make streamable HTTP transport thread-safe by using Redis to manage state.
+
 ## [0.4.0] - 2025-09-07
 
 - Implement pagination support.
