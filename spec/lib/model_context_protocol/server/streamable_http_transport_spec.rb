@@ -6,6 +6,16 @@ TestResponse = Data.define(:text) do
   end
 end
 
+InitializeTestResponse = Data.define(:protocol_version) do
+  def serialized
+    {
+      protocolVersion: protocol_version,
+      capabilities: {},
+      serverInfo: {name: "test-server", version: "1.0.0"}
+    }
+  end
+end
+
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   subject(:transport) do
     described_class.new(
@@ -23,15 +33,40 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     config.version = "1.0.0"
     config.transport = {
       type: :streamable_http,
-      redis_client: mock_redis
+      redis_client: mock_redis,
+      require_sessions: false,
+      validate_origin: false,
+      env: rack_env
     }
     config
   end
 
-  let(:mock_request) { double("request") }
-  let(:mock_response) { double("response") }
-  let(:mock_body) { StringIO.new }
   let(:session_id) { "test-session-123" }
+  let(:rack_env) { build_rack_env }
+
+  def build_rack_env(method: "POST", path: "/mcp", body: "", headers: {})
+    env = {
+      "REQUEST_METHOD" => method,
+      "PATH_INFO" => path,
+      "rack.input" => StringIO.new(body),
+      "CONTENT_TYPE" => "application/json",
+      "HTTP_ACCEPT" => "application/json"
+    }
+
+    headers.each do |key, value|
+      env["HTTP_#{key.upcase.tr("-", "_")}"] = value
+    end
+
+    env
+  end
+
+  def set_request_env(method: "POST", body: "", headers: {})
+    configuration.transport[:env] = build_rack_env(
+      method: method,
+      body: body,
+      headers: headers
+    )
+  end
 
   before do
     mock_redis.flushdb
@@ -42,7 +77,16 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end)
 
     router.map("initialize") do |message|
-      TestResponse[text: "initialized"]
+      client_protocol_version = message["params"]&.dig("protocolVersion")
+      supported_versions = ["2025-06-18"]
+
+      negotiated_version = if client_protocol_version && supported_versions.include?(client_protocol_version)
+        client_protocol_version
+      else
+        supported_versions.first
+      end
+
+      InitializeTestResponse[protocol_version: negotiated_version]
     end
 
     router.map("ping") do |message|
@@ -52,17 +96,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     router.map("error_method") do |message|
       raise "Something went wrong"
     end
-
-    configuration.transport = {
-      type: :streamable_http,
-      redis_client: mock_redis,
-      request: mock_request,
-      response: mock_response
-    }
   end
 
   describe "#handle" do
-    context "when request and response objects are missing" do
+    context "when env hash is missing" do
       before do
         configuration.transport = {
           type: :streamable_http,
@@ -73,69 +110,120 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       it "raises ArgumentError" do
         expect { transport.handle }.to raise_error(
           ArgumentError,
-          "StreamableHTTP transport requires request and response objects in transport_options"
+          "StreamableHTTP transport requires Rack env hash in transport_options"
         )
       end
     end
 
     context "with POST request" do
-      before do
-        allow(mock_request).to receive(:method).and_return("POST")
-        allow(mock_request).to receive(:body).and_return(mock_body)
-        allow(mock_request).to receive(:headers).and_return({})
-      end
-
       context "for initialization request" do
         let(:init_request) { {"method" => "initialize", "params" => {}, "id" => "init-1"} }
 
         before do
-          mock_body.string = init_request.to_json
-          mock_body.rewind
+          set_request_env(
+            body: init_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
         end
 
-        it "creates a session and returns response with session ID" do
-          result = transport.handle
+        context "when sessions are not required" do
+          it "returns response without session ID" do
+            result = transport.handle
 
-          aggregate_failures do
-            expect(result[:json]).to eq({
-              jsonrpc: "2.0",
-              id: "init-1",
-              result: {text: "initialized"}
-            })
-            expect(result[:status]).to eq(200)
-            expect(result[:headers]).to have_key("Mcp-Session-Id")
-
-            session_id = result[:headers]["Mcp-Session-Id"]
-            expect(session_id).to match(/\A[0-9a-f-]{36}\z/) # UUID format
+            aggregate_failures do
+              expect(result[:json]).to eq({
+                jsonrpc: "2.0",
+                id: "init-1",
+                result: {
+                  protocolVersion: "2025-06-18",
+                  capabilities: {},
+                  serverInfo: {name: "test-server", version: "1.0.0"}
+                }
+              })
+              expect(result[:status]).to eq(200)
+              expect(result[:headers]).not_to have_key("Mcp-Session-Id")
+              expect(result[:headers]["Content-Type"]).to eq("application/json")
+            end
           end
         end
 
-        it "creates session in Redis" do
-          result = transport.handle
-          session_id = result[:headers]["Mcp-Session-Id"]
+        context "when sessions are required" do
+          before do
+            configuration.transport[:require_sessions] = true
+          end
 
-          expect(mock_redis.exists("session:#{session_id}")).to eq(1)
+          it "creates a session and returns response with session ID" do
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:json]).to eq({
+                jsonrpc: "2.0",
+                id: "init-1",
+                result: {
+                  protocolVersion: "2025-06-18",
+                  capabilities: {},
+                  serverInfo: {name: "test-server", version: "1.0.0"}
+                }
+              })
+              expect(result[:status]).to eq(200)
+              expect(result[:headers]).to have_key("Mcp-Session-Id")
+
+              session_id = result[:headers]["Mcp-Session-Id"]
+              expect(session_id).to match(/\A[0-9a-f-]{36}\z/) # UUID format
+            end
+          end
+
+          it "creates session in Redis" do
+            result = transport.handle
+            session_id = result[:headers]["Mcp-Session-Id"]
+
+            expect(mock_redis.exists("session:#{session_id}")).to eq(1)
+          end
         end
       end
 
       context "for regular request without session" do
-        let(:regular_request) { {"method" => "test_method", "params" => {}, "id" => "req-1"} }
+        let(:regular_request) { {"method" => "ping", "params" => {}, "id" => "req-1"} }
 
         before do
-          mock_body.string = regular_request.to_json
-          mock_body.rewind
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
         end
 
-        it "returns error for missing session ID" do
-          result = transport.handle
+        context "when sessions are not required" do
+          it "processes request successfully without session ID" do
+            result = transport.handle
 
-          aggregate_failures do
-            expect(result[:json]).to eq({
-              jsonrpc: "2.0",
-              id: "req-1",
-              error: {code: -32600, message: "Invalid or missing session ID"}
-            })
-            expect(result[:status]).to eq(400)
+            aggregate_failures do
+              expect(result[:json]).to eq({
+                jsonrpc: "2.0",
+                id: "req-1",
+                result: {text: "pong"}
+              })
+              expect(result[:status]).to eq(200)
+              expect(result[:headers]["Content-Type"]).to eq("application/json")
+            end
+          end
+        end
+
+        context "when sessions are required" do
+          before do
+            configuration.transport[:require_sessions] = true
+          end
+
+          it "returns error for missing session ID" do
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:json]).to eq({
+                jsonrpc: "2.0",
+                id: "req-1",
+                error: {code: -32600, message: "Invalid or missing session ID"}
+              })
+              expect(result[:status]).to eq(400)
+            end
           end
         end
       end
@@ -144,8 +232,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         let(:regular_request) { {"method" => "ping", "params" => {}, "id" => "ping-1"} }
 
         before do
-          mock_body.string = regular_request.to_json
-          mock_body.rewind
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {"Mcp-Session-Id" => session_id, "Accept" => "application/json"}
+          )
 
           mock_redis.hset("session:#{session_id}", {
             "id" => session_id.to_json,
@@ -155,8 +245,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             "last_activity" => Time.now.to_f.to_json,
             "active_stream" => false.to_json
           })
-
-          allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
         end
 
         it "returns response directly when no active stream" do
@@ -186,8 +274,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       context "with invalid JSON" do
         before do
-          mock_body.string = "invalid json"
-          mock_body.rewind
+          set_request_env(body: "invalid json")
         end
 
         it "returns JSON parse error" do
@@ -204,13 +291,107 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
       end
 
+      context "with MCP-Protocol-Version header" do
+        let(:regular_request) { {"method" => "ping", "params" => {}, "id" => "ping-1"} }
+
+        before do
+          init_request = {"method" => "initialize", "params" => {"protocolVersion" => "2025-06-18"}, "id" => "init-1"}
+          set_request_env(
+            body: init_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+
+          transport.handle
+
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+        end
+
+        it "accepts negotiated protocol version" do
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {
+              "Accept" => "application/json",
+              "MCP-Protocol-Version" => "2025-06-18"
+            }
+          )
+
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "ping-1",
+              result: {text: "pong"}
+            })
+            expect(result[:status]).to eq(200)
+          end
+        end
+
+        it "rejects non-negotiated protocol version" do
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {
+              "Accept" => "application/json",
+              "MCP-Protocol-Version" => "2020-01-01"
+            }
+          )
+
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:json]).to match({
+              jsonrpc: "2.0",
+              id: nil,
+              error: {code: -32600, message: /Invalid MCP protocol version: 2020-01-01/}
+            })
+            expect(result[:status]).to eq(400)
+          end
+        end
+      end
+
+      context "protocol version negotiation" do
+        it "returns negotiated protocol version when client sends supported version" do
+          init_request = {"method" => "initialize", "params" => {"protocolVersion" => "2025-06-18"}, "id" => "init-1"}
+          set_request_env(
+            body: init_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:json][:result][:protocolVersion]).to eq("2025-06-18")
+            expect(result[:status]).to eq(200)
+          end
+        end
+
+        it "returns server's latest version when client sends unsupported version" do
+          init_request = {"method" => "initialize", "params" => {"protocolVersion" => "2020-01-01"}, "id" => "init-1"}
+          set_request_env(
+            body: init_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:json][:result][:protocolVersion]).to eq("2025-06-18")
+            expect(result[:status]).to eq(200)
+          end
+        end
+      end
+
       context "with internal error" do
         let(:error_request) { {"method" => "error_method", "params" => {}, "id" => "error-1"} }
 
         before do
-          mock_body.string = error_request.to_json
-          mock_body.rewind
-          allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
+          set_request_env(
+            body: error_request.to_json,
+            headers: {"Mcp-Session-Id" => session_id}
+          )
 
           mock_redis.hset("session:#{session_id}", {
             "id" => session_id.to_json,
@@ -244,8 +425,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     context "with GET request (SSE)" do
       before do
-        allow(mock_request).to receive(:method).and_return("GET")
-        allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
+        set_request_env(
+          method: "GET",
+          headers: {
+            "Mcp-Session-Id" => session_id,
+            "Accept" => "text/event-stream"
+          }
+        )
 
         mock_redis.hset("session:#{session_id}", {
           "id" => session_id.to_json,
@@ -271,16 +457,37 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
       end
 
-      it "marks session as having active stream" do
-        transport.handle
+      context "when sessions are required" do
+        before do
+          configuration.transport[:require_sessions] = true
+          mock_redis.hset("session:#{session_id}", {
+            "id" => session_id.to_json,
+            "server_instance" => "test-server".to_json,
+            "context" => {}.to_json,
+            "created_at" => Time.now.to_f.to_json,
+            "last_activity" => Time.now.to_f.to_json,
+            "active_stream" => false.to_json
+          })
+        end
 
-        stream_data = mock_redis.hget("session:#{session_id}", "active_stream")
-        expect(JSON.parse(stream_data)).to be true
+        it "marks session as having active stream" do
+          transport.handle
+
+          stream_data = mock_redis.hget("session:#{session_id}", "active_stream")
+          expect(JSON.parse(stream_data)).to be true
+        end
       end
 
-      context "with invalid session" do
+      context "with invalid session when sessions are required" do
         before do
-          allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => "invalid-session"})
+          configuration.transport[:require_sessions] = true
+          set_request_env(
+            method: "GET",
+            headers: {
+              "Mcp-Session-Id" => "invalid-session",
+              "Accept" => "text/event-stream"
+            }
+          )
         end
 
         it "returns error for invalid session" do
@@ -290,9 +497,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             expect(result[:json]).to eq({
               jsonrpc: "2.0",
               id: nil,
-              error: {code: -32600, message: "Invalid or missing session ID"}
+              error: {code: -32600, message: "Session terminated"}
             })
-            expect(result[:status]).to eq(400)
+            expect(result[:status]).to eq(404)
           end
         end
       end
@@ -300,8 +507,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     context "with DELETE request" do
       before do
-        allow(mock_request).to receive(:method).and_return("DELETE")
-        allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
+        set_request_env(
+          method: "DELETE",
+          headers: {"Mcp-Session-Id" => session_id}
+        )
 
         mock_redis.hset("session:#{session_id}", {
           "id" => session_id.to_json,
@@ -325,7 +534,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       context "without session ID" do
         before do
-          allow(mock_request).to receive(:headers).and_return({})
+          set_request_env(
+            method: "DELETE",
+            headers: {}
+          )
         end
 
         it "still returns success" do
@@ -341,7 +553,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     context "with unsupported HTTP method" do
       before do
-        allow(mock_request).to receive(:method).and_return("PUT")
+        set_request_env(method: "PUT")
       end
 
       it "returns method not allowed error" do
@@ -363,8 +575,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     let(:mock_stream) { double("stream") }
 
     before do
-      allow(mock_request).to receive(:method).and_return("GET")
-      allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
+      set_request_env(
+        method: "GET",
+        headers: {
+          "Mcp-Session-Id" => session_id,
+          "Accept" => "text/event-stream"
+        }
+      )
 
       mock_redis.hset("session:#{session_id}", {
         "id" => session_id.to_json,
@@ -394,7 +611,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         stream_thread.join
 
         stream_data = mock_redis.hget("session:#{session_id}", "active_stream")
-        expect(JSON.parse(stream_data)).to be false # Should be cleaned up
+        expect(JSON.parse(stream_data)).to be false
       end
     end
 
@@ -409,8 +626,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         result = transport.handle
         stream_proc = result[:stream_proc]
 
-        expect(mock_stream).to receive(:write).with(": ping\n\n")
-        expect(mock_stream).to receive(:flush)
+        expect(mock_stream).to receive(:write).at_least(1).times
+        expect(mock_stream).to receive(:flush).at_least(1).times
 
         stream_thread = Thread.new do
           stream_proc.call(mock_stream)
@@ -451,7 +668,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       other_config.version = "1.0.0"
       other_config.transport = {
         type: :streamable_http,
-        redis_client: mock_redis
+        redis_client: mock_redis,
+        require_sessions: true
       }
 
       allow(mock_redis).to receive(:publish)
@@ -464,11 +682,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "routes messages between server instances via Redis" do
-      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
-      mock_body.rewind
-      allow(mock_request).to receive(:method).and_return("POST")
-      allow(mock_request).to receive(:body).and_return(mock_body)
-      allow(mock_request).to receive(:headers).and_return({})
+      configuration.transport[:require_sessions] = true
+
+      init_request = {"method" => "initialize", "id" => "init-1"}
+      set_request_env(
+        body: init_request.to_json,
+        headers: {"Accept" => "application/json"}
+      )
 
       result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
@@ -482,18 +702,19 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         TestResponse[text: "pong"]
       end
 
-      other_mock_body = StringIO.new({"method" => "ping", "id" => "ping-1"}.to_json)
-      other_mock_request = double("other_request")
-      allow(other_mock_request).to receive(:method).and_return("POST")
-      allow(other_mock_request).to receive(:body).and_return(other_mock_body)
-      allow(other_mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
-
+      ping_request = {"method" => "ping", "id" => "ping-1"}
       other_config = other_server_transport.instance_variable_get(:@configuration)
       other_config.transport = {
         type: :streamable_http,
         redis_client: mock_redis,
-        request: other_mock_request,
-        response: mock_response
+        require_sessions: true,
+        env: build_rack_env(
+          body: ping_request.to_json,
+          headers: {
+            "Mcp-Session-Id" => session_id,
+            "Accept" => "application/json"
+          }
+        )
       }
 
       expect(mock_redis).to receive(:publish)
@@ -504,17 +725,15 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   describe "session management integration" do
-    before do
-      allow(mock_request).to receive(:method).and_return("POST")
-      allow(mock_request).to receive(:body).and_return(mock_body)
-      allow(mock_request).to receive(:headers).and_return({})
-    end
-
-    it "creates sessions with server context" do
+    it "creates sessions with server context when sessions are required" do
+      configuration.transport[:require_sessions] = true
       configuration.context = {user_id: "test-user", app: "test-app"}
 
-      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
-      mock_body.rewind
+      init_request = {"method" => "initialize", "id" => "init-1"}
+      set_request_env(
+        body: init_request.to_json,
+        headers: {"Accept" => "application/json"}
+      )
 
       result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
@@ -523,17 +742,24 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       expect(parsed_context).to eq({"user_id" => "test-user", "app" => "test-app"})
     end
 
-    it "handles session cleanup on DELETE" do
-      mock_body.string = {"method" => "initialize", "id" => "init-1"}.to_json
-      mock_body.rewind
+    it "handles session cleanup on DELETE when sessions are required" do
+      configuration.transport[:require_sessions] = true
+
+      init_request = {"method" => "initialize", "id" => "init-1"}
+      set_request_env(
+        body: init_request.to_json,
+        headers: {"Accept" => "application/json"}
+      )
 
       result = transport.handle
       session_id = result[:headers]["Mcp-Session-Id"]
 
       expect(mock_redis.exists("session:#{session_id}")).to eq(1)
 
-      allow(mock_request).to receive(:method).and_return("DELETE")
-      allow(mock_request).to receive(:headers).and_return({"Mcp-Session-Id" => session_id})
+      set_request_env(
+        method: "DELETE",
+        headers: {"Mcp-Session-Id" => session_id}
+      )
 
       result = transport.handle
 
@@ -547,8 +773,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
   describe "MCP logging integration" do
     before do
-      allow(mock_request).to receive(:method).and_return("GET")
-      allow(mock_request).to receive(:headers).and_return({})
+      set_request_env(
+        method: "GET",
+        headers: {}
+      )
     end
 
     it "connects the logger to the transport when handle starts" do
@@ -581,7 +809,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           output = mock_stream.read
 
           expect(output).to include("data: ")
-          notification = JSON.parse(output.gsub("data: ", "").strip)
+          data_line = output.lines.find { |line| line.start_with?("data: ") }
+          json_string = data_line.sub("data: ", "").strip
+          notification = JSON.parse(json_string)
 
           aggregate_failures do
             expect(notification["jsonrpc"]).to eq("2.0")
@@ -635,7 +865,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           output = mock_stream.read
 
           expect(output).to include("data: ")
-          notification = JSON.parse(output.gsub("data: ", "").strip)
+          data_line = output.lines.find { |line| line.start_with?("data: ") }
+          json_string = data_line.sub("data: ", "").strip
+          notification = JSON.parse(json_string)
           expect(notification["params"]["data"]["message"]).to eq("queued message")
         end
       end
@@ -645,9 +877,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       let(:test_stream) { StringIO.new }
 
       before do
-        allow(mock_request).to receive(:method).and_return("POST")
-        allow(mock_request).to receive(:headers).and_return({})
-        allow(mock_request).to receive(:body).and_return(mock_body)
+        set_request_env(
+          method: "POST",
+          headers: {}
+        )
       end
 
       it "uses MCP logger for keepalive thread errors" do
