@@ -37,8 +37,11 @@ module ModelContextProtocol
 
     private
 
-    PROTOCOL_VERSION = "2025-06-18".freeze
-    private_constant :PROTOCOL_VERSION
+    SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18"].freeze
+    private_constant :SUPPORTED_PROTOCOL_VERSIONS
+
+    LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS.first
+    private_constant :LATEST_PROTOCOL_VERSION
 
     InitializeResponse = Data.define(:protocol_version, :capabilities, :server_info, :instructions) do
       def serialized
@@ -65,7 +68,15 @@ module ModelContextProtocol
     end
 
     def map_handlers
-      router.map("initialize") do |_message|
+      router.map("initialize") do |message|
+        client_protocol_version = message["params"]&.dig("protocolVersion")
+
+        negotiated_version = if client_protocol_version && SUPPORTED_PROTOCOL_VERSIONS.include?(client_protocol_version)
+          client_protocol_version
+        else
+          LATEST_PROTOCOL_VERSION
+        end
+
         server_info = {
           name: configuration.name,
           version: configuration.version
@@ -73,7 +84,7 @@ module ModelContextProtocol
         server_info[:title] = configuration.title if configuration.title
 
         InitializeResponse[
-          protocol_version: PROTOCOL_VERSION,
+          protocol_version: negotiated_version,
           capabilities: build_capabilities,
           server_info: server_info,
           instructions: configuration.instructions
