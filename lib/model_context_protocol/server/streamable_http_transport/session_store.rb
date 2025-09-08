@@ -1,10 +1,8 @@
-# frozen_string_literal: true
-
 require "json"
 require "securerandom"
 
 module ModelContextProtocol
-  class Server
+  class Server::StreamableHttpTransport
     class SessionStore
       def initialize(redis_client, ttl: 3600)
         @redis = redis_client
@@ -73,7 +71,6 @@ module ModelContextProtocol
         server_instance = get_session_server(session_id)
         return false unless server_instance
 
-        # Publish to server-specific channel
         @redis.publish("server:#{server_instance}:messages", {
           session_id: session_id,
           message: message

@@ -1,5 +1,9 @@
 require "json"
 require "securerandom"
+require_relative "streamable_http_transport/stream_registry"
+require_relative "streamable_http_transport/notification_queue"
+require_relative "streamable_http_transport/event_counter"
+require_relative "streamable_http_transport/session_store"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -14,6 +18,7 @@ module ModelContextProtocol
         {jsonrpc: "2.0", id:, error:}
       end
     end
+
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
@@ -26,17 +31,39 @@ module ModelContextProtocol
       @validate_origin = transport_options.fetch(:validate_origin, true)
       @allowed_origins = transport_options.fetch(:allowed_origins, ["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"])
 
-      @session_store = ModelContextProtocol::Server::SessionStore.new(
+      @session_store = SessionStore.new(
         @redis,
         ttl: transport_options[:session_ttl] || 3600
       )
 
       @server_instance = "#{Socket.gethostname}-#{Process.pid}-#{SecureRandom.hex(4)}"
-      @local_streams = {}
-      @notification_queue = []
-      @sse_event_counter = 0
+      @stream_registry = StreamRegistry.new(@redis, @server_instance)
+      @notification_queue = NotificationQueue.new(@redis, @server_instance)
+      @event_counter = EventCounter.new(@redis, @server_instance)
+      @stream_monitor_thread = nil
 
       setup_redis_subscriber
+      start_stream_monitor
+    end
+
+    def shutdown
+      @configuration.logger.info("Shutting down StreamableHttpTransport")
+
+      # Stop the stream monitor thread
+      if @stream_monitor_thread&.alive?
+        @stream_monitor_thread.kill
+        @stream_monitor_thread.join(timeout: 5)
+      end
+
+      # Unregister all local streams
+      @stream_registry.get_all_local_streams.each do |session_id, stream|
+        @stream_registry.unregister_stream(session_id)
+        @session_store.mark_stream_inactive(session_id)
+      rescue => e
+        @configuration.logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
+      end
+
+      @configuration.logger.info("StreamableHttpTransport shutdown complete")
     end
 
     def handle
@@ -68,10 +95,10 @@ module ModelContextProtocol
         params: params
       }
 
-      if has_active_streams?
+      if @stream_registry.has_any_local_streams?
         deliver_to_active_streams(notification)
       else
-        @notification_queue << notification
+        @notification_queue.push(notification)
       end
     end
 
@@ -134,8 +161,7 @@ module ModelContextProtocol
     end
 
     def next_event_id
-      @sse_event_counter += 1
-      "#{@server_instance}-#{@sse_event_counter}"
+      @event_counter.next_event_id
     end
 
     def send_sse_event(stream, data, event_id = nil)
@@ -315,7 +341,7 @@ module ModelContextProtocol
 
     def create_sse_stream_proc(session_id, last_event_id = nil)
       proc do |stream|
-        register_local_stream(session_id, stream) if session_id
+        @stream_registry.register_stream(session_id, stream) if session_id
 
         if last_event_id
           replay_messages_after_event_id(stream, session_id, last_event_id)
@@ -323,24 +349,13 @@ module ModelContextProtocol
           flush_notifications_to_stream(stream)
         end
 
-        start_keepalive_thread(session_id, stream)
-
         loop do
           break unless stream_connected?(stream)
           sleep 0.1
         end
       ensure
-        cleanup_local_stream(session_id) if session_id
+        @stream_registry.unregister_stream(session_id) if session_id
       end
-    end
-
-    def register_local_stream(session_id, stream)
-      @local_streams[session_id] = stream
-    end
-
-    def cleanup_local_stream(session_id)
-      @local_streams.delete(session_id)
-      @session_store.mark_stream_inactive(session_id)
     end
 
     def stream_connected?(stream)
@@ -355,22 +370,43 @@ module ModelContextProtocol
       end
     end
 
-    def start_keepalive_thread(session_id, stream)
-      Thread.new do
+    def start_stream_monitor
+      @stream_monitor_thread = Thread.new do
         loop do
-          sleep 30
-          break unless stream_connected?(stream)
+          sleep 30 # Check every 30 seconds
 
           begin
-            send_ping_to_stream(stream)
-          rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-            break
+            monitor_streams
+          rescue => e
+            @configuration.logger.error("Stream monitor error", error: e.message)
           end
         end
       rescue => e
-        @configuration.logger.error("Keepalive thread error", error: e.message)
-      ensure
-        cleanup_local_stream(session_id)
+        @configuration.logger.error("Stream monitor thread error", error: e.message)
+        sleep 5
+        retry
+      end
+    end
+
+    def monitor_streams
+      # Clean up any expired streams from Redis
+      expired_sessions = @stream_registry.cleanup_expired_streams
+      expired_sessions.each do |session_id|
+        @session_store.mark_stream_inactive(session_id)
+      end
+
+      # Send heartbeat for all local streams and check connectivity
+      @stream_registry.get_all_local_streams.each do |session_id, stream|
+        if stream_connected?(stream)
+          send_ping_to_stream(stream)
+          @stream_registry.refresh_heartbeat(session_id)
+        else
+          @stream_registry.unregister_stream(session_id)
+          @session_store.mark_stream_inactive(session_id)
+        end
+      rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+        @stream_registry.unregister_stream(session_id)
+        @session_store.mark_stream_inactive(session_id)
       end
     end
 
@@ -389,12 +425,13 @@ module ModelContextProtocol
     end
 
     def deliver_to_session_stream(session_id, data)
-      if @local_streams[session_id]
+      if @stream_registry.has_local_stream?(session_id)
+        stream = @stream_registry.get_local_stream(session_id)
         begin
-          send_to_stream(@local_streams[session_id], data)
+          send_to_stream(stream, data)
           return true
         rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-          cleanup_local_stream(session_id)
+          @stream_registry.unregister_stream(session_id)
         end
       end
 
@@ -402,7 +439,7 @@ module ModelContextProtocol
     end
 
     def cleanup_session(session_id)
-      cleanup_local_stream(session_id)
+      @stream_registry.unregister_stream(session_id)
       @session_store.cleanup_session(session_id)
     end
 
@@ -412,11 +449,12 @@ module ModelContextProtocol
           session_id = data["session_id"]
           message = data["message"]
 
-          if @local_streams[session_id]
+          if @stream_registry.has_local_stream?(session_id)
+            stream = @stream_registry.get_local_stream(session_id)
             begin
-              send_to_stream(@local_streams[session_id], message)
+              send_to_stream(stream, message)
             rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-              cleanup_local_stream(session_id)
+              @stream_registry.unregister_stream(session_id)
             end
           end
         end
@@ -428,19 +466,20 @@ module ModelContextProtocol
     end
 
     def has_active_streams?
-      @local_streams.any?
+      @stream_registry.has_any_local_streams?
     end
 
     def deliver_to_active_streams(notification)
-      @local_streams.each do |session_id, stream|
+      @stream_registry.get_all_local_streams.each do |session_id, stream|
         send_to_stream(stream, notification)
       rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-        cleanup_local_stream(session_id)
+        @stream_registry.unregister_stream(session_id)
       end
     end
 
     def flush_notifications_to_stream(stream)
-      while (notification = @notification_queue.shift)
+      notifications = @notification_queue.pop_all
+      notifications.each do |notification|
         send_to_stream(stream, notification)
       end
     end

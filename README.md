@@ -1,6 +1,8 @@
 # model-context-protocol-rb
 
-An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2025-06-18/) in Ruby. You are welcome to contribute.
+An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2025-06-18/) in Ruby.
+
+Provides simple abstractions that allow you to serve prompts, resources, resource templates, and tools via MCP locally (stdio) or in production (streamable HTTP backed by Redis) with minimal effort.
 
 ## Table of Contents
 
