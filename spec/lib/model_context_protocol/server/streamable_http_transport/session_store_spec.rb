@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe ModelContextProtocol::Server::SessionStore do
+RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionStore do
   let(:redis) do
     mock_redis = MockRedis.new
     # Add pub/sub support since MockRedis doesn't have it
