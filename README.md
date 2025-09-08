@@ -19,13 +19,13 @@ You are welcome to contribute.
 | ✅ | [Pagination](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination) |
 | ✅ | [Environment Variables](https://modelcontextprotocol.io/legacy/tools/debugging#environment-variables) |
 | ✅ | [STDIO Transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio) |
-| 🚧 | [Streamable HTTP Transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) |
+| ✅ | [Streamable HTTP Transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) |
 | ❌ | [List Changed Notification (Prompts)](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts#list-changed-notification) |
 | ❌ | [List Changed Notification (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#list-changed-notification) |
 | ❌ | [Subscriptions (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#subscriptions) |
 | ❌ | [List Changed Notification (Tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#list-changed-notification) |
 | ❌ | [Cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) |
-| 🚧 | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
+| ✅ | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
 | ❌ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
 
 ## Usage
@@ -126,6 +126,8 @@ server.start
 
 **Integration Example (Rails):**
 
+The streamable HTTP transport works with any valid Rack request. Here's an example of how you can integrate with Rails.
+
 First, set the routes:
 
 ```ruby
@@ -142,19 +144,23 @@ Then, implement a controller endpoint to handle the requests.
 require 'model_context_protocol'
 
 class ModelContextProtocolController < ApplicationController
+  before_action :authenticate_user
+
   def handle
     server = ModelContextProtocol::Server.new do |config|
       config.name = "MyMCPServer"
       config.title = "My MCP Server"
       config.version = "1.0.0"
       config.logging_enabled = true
-      config.context = { user_id: current_user.id }
+      config.context = {
+        user_id: current_user.id,
+        request_id: request.id
+      }
       config.registry = build_registry
       config.transport = {
         type: :streamable_http,
-        redis_client: Redis.new(url: ENV['REDIS_URL']),
-        request: request,
-        response: response
+        redis_client: Redis.new(url: ENV['REDIS_URL']), # Prefer initializing a client from a connection pool
+        env: request.env                                # Rack environment hash
       }
       config.instructions = <<~INSTRUCTIONS
         This server provides prompts, tools, and resources for interacting with my app.
@@ -169,7 +175,16 @@ class ModelContextProtocolController < ApplicationController
     end
 
     result = server.start
-    render json: result[:json], status: result[:status], headers: result[:headers]
+
+    # For SSE responses
+    if result[:stream]
+      response.headers.merge!(result[:headers] || {})
+      response.content_type = result[:headers]["Content-Type"] || "text/event-stream"
+      # Handle streaming with result[:stream_proc]
+    else
+      # For regular JSON responses
+      render json: result[:json], status: result[:status], headers: result[:headers]
+    end
   end
 
   private
@@ -715,19 +730,30 @@ gem install model-context-protocol-rb
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake  spec` to run the tests.
+After checking out the repo, run `bin/setup` to install dependencies. Then, run `bundle exec rspec` to run the tests.
 
-Generate an executable that you can use for testing:
+Generate executables that you can use for testing:
 
 ```bash
-bundle exec rake mcp:generate_executable
+# generates bin/dev for STDIO transport
+bundle exec rake mcp:generate_stdio_server
+
+# generates bin/dev-http for streamable HTTP transport
+bundle exec rake mcp:generate_streamable_http_server
 ```
 
-This will generate a `bin/dev` executable you can provide to MCP clients.
+You can also run `bin/console` for an interactive prompt that will allow you to experiment. Execute command `rp` to reload the project.
 
-You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+To install this gem onto your local machine, run `bundle exec rake install`.
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+### Releases
+
+To release a new version, update the version number in `version.rb`, and submit a PR. After the PR has been merged to main, run `bundle exec rake release`, which will:
+* create a git tag for the version,
+* push the created tag,
+* and push the `.gem` file to [rubygems.org](https://rubygems.org).
+
+Then, draft and publish release notes in Github.
 
 ## Contributing
 

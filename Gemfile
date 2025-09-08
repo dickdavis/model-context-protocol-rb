@@ -1,15 +1,15 @@
-# frozen_string_literal: true
-
 source "https://rubygems.org"
 
 gemspec
 
 group :development do
+  gem "rack"
+  gem "rackup"
   gem "rake"
+  gem "redis"
   gem "reek"
-  gem "solargraph"
-  gem "solargraph-standardrb"
   gem "standard"
+  gem "webrick"
 end
 
 group :development, :test do

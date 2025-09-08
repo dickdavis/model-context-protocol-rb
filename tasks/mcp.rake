@@ -1,10 +1,36 @@
 require "fileutils"
 
 namespace :mcp do
-  desc "Generate the development server executable with the correct Ruby path"
-  task :generate_executable do
+  desc "Generate the STDIO development server executable with the correct Ruby path"
+  task :generate_stdio_server do
     destination_path = "bin/dev"
     template_path = File.expand_path("templates/dev.erb", __dir__)
+
+    # Create directory if it doesn't exist
+    FileUtils.mkdir_p(File.dirname(destination_path))
+
+    # Get the Ruby path
+    ruby_path = detect_ruby_path
+
+    # Read and process the template
+    template = File.read(template_path)
+    content = template.gsub("<%= @ruby_path %>", ruby_path)
+
+    # Write the executable
+    File.write(destination_path, content)
+
+    # Set permissions
+    FileUtils.chmod(0o755, destination_path)
+
+    # Show success message
+    puts "\nCreated executable at: #{File.expand_path(destination_path)}"
+    puts "Using Ruby path: #{ruby_path}"
+  end
+
+  desc "Generate the streamable HTTP development server executable with the correct Ruby path"
+  task :generate_streamable_http_server do
+    destination_path = "bin/dev-http"
+    template_path = File.expand_path("templates/dev-http.erb", __dir__)
 
     # Create directory if it doesn't exist
     FileUtils.mkdir_p(File.dirname(destination_path))
