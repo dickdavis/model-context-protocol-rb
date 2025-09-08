@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+## [0.4.0] - 2025-09-07
+
+- Implement pagination support.
+- Add support for server title and instructions.
+- Implement resource annotations.
+- Implement content responses and helper methods for easily serializing text, image, audio, embedded resource, and resource link content blocks.
+- (Breaking) Simplify the ergonomics of `respond_with`.
+- (Breaking) Rename `with_metadata` to `define`; this avoids confusion with the distinct concept of metadata in MCP.
+- (Breaking) Nest argument declarations within `define` (formerly `with_metadata`).
+- Allow prompts, resources, and tools to declare the `title` field.
+- Implement default completion functionality.
+- Implement structured content support for tools (with `output_schema` declaration and validation).
+- Implement a prompt builder DSL for easily building a message history for a prompt; supports use of new content block helpers.
+- Implement support for protocol negotiation.
+- Finalize the initial working version of the streamable HTTP transport.
+
 ## [0.3.4] - 2025-09-02
 
 - (Fix) Fixes broken arguments usage in prompts and tools.
@@ -51,7 +67,8 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.1...v0.3.2

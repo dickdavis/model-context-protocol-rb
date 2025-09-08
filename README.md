@@ -1,10 +1,30 @@
 # model-context-protocol-rb
 
-An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2025-06-18/) in Ruby.
+An implementation of the [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/specification/2025-06-18/) in Ruby. You are welcome to contribute.
 
-This SDK is experimental and subject to change. The initial focus is to implement MCP server support with the goal of providing a stable API by version `0.4`. MCP client support will follow. 
+## Table of Contents
 
-You are welcome to contribute.
+- [Feature Support (Server)](#feature-support-server)
+- [Usage](#usage)
+  - [Building an MCP Server](#building-an-mcp-server)
+    - [Server Configuration Options](#server-configuration-options)
+    - [Pagination Configuration Options](#pagination-configuration-options)
+    - [Transport Configuration Options](#transport-configuration-options)
+      - [STDIO Transport](#stdio-transport)
+      - [Streamable HTTP Transport](#streamable-http-transport)
+    - [Registry Configuration Options](#registry-configuration-options)
+  - [Integration with Rails](#integration-with-rails)
+  - [Server features](#server-features)
+    - [Prompts](#prompts)
+    - [Resources](#resources)
+    - [Resource Templates](#resource-templates)
+    - [Tools](#tools)
+    - [Completions](#completions)
+- [Installation](#installation)
+- [Development](#development)
+  - [Releases](#releases)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Feature Support (Server)
 
@@ -124,7 +144,85 @@ end
 server.start
 ```
 
-**Integration Example (Rails):**
+#### Server Configuration Options
+
+The following table details all available configuration options for the MCP server:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `name` | String | Yes | - | Name of the MCP server for programmatic use |
+| `version` | String | Yes | - | Version of the MCP server |
+| `title` | String | No | - | Human-readable display name for the MCP server |
+| `instructions` | String | No | - | Instructions for how the MCP server should be used by LLMs |
+| `logging_enabled` | Boolean | No | `true` | Enable or disable MCP server logging |
+| `pagination` | Hash/Boolean | No | See pagination table | Pagination configuration (or `false` to disable) |
+| `context` | Hash | No | `{}` | Contextual variables available to prompts, resources, and tools |
+| `transport` | Hash | No | `{ type: :stdio }` | Transport configuration |
+| `registry` | Registry | Yes | - | Registry containing prompts, resources, and tools |
+
+#### Pagination Configuration Options
+
+When `pagination` is set to a Hash, the following options are available:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `default_page_size` | Integer | No | `50` | Default number of items per page |
+| `max_page_size` | Integer | No | `500` | Maximum allowed page size |
+| `cursor_ttl` | Integer | No | `1800` | Cursor expiry time in seconds (30 minutes) |
+
+**Note:** Set `config.pagination = false` to completely disable pagination support.
+
+#### Transport Configuration Options
+
+The transport configuration supports two types: `:stdio` (default) and `:streamable_http`.
+
+##### STDIO Transport
+```ruby
+config.transport = { type: :stdio }  # This is the default, can be omitted
+```
+
+##### Streamable HTTP Transport
+When using `:streamable_http`, the following options are available:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `type` | Symbol | Yes | `:stdio` | Must be `:streamable_http` for HTTP transport |
+| `redis_client` | Redis | Yes | - | Redis client instance for session management |
+| `session_ttl` | Integer | No | `3600` | Session timeout in seconds (1 hour) |
+| `env` | Hash | No | - | Rack environment hash (for Rails integration) |
+
+#### Registry Configuration Options
+
+The registry is configured using `ModelContextProtocol::Server::Registry.new` and supports the following block types:
+
+| Block Type | Options | Description |
+|------------|---------|-------------|
+| `prompts` | `list_changed: Boolean` | Register prompt handlers with optional list change notifications |
+| `resources` | `list_changed: Boolean`, `subscribe: Boolean` | Register resource handlers with optional list change notifications and subscriptions |
+| `resource_templates` | - | Register resource template handlers |
+| `tools` | `list_changed: Boolean` | Register tool handlers with optional list change notifications |
+
+Within each block, use `register ClassName` to register your handlers.
+
+**Example:**
+```ruby
+config.registry = ModelContextProtocol::Server::Registry.new do
+  prompts list_changed: true do
+    register MyPrompt
+    register AnotherPrompt
+  end
+
+  resources list_changed: true, subscribe: true do
+    register MyResource
+  end
+
+  tools do
+    register MyTool
+  end
+end
+```
+
+### Integration with Rails
 
 The streamable HTTP transport works with any valid Rack request. Here's an example of how you can integrate with Rails.
 
@@ -206,15 +304,77 @@ Messages from the MCP client will be routed to the appropriate custom handler. T
 
 #### Prompts
 
-The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) in the `define` block.
+The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use.
 
-Define any arguments using `argument` blocks nested within the `define` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
-
-Then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+Define the prompt properties and then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
 You can also log from within your prompt by calling a valid logger level method on the `logger` and passing a string message.
 
+#### Prompt Definition
+
+Use the `define` block to set [prompt properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) and configure arguments.
+
+| Property | Description |
+|----------|-------------|
+| `name` | The programmatic name of the prompt |
+| `title` | Human-readable display name |
+| `description` | Short description of what the prompt does |
+| `argument` | Define an argument block with name, description, required flag, and completion |
+
+#### Argument Definition
+
+Define any arguments using `argument` blocks nested within the `define` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
+
+| Property | Description |
+|----------|-------------|
+| `name` | The name of the argument |
+| `description` | A short description of the argument |
+| `required` | Whether the argument is required (boolean) |
+| `completion` | Available hints for completions (array or completion class) |
+
+#### Prompt Methods
+
+Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `define` | Class definition | Block for defining prompt metadata and arguments |
+| `call` | Instance method | Main method to implement prompt logic and build response |
+| `message_history` | Within `call` | DSL method to build an array of user and assistant messages |
+| `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with messages:`) |
+
+#### Message History DSL
+
 Build a message history using the an intuitive DSL, creating an ordered history of user and assistant messages with flexible content blocks that can include text, image, audio, embedded resources, and resource links.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `user_message` | Within `message_history` | Create a message with user role |
+| `assistant_message` | Within `message_history` | Create a message with assistant role |
+
+#### Content Blocks
+
+Use content blocks to properly format the content included in messages.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `text_content` | Within message blocks | Create text content block |
+| `image_content` | Within message blocks | Create image content block (requires `data:` and `mime_type:`) |
+| `audio_content` | Within message blocks | Create audio content block (requires `data:` and `mime_type:`) |
+| `embedded_resource_content` | Within message blocks | Create embedded resource content block (requires `resource:`) |
+| `resource_link` | Within message blocks | Create resource link content block (requires `name:` and `uri:`) |
+
+#### Available Instance Variables
+
+The `arguments` passed from an MCP client are available, as well as the `context` values passed in at server initialization.
+
+| Variable | Context | Description |
+|----------|---------|-------------|
+| `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
+| `context` | Within `call` | Hash containing server configuration context values |
+| `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
+
+#### Examples
 
 This is an example prompt that returns a properly formatted response:
 
@@ -295,9 +455,53 @@ end
 
 #### Resources
 
-The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) in the `define` block. You can also define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) in the nested `annotations` block.
+The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use.
 
-Then, implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
+Define the resource properties and optionally annotations, then implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
+
+#### Resource Definition
+
+Use the `define` block to set [resource properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) and configure annotations.
+
+| Property | Description |
+|----------|-------------|
+| `name` | The name of the resource |
+| `title` | Human-readable display name |
+| `description` | Short description of what the resource contains |
+| `mime_type` | MIME type of the resource content |
+| `uri` | URI identifier for the resource |
+| `annotations` | Block for defining resource annotations |
+
+#### Annotation Definition
+
+Define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) using an `annotations` block nested within the `define` block.
+
+| Property | Description |
+|----------|-------------|
+| `audience` | Target audience for the resource (array of symbols like `[:user, :assistant]`) |
+| `priority` | Priority level (numeric value, e.g., `0.9`) |
+| `last_modified` | Last modified timestamp (ISO 8601 string) |
+
+#### Resource Methods
+
+Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `define` | Class definition | Block for defining resource metadata and annotations |
+| `call` | Instance method | Main method to implement resource logic and build response |
+| `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with text:` or `respond_with binary:`) |
+
+#### Available Instance Variables
+
+Resources are stateless and only have access to their configured properties.
+
+| Variable | Context | Description |
+|----------|---------|-------------|
+| `mime_type` | Within `call` | The configured MIME type for this resource |
+| `uri` | Within `call` | The configured URI identifier for this resource |
+
+#### Examples
 
 This is an example resource that returns a text response:
 
@@ -361,7 +565,38 @@ end
 
 #### Resource Templates
 
-The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use. Define the [appropriate metadata](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates) in the `define` block.
+The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use.
+
+Define the resource template properties and URI template with optional parameter completions. Resource templates are used to define parameterized resources that clients can instantiate.
+
+#### Resource Template Definition
+
+Use the `define` block to set [resource template properties](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates).
+
+| Property | Description |
+|----------|-------------|
+| `name` | The name of the resource template |
+| `description` | Short description of what the template provides |
+| `mime_type` | MIME type of resources created from this template |
+| `uri_template` | URI template with parameters (e.g., `"file:///{name}"`) |
+
+#### URI Template Configuration
+
+Define the URI template and configure parameter completions within the `uri_template` block.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `completion` | Within `uri_template` block | Define completion for a URI parameter (e.g., `completion :name, ["value1", "value2"]`) |
+
+#### Resource Template Methods
+
+Resource templates only use the `define` method to configure their properties - they don't have a `call` method.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `define` | Class definition | Block for defining resource template metadata and URI template |
+
+#### Examples
 
 This is an example resource template that provides a completion for a parameter of the URI template:
 
@@ -399,11 +634,66 @@ end
 
 #### Tools
 
-The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use. Define the [appropriate metadata](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) in the `define` block.
+The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use.
 
-Then, implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your tool responds with appropriately formatted response data.
+Define the tool properties and schemas, then implement the `call` method to build your tool response. Arguments from the MCP client and server context are available, along with logging capabilities.
 
-You can also log from within your tool by calling a valid logger level method on the `logger` and passing a string message.
+#### Tool Definition
+
+Use the `define` block to set [tool properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) and configure schemas.
+
+| Property | Description |
+|----------|-------------|
+| `name` | The programmatic name of the tool |
+| `title` | Human-readable display name |
+| `description` | Short description of what the tool does |
+| `input_schema` | JSON schema block for validating tool inputs |
+| `output_schema` | JSON schema block for validating structured content outputs |
+
+#### Tool Methods
+
+Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `define` | Class definition | Block for defining tool metadata and schemas |
+| `call` | Instance method | Main method to implement tool logic and build response |
+| `respond_with` | Within `call` | Return properly formatted response data with various content types |
+
+#### Content Blocks
+
+Use content blocks to properly format the content included in tool responses.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `text_content` | Within `call` | Create text content block |
+| `image_content` | Within `call` | Create image content block (requires `data:` and `mime_type:`) |
+| `audio_content` | Within `call` | Create audio content block (requires `data:` and `mime_type:`) |
+| `embedded_resource_content` | Within `call` | Create embedded resource content block (requires `resource:`) |
+| `resource_link` | Within `call` | Create resource link content block (requires `name:` and `uri:`) |
+
+#### Response Types
+
+Tools can return different types of responses using `respond_with`.
+
+| Response Type | Usage | Description |
+|---------------|-------|-------------|
+| `structured_content:` | `respond_with structured_content: data` | Return structured data validated against output schema |
+| `content:` | `respond_with content: content_block` | Return single content block |
+| `content:` | `respond_with content: [content_blocks]` | Return array of mixed content blocks |
+| `error:` | `respond_with error: "message"` | Return tool error response |
+
+#### Available Instance Variables
+
+Arguments from MCP clients and server context are available, along with logging capabilities.
+
+| Variable | Context | Description |
+|----------|---------|-------------|
+| `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
+| `context` | Within `call` | Hash containing server configuration context values |
+| `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
+
+#### Examples
 
 This is an example of a tool that returns structured content validated by an output schema:
 
@@ -691,7 +981,27 @@ end
 
 The `ModelContextProtocol::Server::Completion` base class allows subclasses to define a completion that the MCP client can use to obtain hints or suggestions for arguments to prompts and resources.
 
-implement the `call` method to build your completion. Use the `respond_with` instance method to ensure your completion responds with appropriately formatted response data.
+Implement the `call` method to build your completion logic using the provided argument name and value. Completions are simpler than other server features - they don't use a `define` block and only provide filtered suggestion lists.
+
+#### Completion Methods
+
+Completions only implement the `call` method to provide completion logic.
+
+| Method | Context | Description |
+|--------|---------|-------------|
+| `call` | Instance method | Main method to implement completion logic and build response |
+| `respond_with` | Within `call` | Return properly formatted completion response (e.g., `respond_with values:`) |
+
+#### Available Instance Variables
+
+Completions receive the argument name and current value being completed.
+
+| Variable | Context | Description |
+|----------|---------|-------------|
+| `argument_name` | Within `call` | String name of the argument being completed |
+| `argument_value` | Within `call` | Current partial value being typed by the user |
+
+#### Examples
 
 This is an example completion that returns an array of values in the response:
 
