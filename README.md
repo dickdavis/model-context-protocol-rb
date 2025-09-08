@@ -58,7 +58,7 @@ require 'model_context_protocol'
 
 ### Building an MCP Server
 
-Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server.
+Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server. Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
@@ -222,7 +222,7 @@ config.registry = ModelContextProtocol::Server::Registry.new do
 end
 ```
 
-### Integration with Rails
+#### Integration with Rails
 
 The streamable HTTP transport works with any valid Rack request. Here's an example of how you can integrate with Rails.
 
@@ -298,11 +298,7 @@ class ModelContextProtocolController < ApplicationController
 end
 ```
 
-### Server features
-
-Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
-
-#### Prompts
+### Prompts
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use.
 
@@ -453,7 +449,7 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 end
 ```
 
-#### Resources
+### Resources
 
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use.
 
@@ -563,7 +559,7 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
 end
 ```
 
-#### Resource Templates
+### Resource Templates
 
 The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use.
 
@@ -632,7 +628,7 @@ class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
 end
 ```
 
-#### Tools
+### Tools
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use.
 
