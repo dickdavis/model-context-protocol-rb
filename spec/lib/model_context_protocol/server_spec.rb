@@ -1,6 +1,56 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
+  describe "protocol version negotiation" do
+    let(:server) do
+      described_class.new do |config|
+        config.name = "Test Server"
+        config.version = "1.0.0"
+        config.registry = ModelContextProtocol::Server::Registry.new
+      end
+    end
+
+    it "returns client's protocol version when supported" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {
+          "protocolVersion" => "2025-06-18"
+        }
+      }
+
+      result = server.router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+
+    it "returns server's latest version when client sends unsupported version" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {
+          "protocolVersion" => "2020-01-01"
+        }
+      }
+
+      result = server.router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+
+    it "returns server's latest version when no protocol version provided" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {}
+      }
+
+      result = server.router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+  end
+
   describe "router mapping" do
     context "completion/complete" do
       it "raises an error when an invalid ref/type is provided" do
