@@ -13,3 +13,6 @@
 
 bin/dev
 bin/dev-http
+
+plans/
+plans/*
