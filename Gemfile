@@ -6,7 +6,6 @@ group :development do
   gem "rack"
   gem "rackup"
   gem "rake"
-  gem "redis"
   gem "reek"
   gem "standard"
   gem "webrick"
