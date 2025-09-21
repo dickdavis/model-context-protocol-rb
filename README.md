@@ -1074,6 +1074,18 @@ gem install model-context-protocol-rb
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `bundle exec rspec` to run the tests.
 
+### SSL Certificates for HTTPS Testing
+
+If you need to test with HTTPS (e.g., for clients that require SSL), generate self-signed certificates:
+
+```bash
+# Create SSL directory and generate certificates
+mkdir -p tmp/ssl
+openssl req -x509 -newkey rsa:4096 -keyout tmp/ssl/server.key -out tmp/ssl/server.crt -days 365 -nodes -subj "/C=US/ST=Dev/L=Dev/O=Dev/CN=localhost"
+```
+
+### Generate Development Servers
+
 Generate executables that you can use for testing:
 
 ```bash
@@ -1082,6 +1094,16 @@ bundle exec rake mcp:generate_stdio_server
 
 # generates bin/dev-http for streamable HTTP transport
 bundle exec rake mcp:generate_streamable_http_server
+```
+
+The HTTP server supports both HTTP and HTTPS:
+
+```bash
+# Run HTTP server (default)
+bin/dev-http
+
+# Run HTTPS server (requires SSL certificates in tmp/ssl/)
+SSL=true bin/dev-http
 ```
 
 You can also run `bin/console` for an interactive prompt that will allow you to experiment. Execute command `rp` to reload the project.
