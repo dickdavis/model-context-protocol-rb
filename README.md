@@ -118,7 +118,7 @@ server = ModelContextProtocol::Server.new do |config|
   # Optional: configure streamable HTTP transport if required
   # config.transport = {
   #   type: :streamable_http,
-  #   redis_client: Redis.new(url: ENV['REDIS_URL']),
+  #   env: request.env,
   #   session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
   # }
 
@@ -184,12 +184,33 @@ config.transport = { type: :stdio }  # This is the default, can be omitted
 ```
 
 ##### Streamable HTTP Transport
-When using `:streamable_http`, the following options are available:
+The `:streamable_http` transport requires Redis to be configured globally before use:
+
+```ruby
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = ENV.fetch('REDIS_URL')
+  config.pool_size = 20
+  config.pool_timeout = 5
+  config.enable_reaper = true
+  config.reaper_interval = 60
+  config.idle_timeout = 300
+end
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `redis_url` | String | Yes | - | Redis connection URL |
+| `pool_size` | Integer | No | `20` | Connection pool size |
+| `pool_timeout` | Integer | No | `5` | Pool checkout timeout in seconds |
+| `enable_reaper` | Boolean | No | `true` | Enable connection reaping |
+| `reaper_interval` | Integer | No | `60` | Reaper check interval in seconds |
+| `idle_timeout` | Integer | No | `300` | Idle connection timeout in seconds |
+
+When using `:streamable_http` transport, the following options are available:
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `type` | Symbol | Yes | `:stdio` | Must be `:streamable_http` for HTTP transport |
-| `redis_client` | Redis | Yes | - | Redis client instance for session management |
 | `session_ttl` | Integer | No | `3600` | Session timeout in seconds (1 hour) |
 | `env` | Hash | No | - | Rack environment hash (for Rails integration) |
 
@@ -228,7 +249,21 @@ end
 
 The streamable HTTP transport works with any valid Rack request. Here's an example of how you can integrate with Rails.
 
-First, set the routes:
+First, configure Redis in an initializer:
+
+```ruby
+# config/initializers/model_context_protocol.rb
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = ENV.fetch('REDIS_URL')
+  config.pool_size = 20
+  config.pool_timeout = 5
+  config.enable_reaper = true
+  config.reaper_interval = 60
+  config.idle_timeout = 300
+end
+```
+
+Then, set the routes:
 
 ```ruby
 constraints format: :json do
@@ -259,8 +294,7 @@ class ModelContextProtocolController < ApplicationController
       config.registry = build_registry
       config.transport = {
         type: :streamable_http,
-        redis_client: Redis.new(url: ENV['REDIS_URL']), # Prefer initializing a client from a connection pool
-        env: request.env                                # Rack environment hash
+        env: request.env
       }
       config.instructions = <<~INSTRUCTIONS
         This server provides prompts, tools, and resources for interacting with my app.
