@@ -24,7 +24,8 @@ module ModelContextProtocol
       @configuration = configuration
 
       transport_options = @configuration.transport_options
-      @redis = transport_options[:redis_client]
+      @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
+      @redis = @redis_pool.checkout
       @require_sessions = transport_options.fetch(:require_sessions, false)
       @default_protocol_version = transport_options.fetch(:default_protocol_version, "2025-03-26")
       @session_protocol_versions = {}  # Track protocol versions per session
@@ -62,6 +63,8 @@ module ModelContextProtocol
       rescue => e
         @configuration.logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
       end
+
+      @redis_pool.checkin(@redis) if @redis_pool && @redis
 
       @configuration.logger.info("StreamableHttpTransport shutdown complete")
     end

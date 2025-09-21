@@ -17,6 +17,19 @@ InitializeTestResponse = Data.define(:protocol_version) do
 end
 
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
+  before(:all) do
+    # Configure Redis globally for all StreamableHttpTransport tests
+    ModelContextProtocol::Server::RedisConfig.configure do |config|
+      config.redis_url = "redis://localhost:6379/15"
+    end
+  end
+
+  before(:each) do
+    # Stub the Redis pool to return our mock_redis instance
+    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+  end
+
   subject(:transport) do
     described_class.new(
       router: router,
@@ -33,7 +46,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     config.version = "1.0.0"
     config.transport = {
       type: :streamable_http,
-      redis_client: mock_redis,
       require_sessions: false,
       validate_origin: false,
       env: rack_env
@@ -107,10 +119,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   describe "#handle" do
     context "when env hash is missing" do
       before do
-        configuration.transport = {
-          type: :streamable_http,
-          redis_client: mock_redis
-        }
+        configuration.transport = {type: :streamable_http}
       end
 
       it "raises ArgumentError" do
@@ -665,7 +674,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       other_config.version = "1.0.0"
       other_config.transport = {
         type: :streamable_http,
-        redis_client: mock_redis,
         require_sessions: true
       }
 
@@ -703,7 +711,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       other_config = other_server_transport.instance_variable_get(:@configuration)
       other_config.transport = {
         type: :streamable_http,
-        redis_client: mock_redis,
         require_sessions: true,
         env: build_rack_env(
           body: ping_request.to_json,
