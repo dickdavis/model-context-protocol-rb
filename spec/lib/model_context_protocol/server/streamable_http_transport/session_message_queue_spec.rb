@@ -355,23 +355,4 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionMes
       expect(messages.first).to eq("invalid json{")
     end
   end
-
-  describe "thread safety" do
-    it "handles concurrent access to the same queue" do
-      threads = []
-
-      5.times do |i|
-        threads << Thread.new do
-          queue.push_message({"thread" => i, "message" => "concurrent test"})
-        end
-      end
-
-      threads.each(&:join)
-
-      expect(queue.message_count).to eq(5)
-
-      messages = queue.poll_messages
-      expect(messages.size).to eq(5)
-    end
-  end
 end

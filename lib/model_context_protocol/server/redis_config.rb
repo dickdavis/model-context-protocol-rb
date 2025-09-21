@@ -36,6 +36,10 @@ module ModelContextProtocol
       instance.stats
     end
 
+    def self.pool_manager
+      instance.manager
+    end
+
     def initialize
       reset!
     end
@@ -80,6 +84,11 @@ module ModelContextProtocol
     def reset!
       shutdown!
       @manager = nil
+    end
+
+    def stats
+      return {} unless configured?
+      @manager.stats
     end
 
     class Configuration

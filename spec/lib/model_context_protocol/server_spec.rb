@@ -1,6 +1,80 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
+  describe ".initialize" do
+    it "raises an error for unknown transport types" do
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.logging_enabled = true
+        config.registry = ModelContextProtocol::Server::Registry.new
+        config.transport = :unknown_transport
+      end
+
+      expect do
+        server.start
+      end.to raise_error(
+        ModelContextProtocol::Server::Configuration::InvalidTransportError,
+        "Unknown transport type: unknown_transport"
+      )
+    end
+  end
+
+  describe ".start" do
+    it "raises an error for an invalid configuration" do
+      expect do
+        server = ModelContextProtocol::Server.new do |config|
+          config.version = "1.0.0"
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+        server.start
+      end.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
+    end
+
+    it "begins the StdioTransport" do
+      transport = instance_double(ModelContextProtocol::Server::StdioTransport)
+      allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
+      allow(transport).to receive(:handle)
+
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.logging_enabled = true
+        config.registry = ModelContextProtocol::Server::Registry.new
+      end
+      server.start
+
+      expect(transport).to have_received(:handle)
+    end
+
+    it "handles StreamableHttpTransport requests" do
+      ModelContextProtocol::Server::RedisConfig.configure do |config|
+        config.redis_url = "redis://localhost:6379/15"
+      end
+
+      transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
+      allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
+      allow(transport).to receive(:handle).and_return({json: {success: true}, status: 200})
+
+      server = ModelContextProtocol::Server.new do |config|
+        config.name = "MCP Development Server"
+        config.version = "1.0.0"
+        config.logging_enabled = true
+        config.registry = ModelContextProtocol::Server::Registry.new
+        config.transport = {
+          type: :streamable_http
+        }
+      end
+
+      result = server.start
+
+      aggregate_failures do
+        expect(transport).to have_received(:handle)
+        expect(result).to eq({json: {success: true}, status: 200})
+      end
+    end
+  end
+
   describe "protocol version negotiation" do
     let(:server) do
       described_class.new do |config|
@@ -52,6 +126,42 @@ RSpec.describe ModelContextProtocol::Server do
   end
 
   describe "router mapping" do
+    context "logging/setLevel" do
+      it "sets the log level when valid" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "debug"}
+        }
+
+        expect(server.configuration.logger).to receive(:set_mcp_level).with("debug")
+        response = server.router.route(message)
+        expect(response.serialized).to eq({})
+      end
+
+      it "raises error for invalid log level" do
+        server = described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = ModelContextProtocol::Server::Registry.new
+        end
+
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "invalid"}
+        }
+
+        expect {
+          server.router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid log level: invalid/)
+      end
+    end
+
     context "completion/complete" do
       it "raises an error when an invalid ref/type is provided" do
         registry = ModelContextProtocol::Server::Registry.new do
@@ -325,111 +435,6 @@ RSpec.describe ModelContextProtocol::Server do
             }
           ]
         )
-      end
-    end
-  end
-
-  describe ".start" do
-    it "raises an error for an invalid configuration" do
-      expect do
-        server = ModelContextProtocol::Server.new do |config|
-          config.version = "1.0.0"
-          config.registry = ModelContextProtocol::Server::Registry.new
-        end
-        server.start
-      end.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
-    end
-
-    it "begins the StdioTransport" do
-      transport = instance_double(ModelContextProtocol::Server::StdioTransport)
-      allow(ModelContextProtocol::Server::StdioTransport).to receive(:new).and_return(transport)
-      allow(transport).to receive(:handle)
-
-      server = ModelContextProtocol::Server.new do |config|
-        config.name = "MCP Development Server"
-        config.version = "1.0.0"
-        config.logging_enabled = true
-        config.registry = ModelContextProtocol::Server::Registry.new
-      end
-      server.start
-
-      expect(transport).to have_received(:handle)
-    end
-
-    it "handles StreamableHttpTransport requests" do
-      # Configure Redis globally first
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-
-      transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
-      allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
-      allow(transport).to receive(:handle).and_return({json: {success: true}, status: 200})
-
-      server = ModelContextProtocol::Server.new do |config|
-        config.name = "MCP Development Server"
-        config.version = "1.0.0"
-        config.logging_enabled = true
-        config.registry = ModelContextProtocol::Server::Registry.new
-        config.transport = {
-          type: :streamable_http
-        }
-      end
-
-      result = server.start
-
-      expect(transport).to have_received(:handle)
-      expect(result).to eq({json: {success: true}, status: 200})
-    end
-
-    it "raises an error for unknown transport types" do
-      server = ModelContextProtocol::Server.new do |config|
-        config.name = "MCP Development Server"
-        config.version = "1.0.0"
-        config.logging_enabled = true
-        config.registry = ModelContextProtocol::Server::Registry.new
-        config.transport = :unknown_transport
-      end
-
-      expect { server.start }.to raise_error(
-        ModelContextProtocol::Server::Configuration::InvalidTransportError,
-        "Unknown transport type: unknown_transport"
-      )
-    end
-
-    context "logging/setLevel handler" do
-      it "sets the log level when valid" do
-        server = described_class.new do |config|
-          config.name = "Test Server"
-          config.version = "1.0.0"
-          config.registry = ModelContextProtocol::Server::Registry.new
-        end
-
-        message = {
-          "method" => "logging/setLevel",
-          "params" => {"level" => "debug"}
-        }
-
-        expect(server.configuration.logger).to receive(:set_mcp_level).with("debug")
-        response = server.router.route(message)
-        expect(response.serialized).to eq({})
-      end
-
-      it "raises error for invalid log level" do
-        server = described_class.new do |config|
-          config.name = "Test Server"
-          config.version = "1.0.0"
-          config.registry = ModelContextProtocol::Server::Registry.new
-        end
-
-        message = {
-          "method" => "logging/setLevel",
-          "params" => {"level" => "invalid"}
-        }
-
-        expect {
-          server.router.route(message)
-        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid log level: invalid/)
       end
     end
   end

@@ -5,6 +5,7 @@ require_relative "streamable_http_transport/notification_queue"
 require_relative "streamable_http_transport/event_counter"
 require_relative "streamable_http_transport/session_store"
 require_relative "streamable_http_transport/message_poller"
+require_relative "redis_client_proxy"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -26,12 +27,12 @@ module ModelContextProtocol
 
       transport_options = @configuration.transport_options
       @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
-      @redis = @redis_pool.checkout
       @require_sessions = transport_options.fetch(:require_sessions, false)
       @default_protocol_version = transport_options.fetch(:default_protocol_version, "2025-03-26")
       @session_protocol_versions = {}
       @validate_origin = transport_options.fetch(:validate_origin, true)
       @allowed_origins = transport_options.fetch(:allowed_origins, ["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"])
+      @redis = ModelContextProtocol::Server::RedisClientProxy.new(@redis_pool)
 
       @session_store = SessionStore.new(
         @redis,
@@ -472,6 +473,13 @@ module ModelContextProtocol
       notifications.each do |notification|
         send_to_stream(stream, notification)
       end
+    end
+
+    def cleanup
+      @message_poller&.stop
+      @stream_monitor_thread&.kill
+      # No need to checkin connections since we use pool wrapper
+      @redis = nil
     end
   end
 end
