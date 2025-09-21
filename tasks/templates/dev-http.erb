@@ -4,6 +4,8 @@ require "bundler/setup"
 require "rack"
 require 'rackup/handler/webrick'
 require "webrick"
+require "webrick/https"
+require "openssl"
 require "securerandom"
 require "redis"
 require "logger"
@@ -11,6 +13,15 @@ require "json"
 require 'stringio'
 
 require_relative "../lib/model_context_protocol"
+
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = "redis://localhost:6379/0"
+  config.enable_reaper = true
+
+  # Aggressive settings for development/debugging
+  config.reaper_interval = 2    # Check every 2 seconds in dev
+  config.idle_timeout = 5       # Close connections idle for 5+ seconds
+end
 
 Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
 
@@ -89,17 +100,9 @@ class MCPHttpApp
       }, [""]]
     end
 
-    begin
-      redis_client = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
-      @logger.debug("Testing Redis connection...")
-      redis_client.ping
-      @logger.info("Redis connected successfully")
-    end
-
     transport_config = {
       type: :streamable_http,
       env: env,
-      redis_client: redis_client,
       require_sessions: false,  # Optional sessions for easier testing
       session_ttl: 3600,
       validate_origin: false,   # Disable for testing
@@ -108,10 +111,15 @@ class MCPHttpApp
 
     @logger.debug("Creating MCP server with transport config")
     server = create_mcp_server(transport_config)
+    transport = nil
 
     begin
       @logger.debug("Starting MCP server")
       result = server.start
+
+      if server.respond_to?(:transport)
+        transport = server.transport
+      end
 
       case result
       when Hash
@@ -167,6 +175,7 @@ class MCPHttpApp
       @logger.debug("Full backtrace:\n#{e.backtrace.join("\n")}")
       [500, {"Content-Type" => "application/json"}, [%Q({"error": "Internal server error: #{e.message}"})]]
     ensure
+      transport&.cleanup if transport&.respond_to?(:cleanup)
       Thread.current[:request_id] = nil
     end
   end
@@ -223,7 +232,11 @@ class MCPHttpApp
   end
 end
 
-logger.info("Starting MCP HTTP Development Server on http://localhost:9292/mcp")
+use_ssl = ENV['SSL'] == 'true'
+port = use_ssl ? 9293 : 9292
+protocol = use_ssl ? 'https' : 'http'
+
+logger.info("Starting MCP #{protocol.upcase} Development Server on #{protocol}://localhost:#{port}/mcp")
 
 app = Rack::Builder.new do
   map '/mcp' do
@@ -231,7 +244,30 @@ app = Rack::Builder.new do
   end
 end
 
-server = WEBrick::HTTPServer.new(Port: 9292, Host: '0.0.0.0')
+server_options = {
+  Port: port,
+  Host: '0.0.0.0'
+}
+
+if use_ssl
+  cert_path = File.join(__dir__, '..', 'tmp', 'ssl', 'server.crt')
+  key_path = File.join(__dir__, '..', 'tmp', 'ssl', 'server.key')
+
+  unless File.exist?(cert_path) && File.exist?(key_path)
+    logger.error("SSL certificates not found at tmp/ssl/")
+    logger.error("Generate them with: openssl req -x509 -newkey rsa:4096 -keyout tmp/ssl/server.key -out tmp/ssl/server.crt -days 365 -nodes -subj \"/C=US/ST=Dev/L=Dev/O=Dev/CN=localhost\"")
+    exit(1)
+  end
+
+  server_options.merge!(
+    SSLEnable: true,
+    SSLCertificate: OpenSSL::X509::Certificate.new(File.read(cert_path)),
+    SSLPrivateKey: OpenSSL::PKey::RSA.new(File.read(key_path)),
+    SSLVerifyClient: OpenSSL::SSL::VERIFY_NONE
+  )
+end
+
+server = WEBrick::HTTPServer.new(server_options)
 server.mount '/', Rackup::Handler::WEBrick, app
 
 ['INT', 'TERM'].each do |signal|

@@ -23,9 +23,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       configuration: configuration
     )
   end
+
   let(:router) { ModelContextProtocol::Server::Router.new(configuration: configuration) }
   let(:mock_redis) { MockRedis.new }
   let(:mcp_logger) { configuration.logger }
+  let(:rack_env) { build_rack_env }
+  let(:session_id) { "test-session-123" }
   let(:configuration) do
     config = ModelContextProtocol::Server::Configuration.new
     config.name = "test-server"
@@ -33,7 +36,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     config.version = "1.0.0"
     config.transport = {
       type: :streamable_http,
-      redis_client: mock_redis,
       require_sessions: false,
       validate_origin: false,
       env: rack_env
@@ -41,8 +43,16 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     config
   end
 
-  let(:session_id) { "test-session-123" }
-  let(:rack_env) { build_rack_env }
+  before(:all) do
+    ModelContextProtocol::Server::RedisConfig.configure do |config|
+      config.redis_url = "redis://localhost:6379/15"
+    end
+  end
+
+  before(:each) do
+    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+  end
 
   def build_rack_env(method: "POST", path: "/mcp", body: "", headers: {})
     env = {
@@ -71,16 +81,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   before do
     mock_redis.flushdb
 
-    allow(mock_redis).to receive(:publish)
-    allow(mock_redis).to receive(:subscribe).and_yield(double("on").tap do |on|
-      allow(on).to receive(:message).and_yield("channel", '{"session_id":"test","message":"data"}')
-    end)
+    monitor_thread = double("monitor_thread", alive?: false, kill: nil, join: nil, name: nil)
+    poller_thread = double("poller_thread", alive?: false, kill: nil, join: nil, name: nil)
+    allow(poller_thread).to receive(:name=)
 
-    # Stub Thread.new for monitoring thread to prevent actual thread creation in tests
-    # but allow SSE stream threads to work for testing
-    monitor_thread = double("monitor_thread", alive?: false, kill: nil, join: nil)
     allow(Thread).to receive(:new).and_call_original
-    allow(Thread).to receive(:new).with(no_args).and_return(monitor_thread)
+    allow(Thread).to receive(:new).with(no_args).and_return(monitor_thread, poller_thread)
 
     router.map("initialize") do |message|
       client_protocol_version = message["params"]&.dig("protocolVersion")
@@ -107,10 +113,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   describe "#handle" do
     context "when env hash is missing" do
       before do
-        configuration.transport = {
-          type: :streamable_http,
-          redis_client: mock_redis
-        }
+        configuration.transport = {type: :streamable_http}
       end
 
       it "raises ArgumentError" do
@@ -534,7 +537,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         aggregate_failures do
           expect(result[:json]).to eq({success: true})
           expect(result[:status]).to eq(200)
-          expect(mock_redis.exists("session:#{session_id}")).to eq(0)
+          session_store = transport.instance_variable_get(:@session_store)
+          expect(session_store.session_exists?(session_id)).to eq(false)
         end
       end
 
@@ -665,12 +669,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       other_config.version = "1.0.0"
       other_config.transport = {
         type: :streamable_http,
-        redis_client: mock_redis,
         require_sessions: true
       }
-
-      allow(mock_redis).to receive(:publish)
-      allow(mock_redis).to receive(:subscribe)
 
       described_class.new(
         router: ModelContextProtocol::Server::Router.new(configuration: other_config),
@@ -678,7 +678,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       )
     end
 
-    it "routes messages between server instances via Redis" do
+    it "queues messages for sessions across server instances" do
       configuration.transport[:require_sessions] = true
 
       init_request = {"method" => "initialize", "id" => "init-1"}
@@ -703,7 +703,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       other_config = other_server_transport.instance_variable_get(:@configuration)
       other_config.transport = {
         type: :streamable_http,
-        redis_client: mock_redis,
         require_sessions: true,
         env: build_rack_env(
           body: ping_request.to_json,
@@ -714,10 +713,16 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         )
       }
 
-      expect(mock_redis).to receive(:publish)
-
       result = other_server_transport.handle
       expect(result[:json]).to eq({accepted: true})
+
+      other_session_store = other_server_transport.instance_variable_get(:@session_store)
+      messages = other_session_store.poll_messages_for_session(session_id)
+
+      aggregate_failures do
+        expect(messages).not_to be_empty
+        expect(messages.first).to include("id" => "ping-1")
+      end
     end
   end
 
@@ -763,7 +768,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       aggregate_failures do
         expect(result[:json]).to eq({success: true})
         expect(result[:status]).to eq(200)
-        expect(mock_redis.exists("session:#{session_id}")).to eq(0)
+        session_store = transport.instance_variable_get(:@session_store)
+        expect(session_store.session_exists?(session_id)).to eq(false)
       end
     end
   end
@@ -889,14 +895,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         expect(mcp_logger).to have_received(:error).with("Stream monitor error", error: "monitor error")
       end
 
-      it "uses MCP logger for Redis subscriber errors" do
+      it "uses MCP logger for message poller errors" do
         allow(mcp_logger).to receive(:error)
 
-        mcp_logger.error("Redis subscriber error", error: "redis error", backtrace: ["backtrace line"])
+        mcp_logger.error("Error in message polling", error: "polling error")
 
-        expect(mcp_logger).to have_received(:error).with("Redis subscriber error",
-          error: "redis error",
-          backtrace: kind_of(Array))
+        expect(mcp_logger).to have_received(:error).with("Error in message polling",
+          error: "polling error")
       end
     end
   end

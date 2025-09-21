@@ -3,7 +3,9 @@ PATH
   specs:
     model-context-protocol-rb (0.4.0)
       addressable (~> 2.8)
+      connection_pool (~> 2.4)
       json-schema (~> 5.1)
+      redis (~> 5.0)
 
 GEM
   remote: https://rubygems.org/
@@ -150,7 +152,6 @@ DEPENDENCIES
   rack
   rackup
   rake
-  redis
   reek
   rspec
   standard

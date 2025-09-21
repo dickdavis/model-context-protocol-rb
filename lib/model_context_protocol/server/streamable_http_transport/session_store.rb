@@ -1,5 +1,6 @@
 require "json"
 require "securerandom"
+require_relative "session_message_queue"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -67,24 +68,40 @@ module ModelContextProtocol
         @redis.del("session:#{session_id}")
       end
 
-      def route_message_to_session(session_id, message)
-        server_instance = get_session_server(session_id)
-        return false unless server_instance
+      def queue_message_for_session(session_id, message)
+        return false unless session_exists?(session_id)
 
-        @redis.publish("server:#{server_instance}:messages", {
-          session_id: session_id,
-          message: message
-        }.to_json)
+        queue = SessionMessageQueue.new(@redis, session_id, ttl: @ttl)
+        queue.push_message(message)
         true
+      rescue
+        false
       end
 
-      def subscribe_to_server(server_instance, &block)
-        @redis.subscribe("server:#{server_instance}:messages") do |on|
-          on.message do |channel, message|
-            data = JSON.parse(message)
-            yield(data)
+      def poll_messages_for_session(session_id)
+        return [] unless session_exists?(session_id)
+
+        queue = SessionMessageQueue.new(@redis, session_id, ttl: @ttl)
+        queue.poll_messages
+      rescue
+        []
+      end
+
+      def get_sessions_with_messages
+        session_keys = @redis.keys("session:*")
+        sessions_with_messages = []
+
+        session_keys.each do |key|
+          session_id = key.sub("session:", "")
+          queue = SessionMessageQueue.new(@redis, session_id, ttl: @ttl)
+          if queue.has_messages?
+            sessions_with_messages << session_id
           end
         end
+
+        sessions_with_messages
+      rescue
+        []
       end
 
       def get_all_active_sessions

@@ -8,7 +8,7 @@ module ModelContextProtocol
     # Raised when invalid parameters are provided.
     class ParameterValidationError < StandardError; end
 
-    attr_reader :configuration, :router
+    attr_reader :configuration, :router, :transport
 
     def initialize
       @configuration = Configuration.new
@@ -20,7 +20,7 @@ module ModelContextProtocol
     def start
       configuration.validate!
 
-      transport = case configuration.transport_type
+      @transport = case configuration.transport_type
       when :stdio, nil
         StdioTransport.new(router: @router, configuration: @configuration)
       when :streamable_http
@@ -32,7 +32,7 @@ module ModelContextProtocol
         raise ArgumentError, "Unknown transport: #{configuration.transport_type}"
       end
 
-      transport.handle
+      @transport.handle
     end
 
     private
@@ -279,6 +279,12 @@ module ModelContextProtocol
             listChanged: registry.tools_options[:list_changed]
           }.compact
         end
+      end
+    end
+
+    class << self
+      def configure_redis(&block)
+        RedisConfig.configure(&block)
       end
     end
   end

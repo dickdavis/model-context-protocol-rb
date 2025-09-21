@@ -4,6 +4,8 @@ require_relative "streamable_http_transport/stream_registry"
 require_relative "streamable_http_transport/notification_queue"
 require_relative "streamable_http_transport/event_counter"
 require_relative "streamable_http_transport/session_store"
+require_relative "streamable_http_transport/message_poller"
+require_relative "redis_client_proxy"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -24,12 +26,13 @@ module ModelContextProtocol
       @configuration = configuration
 
       transport_options = @configuration.transport_options
-      @redis = transport_options[:redis_client]
+      @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
       @require_sessions = transport_options.fetch(:require_sessions, false)
       @default_protocol_version = transport_options.fetch(:default_protocol_version, "2025-03-26")
-      @session_protocol_versions = {}  # Track protocol versions per session
+      @session_protocol_versions = {}
       @validate_origin = transport_options.fetch(:validate_origin, true)
       @allowed_origins = transport_options.fetch(:allowed_origins, ["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"])
+      @redis = ModelContextProtocol::Server::RedisClientProxy.new(@redis_pool)
 
       @session_store = SessionStore.new(
         @redis,
@@ -41,13 +44,19 @@ module ModelContextProtocol
       @notification_queue = NotificationQueue.new(@redis, @server_instance)
       @event_counter = EventCounter.new(@redis, @server_instance)
       @stream_monitor_thread = nil
+      @message_poller = MessagePoller.new(@redis, @stream_registry, @configuration.logger) do |stream, message|
+        send_to_stream(stream, message)
+      end
 
-      setup_redis_subscriber
+      start_message_poller
       start_stream_monitor
     end
 
     def shutdown
       @configuration.logger.info("Shutting down StreamableHttpTransport")
+
+      # Stop the message poller
+      @message_poller&.stop
 
       # Stop the stream monitor thread
       if @stream_monitor_thread&.alive?
@@ -62,6 +71,8 @@ module ModelContextProtocol
       rescue => e
         @configuration.logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
       end
+
+      @redis_pool.checkin(@redis) if @redis_pool && @redis
 
       @configuration.logger.info("StreamableHttpTransport shutdown complete")
     end
@@ -389,13 +400,11 @@ module ModelContextProtocol
     end
 
     def monitor_streams
-      # Clean up any expired streams from Redis
       expired_sessions = @stream_registry.cleanup_expired_streams
       expired_sessions.each do |session_id|
         @session_store.mark_stream_inactive(session_id)
       end
 
-      # Send heartbeat for all local streams and check connectivity
       @stream_registry.get_all_local_streams.each do |session_id, stream|
         if stream_connected?(stream)
           send_ping_to_stream(stream)
@@ -435,7 +444,7 @@ module ModelContextProtocol
         end
       end
 
-      @session_store.route_message_to_session(session_id, data)
+      @session_store.queue_message_for_session(session_id, data)
     end
 
     def cleanup_session(session_id)
@@ -443,26 +452,8 @@ module ModelContextProtocol
       @session_store.cleanup_session(session_id)
     end
 
-    def setup_redis_subscriber
-      Thread.new do
-        @session_store.subscribe_to_server(@server_instance) do |data|
-          session_id = data["session_id"]
-          message = data["message"]
-
-          if @stream_registry.has_local_stream?(session_id)
-            stream = @stream_registry.get_local_stream(session_id)
-            begin
-              send_to_stream(stream, message)
-            rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-              @stream_registry.unregister_stream(session_id)
-            end
-          end
-        end
-      rescue => e
-        @configuration.logger.error("Redis subscriber error", error: e.message, backtrace: e.backtrace.first(5))
-        sleep 5
-        retry
-      end
+    def start_message_poller
+      @message_poller.start
     end
 
     def has_active_streams?
@@ -482,6 +473,13 @@ module ModelContextProtocol
       notifications.each do |notification|
         send_to_stream(stream, notification)
       end
+    end
+
+    def cleanup
+      @message_poller&.stop
+      @stream_monitor_thread&.kill
+      # No need to checkin connections since we use pool wrapper
+      @redis = nil
     end
   end
 end

@@ -260,33 +260,24 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       end
 
       context "with invalid transport options specified" do
-        it "raises error when redis_client is missing" do
+        it "raises error when Redis is not configured globally" do
           configuration.transport = {type: :streamable_http}
 
           expect { configuration.validate! }.to raise_error(
             described_class::InvalidTransportError,
-            "streamable_http transport requires redis_client option"
-          )
-        end
-
-        it "raises error when redis_client is not Redis-compatible" do
-          configuration.transport = {
-            type: :streamable_http,
-            redis_client: "not a redis client"
-          }
-
-          expect { configuration.validate! }.to raise_error(
-            described_class::InvalidTransportError,
-            "redis_client must be a Redis-compatible client"
+            /streamable_http transport requires Redis configuration/
           )
         end
       end
 
       context "with valid transport options specified" do
         it "validates successfully" do
+          ModelContextProtocol::Server::RedisConfig.configure do |config|
+            config.redis_url = "redis://localhost:6379/15"
+          end
+
           configuration.transport = {
-            type: :streamable_http,
-            redis_client: MockRedis.new
+            type: :streamable_http
           }
 
           expect { configuration.validate! }.not_to raise_error
@@ -663,13 +654,11 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       it "returns options excluding type" do
         configuration.transport = {
           type: :streamable_http,
-          redis_client: "mock_redis",
           session_ttl: 1800,
           string_key: "value"
         }
 
         expect(configuration.transport_options).to eq({
-          redis_client: "mock_redis",
           session_ttl: 1800,
           string_key: "value"
         })

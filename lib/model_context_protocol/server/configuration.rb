@@ -200,15 +200,10 @@ module ModelContextProtocol
     end
 
     def validate_streamable_http_transport!
-      options = transport_options
-
-      unless options[:redis_client]
-        raise InvalidTransportError, "streamable_http transport requires redis_client option"
-      end
-
-      redis_client = options[:redis_client]
-      unless redis_client.respond_to?(:hset) && redis_client.respond_to?(:expire)
-        raise InvalidTransportError, "redis_client must be a Redis-compatible client"
+      unless ModelContextProtocol::Server::RedisConfig.configured?
+        raise InvalidTransportError,
+          "streamable_http transport requires Redis configuration. " \
+          "Call ModelContextProtocol::Server.configure_redis in an initializer."
       end
     end
 
