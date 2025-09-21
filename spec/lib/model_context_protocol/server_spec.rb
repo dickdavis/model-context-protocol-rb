@@ -357,9 +357,10 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     it "handles StreamableHttpTransport requests" do
-      mock_redis = MockRedis.new
-      allow(mock_redis).to receive(:publish)
-      allow(mock_redis).to receive(:subscribe)
+      # Configure Redis globally first
+      ModelContextProtocol::Server::RedisConfig.configure do |config|
+        config.redis_url = "redis://localhost:6379/15"
+      end
 
       transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
       allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
@@ -371,8 +372,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
         config.transport = {
-          type: :streamable_http,
-          redis_client: mock_redis
+          type: :streamable_http
         }
       end
 
@@ -819,6 +819,33 @@ RSpec.describe ModelContextProtocol::Server do
           short_ttl_server.router.route(message)
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /expired/)
       end
+    end
+  end
+
+  describe ".configure_redis" do
+    it "delegates to RedisConfig.configure" do
+      expect(ModelContextProtocol::Server::RedisConfig).to receive(:configure)
+
+      described_class.configure_redis do |config|
+        config.redis_url = "redis://test:6379"
+      end
+    end
+
+    it "passes the block to RedisConfig.configure" do
+      block_executed = false
+
+      allow(ModelContextProtocol::Server::RedisConfig).to receive(:configure) do |&block|
+        config = double("config")
+        allow(config).to receive(:redis_url=)
+        block&.call(config)
+        block_executed = true
+      end
+
+      described_class.configure_redis do |config|
+        config.redis_url = "redis://test:6379"
+      end
+
+      expect(block_executed).to be true
     end
   end
 end

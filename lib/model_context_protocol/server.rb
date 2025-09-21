@@ -281,5 +281,11 @@ module ModelContextProtocol
         end
       end
     end
+
+    class << self
+      def configure_redis(&block)
+        RedisConfig.configure(&block)
+      end
+    end
   end
 end
