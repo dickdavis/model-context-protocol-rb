@@ -1,5 +1,7 @@
 module ModelContextProtocol
   class Server::Resource
+    include ModelContextProtocol::Server::Cancellable
+
     attr_reader :mime_type, :uri
 
     def initialize

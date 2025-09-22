@@ -311,4 +311,149 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       )
     end
   end
+
+  describe "cancellation handling" do
+    let(:request_id) { "test-request-123" }
+    let(:reason) { "User requested cancellation" }
+    let(:cancellation_message) do
+      {
+        "jsonrpc" => "2.0",
+        "method" => "notifications/cancelled",
+        "params" => {
+          "requestId" => request_id,
+          "reason" => reason
+        }
+      }
+    end
+
+    describe "#handle_cancellation" do
+      context "when request exists in store" do
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          request_store.register_request(request_id)
+        end
+
+        it "marks the request as cancelled" do
+          transport.send(:handle_cancellation, cancellation_message)
+
+          request_store = transport.instance_variable_get(:@request_store)
+          expect(request_store.cancelled?(request_id)).to be true
+        end
+      end
+
+      context "when request does not exist in store" do
+        it "does not raise error for unknown request" do
+          expect {
+            transport.send(:handle_cancellation, cancellation_message)
+          }.not_to raise_error
+        end
+      end
+
+      context "with malformed cancellation message" do
+        it "handles missing params gracefully" do
+          malformed_message = {"method" => "notifications/cancelled"}
+
+          expect {
+            transport.send(:handle_cancellation, malformed_message)
+          }.not_to raise_error
+        end
+
+        it "handles missing request ID gracefully" do
+          malformed_message = {
+            "method" => "notifications/cancelled",
+            "params" => {"reason" => "test reason"}
+          }
+
+          expect {
+            transport.send(:handle_cancellation, malformed_message)
+          }.not_to raise_error
+        end
+      end
+
+      context "when cancellation without reason" do
+        let(:cancellation_without_reason) do
+          {
+            "method" => "notifications/cancelled",
+            "params" => {"requestId" => request_id}
+          }
+        end
+
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          request_store.register_request(request_id)
+        end
+
+        it "marks request as cancelled with nil reason" do
+          transport.send(:handle_cancellation, cancellation_without_reason)
+
+          request_store = transport.instance_variable_get(:@request_store)
+          expect(request_store.cancelled?(request_id)).to be true
+        end
+      end
+
+      context "when request store operation fails" do
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          allow(request_store).to receive(:mark_cancelled).and_raise(StandardError.new("Store error"))
+        end
+
+        it "does not raise error on store failures" do
+          expect {
+            transport.send(:handle_cancellation, cancellation_message)
+          }.not_to raise_error
+        end
+      end
+    end
+
+    describe "integration with request processing" do
+      before do
+        router.map("cancellable_method") do |message|
+          request_context = Thread.current[:mcp_context]
+          if request_context&.dig(:request_store)&.cancelled?(request_context[:request_id])
+            raise ModelContextProtocol::Server::Cancellable::CancellationError, "Request was cancelled"
+          end
+          TestResponse[text: "completed"]
+        end
+      end
+
+      it "handles cancellation notifications before routing to handlers" do
+        $stdin.puts(JSON.generate(cancellation_message))
+        $stdin.puts(JSON.generate({"jsonrpc" => "2.0", "id" => 1, "method" => "test_method"}))
+        $stdin.rewind
+
+        begin
+          transport.handle
+        rescue EOFError
+          # Expected
+        end
+
+        $stdout.rewind
+        output = $stdout.read
+        response_lines = output.strip.split("\n")
+
+        aggregate_failures do
+          expect(response_lines.length).to eq(1)
+          response_json = JSON.parse(response_lines[0])
+          expect(response_json["id"]).to eq(1)
+          expect(response_json["result"]).to eq({"text" => "foobar"})
+        end
+      end
+
+      it "does not send response for cancellation notifications" do
+        $stdin.puts(JSON.generate(cancellation_message))
+        $stdin.rewind
+
+        begin
+          transport.handle
+        rescue EOFError
+          # Expected
+        end
+
+        $stdout.rewind
+        output = $stdout.read
+
+        expect(output.strip).to be_empty
+      end
+    end
+  end
 end

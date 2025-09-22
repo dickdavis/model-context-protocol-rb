@@ -46,7 +46,7 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 | ❌ | [List Changed Notification (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#list-changed-notification) |
 | ❌ | [Subscriptions (Resources)](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#subscriptions) |
 | ❌ | [List Changed Notification (Tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#list-changed-notification) |
-| ❌ | [Cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) |
+| ✅ | [Cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) |
 | ✅ | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
 | ❌ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
 
@@ -366,12 +366,13 @@ Define any arguments using `argument` blocks nested within the `define` block. Y
 
 #### Prompt Methods
 
-Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them.
+Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining prompt metadata and arguments |
 | `call` | Instance method | Main method to implement prompt logic and build response |
+| `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
 | `message_history` | Within `call` | DSL method to build an array of user and assistant messages |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with messages:`) |
 
@@ -516,12 +517,13 @@ Define any [resource annotations](https://modelcontextprotocol.io/specification/
 
 #### Resource Methods
 
-Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response.
+Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining resource metadata and annotations |
 | `call` | Instance method | Main method to implement resource logic and build response |
+| `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with text:` or `respond_with binary:`) |
 
 #### Available Instance Variables
@@ -684,12 +686,13 @@ Use the `define` block to set [tool properties](https://spec.modelcontextprotoco
 
 #### Tool Methods
 
-Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses.
+Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining tool metadata and schemas |
 | `call` | Instance method | Main method to implement tool logic and build response |
+| `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data with various content types |
 
 #### Content Blocks
@@ -1005,6 +1008,36 @@ class TestToolWithToolErrorResponse < ModelContextProtocol::Server::Tool
   def call
     # Simulate an API call failure
     respond_with error: "Failed to call API at #{arguments[:api_endpoint]}: Connection timed out"
+  end
+end
+```
+
+This is an example of a tool that allows a client to cancel a long-running operation:
+
+```ruby
+class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
+  define do
+    name "cancellable_sleep"
+    title "Cancellable Sleep Tool"
+    description "Sleep for 3 seconds with cancellation support"
+    input_schema do
+      {
+        type: "object",
+        properties: {},
+        additionalProperties: false
+      }
+    end
+  end
+
+  def call
+    logger.info("Starting 3 second sleep operation")
+
+    result = cancellable do
+      sleep 3
+      "Sleep completed successfully"
+    end
+
+    respond_with content: text_content(text: result)
   end
 end
 ```

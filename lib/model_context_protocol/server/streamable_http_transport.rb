@@ -5,6 +5,7 @@ require_relative "streamable_http_transport/notification_queue"
 require_relative "streamable_http_transport/event_counter"
 require_relative "streamable_http_transport/session_store"
 require_relative "streamable_http_transport/message_poller"
+require_relative "streamable_http_transport/request_store"
 require_relative "redis_client_proxy"
 
 module ModelContextProtocol
@@ -43,6 +44,7 @@ module ModelContextProtocol
       @stream_registry = StreamRegistry.new(@redis, @server_instance)
       @notification_queue = NotificationQueue.new(@redis, @server_instance)
       @event_counter = EventCounter.new(@redis, @server_instance)
+      @request_store = RequestStore.new(@redis, @server_instance)
       @stream_monitor_thread = nil
       @message_poller = MessagePoller.new(@redis, @stream_registry, @configuration.logger) do |stream, message|
         send_to_stream(stream, message)
@@ -134,7 +136,6 @@ module ModelContextProtocol
 
       protocol_version = env["HTTP_MCP_PROTOCOL_VERSION"]
       if protocol_version
-        # Check if this matches a known negotiated version
         valid_versions = @session_protocol_versions.values.compact.uniq
         unless valid_versions.empty? || valid_versions.include?(protocol_version)
           error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid MCP protocol version: #{protocol_version}. Expected one of: #{valid_versions.join(", ")}"}]
@@ -272,36 +273,43 @@ module ModelContextProtocol
 
       case message_type
       when :notification, :response
-        if session_id && @session_store.session_has_active_stream?(session_id)
+        if body["method"] == "notifications/cancelled"
+          handle_cancellation(body, session_id)
+        elsif session_id && @session_store.session_has_active_stream?(session_id)
           deliver_to_session_stream(session_id, body)
         end
         {json: {}, status: 202}
 
       when :request
-        result = @router.route(body)
-        response = Response[id: body["id"], result: result.serialized]
+        result = @router.route(body, request_store: @request_store, session_id: session_id)
 
-        if session_id && @session_store.session_has_active_stream?(session_id)
-          deliver_to_session_stream(session_id, response.serialized)
-          return {json: {accepted: true}, status: 200}
-        end
+        if result
+          response = Response[id: body["id"], result: result.serialized]
 
-        if accept_header.include?("text/event-stream") && !accept_header.include?("application/json")
-          {
-            stream: true,
-            headers: {
-              "Content-Type" => "text/event-stream",
-              "Cache-Control" => "no-cache",
-              "Connection" => "keep-alive"
-            },
-            stream_proc: create_request_sse_stream_proc(response.serialized)
-          }
+          if session_id && @session_store.session_has_active_stream?(session_id)
+            deliver_to_session_stream(session_id, response.serialized)
+            return {json: {accepted: true}, status: 200}
+          end
+
+          if accept_header.include?("text/event-stream") && !accept_header.include?("application/json")
+            {
+              stream: true,
+              headers: {
+                "Content-Type" => "text/event-stream",
+                "Cache-Control" => "no-cache",
+                "Connection" => "keep-alive"
+              },
+              stream_proc: create_request_sse_stream_proc(response.serialized)
+            }
+          else
+            {
+              json: response.serialized,
+              status: 200,
+              headers: {"Content-Type" => "application/json"}
+            }
+          end
         else
-          {
-            json: response.serialized,
-            status: 200,
-            headers: {"Content-Type" => "application/json"}
-          }
+          {json: {}, status: 204}
         end
       end
     end
@@ -450,6 +458,7 @@ module ModelContextProtocol
     def cleanup_session(session_id)
       @stream_registry.unregister_stream(session_id)
       @session_store.cleanup_session(session_id)
+      @request_store.cleanup_session_requests(session_id)
     end
 
     def start_message_poller
@@ -475,10 +484,27 @@ module ModelContextProtocol
       end
     end
 
+    # Handle a cancellation notification from the client
+    #
+    # @param message [Hash] the cancellation notification message
+    # @param session_id [String, nil] the session ID if available
+    def handle_cancellation(message, session_id = nil)
+      params = message["params"]
+      return unless params
+
+      request_id = params["requestId"]
+      reason = params["reason"]
+
+      return unless request_id
+
+      @request_store.mark_cancelled(request_id, reason)
+    rescue
+      nil
+    end
+
     def cleanup
       @message_poller&.stop
       @stream_monitor_thread&.kill
-      # No need to checkin connections since we use pool wrapper
       @redis = nil
     end
   end

@@ -1,3 +1,5 @@
+require_relative "stdio_transport/request_store"
+
 module ModelContextProtocol
   class Server::StdioTransport
     Response = Data.define(:id, :result) do
@@ -12,15 +14,15 @@ module ModelContextProtocol
       end
     end
 
-    attr_reader :router, :configuration
+    attr_reader :router, :configuration, :request_store
 
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
+      @request_store = RequestStore.new
     end
 
     def handle
-      # Connect logger to transport
       @configuration.logger.connect_transport(self)
 
       loop do
@@ -29,10 +31,19 @@ module ModelContextProtocol
 
         begin
           message = JSON.parse(line.chomp)
-          next if message["method"].start_with?("notifications")
 
-          result = router.route(message)
-          send_message(Response[id: message["id"], result: result.serialized])
+          if message["method"] == "notifications/cancelled"
+            handle_cancellation(message)
+            next
+          end
+
+          next if message["method"]&.start_with?("notifications/")
+
+          result = router.route(message, request_store: @request_store)
+
+          if result
+            send_message(Response[id: message["id"], result: result.serialized])
+          end
         rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
           @configuration.logger.error("Validation error", error: validation_error.message)
           send_message(
@@ -61,11 +72,25 @@ module ModelContextProtocol
       $stdout.puts(JSON.generate(notification))
       $stdout.flush
     rescue IOError => e
-      # Handle broken pipe gracefully
       @configuration.logger.debug("Failed to send notification", error: e.message) if @configuration.logging_enabled?
     end
 
     private
+
+    # Handle a cancellation notification from the client
+    #
+    # @param message [Hash] the cancellation notification message
+    def handle_cancellation(message)
+      params = message["params"]
+      return unless params
+
+      request_id = params["requestId"]
+      return unless request_id
+
+      @request_store.mark_cancelled(request_id)
+    rescue
+      nil
+    end
 
     def receive_message
       $stdin.gets
