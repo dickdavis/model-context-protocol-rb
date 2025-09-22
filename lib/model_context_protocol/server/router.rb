@@ -1,3 +1,5 @@
+require_relative "cancellable"
+
 module ModelContextProtocol
   class Server::Router
     # Raised when an invalid method is provided.
@@ -12,14 +14,47 @@ module ModelContextProtocol
       @handlers[method] = handler
     end
 
-    def route(message)
+    # Route a message to its handler with request tracking support
+    #
+    # @param message [Hash] the JSON-RPC message
+    # @param request_store [Object] the request store for tracking cancellation
+    # @param session_id [String, nil] the session ID for HTTP transport
+    # @return [Object] the handler result, or nil if cancelled
+    def route(message, request_store: nil, session_id: nil)
       method = message["method"]
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
 
-      with_environment(@configuration&.environment_variables) do
-        handler.call(message)
+      request_id = message["id"]
+
+      if request_id && request_store
+        request_store.register_request(request_id, session_id)
       end
+
+      result = nil
+      begin
+        with_environment(@configuration&.environment_variables) do
+          context = {
+            request_id: request_id,
+            request_store: request_store,
+            session_id: session_id
+          }
+
+          Thread.current[:mcp_context] = context
+
+          result = handler.call(message)
+        end
+      rescue Server::Cancellable::CancellationError
+        return nil
+      ensure
+        if request_id && request_store
+          request_store.unregister_request(request_id)
+        end
+
+        Thread.current[:mcp_context] = nil
+      end
+
+      result
     end
 
     private
