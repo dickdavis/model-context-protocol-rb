@@ -108,6 +108,8 @@ module ModelContextProtocol
         raise ModelContextProtocol::Server::ParameterValidationError, validation_error.message
       rescue OutputSchemaValidationError, ModelContextProtocol::Server::ResponseArgumentsError => tool_error
         raise tool_error, tool_error.message
+      rescue Server::Cancellable::CancellationError
+        raise
       rescue => error
         ErrorResponse[error: error.message]
       end
