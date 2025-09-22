@@ -1,50 +1,30 @@
 require "spec_helper"
 
-TestResponse = Data.define(:text) do
-  def serialized
-    {text:}
-  end
-end
-
-InitializeTestResponse = Data.define(:protocol_version) do
-  def serialized
-    {
-      protocolVersion: protocol_version,
-      capabilities: {},
-      serverInfo: {name: "test-server", version: "1.0.0"}
-    }
-  end
-end
-
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
-  subject(:transport) do
-    described_class.new(
-      router: router,
-      configuration: configuration
-    )
-  end
+  subject(:transport) { server.transport }
 
-  let(:router) { ModelContextProtocol::Server::Router.new(configuration: configuration) }
+  let(:server) do
+    ModelContextProtocol::Server.new do |config|
+      config.name = "test-server"
+      config.version = "1.0.0"
+      config.registry = ModelContextProtocol::Server::Registry.new
+      config.transport = {
+        type: :streamable_http,
+        require_sessions: false,
+        validate_origin: false,
+        env: rack_env
+      }
+    end
+  end
+  let(:router) { server.router }
   let(:mock_redis) { MockRedis.new }
-  let(:mcp_logger) { configuration.logger }
+  let(:mcp_logger) { server.configuration.logger }
   let(:rack_env) { build_rack_env }
   let(:session_id) { "test-session-123" }
-  let(:configuration) do
-    config = ModelContextProtocol::Server::Configuration.new
-    config.name = "test-server"
-    config.registry = ModelContextProtocol::Server::Registry.new
-    config.version = "1.0.0"
-    config.transport = {
-      type: :streamable_http,
-      require_sessions: false,
-      validate_origin: false,
-      env: rack_env
-    }
-    config
-  end
+  let(:configuration) { server.configuration }
 
   before(:all) do
-    ModelContextProtocol::Server::RedisConfig.configure do |config|
+    ModelContextProtocol::Server.configure_redis do |config|
       config.redis_url = "redis://localhost:6379/15"
     end
   end
@@ -71,11 +51,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   def set_request_env(method: "POST", body: "", headers: {})
-    configuration.transport[:env] = build_rack_env(
-      method: method,
-      body: body,
-      headers: headers
-    )
+    configuration.transport[:env] = build_rack_env(method:, body:, headers:)
   end
 
   before do
@@ -88,26 +64,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     allow(Thread).to receive(:new).and_call_original
     allow(Thread).to receive(:new).with(no_args).and_return(monitor_thread, poller_thread)
 
-    router.map("initialize") do |message|
-      client_protocol_version = message["params"]&.dig("protocolVersion")
-      supported_versions = ["2025-06-18"]
-
-      negotiated_version = if client_protocol_version && supported_versions.include?(client_protocol_version)
-        client_protocol_version
-      else
-        supported_versions.first
-      end
-
-      InitializeTestResponse[protocol_version: negotiated_version]
-    end
-
-    router.map("ping") do |message|
-      TestResponse[text: "pong"]
-    end
-
-    router.map("error_method") do |message|
-      raise "Something went wrong"
-    end
+    server.start
   end
 
   describe "#handle" do
@@ -145,7 +102,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
                 id: "init-1",
                 result: {
                   protocolVersion: "2025-06-18",
-                  capabilities: {},
+                  capabilities: {completions: {}, logging: {}},
                   serverInfo: {name: "test-server", version: "1.0.0"}
                 }
               })
@@ -159,6 +116,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         context "when sessions are required" do
           before do
             configuration.transport[:require_sessions] = true
+            new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+              router: server.router,
+              configuration: configuration
+            )
+            server.instance_variable_set(:@transport, new_transport)
           end
 
           it "creates a session and returns response with session ID" do
@@ -170,7 +132,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
                 id: "init-1",
                 result: {
                   protocolVersion: "2025-06-18",
-                  capabilities: {},
+                  capabilities: {completions: {}, logging: {}},
                   serverInfo: {name: "test-server", version: "1.0.0"}
                 }
               })
@@ -178,7 +140,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               expect(result[:headers]).to have_key("Mcp-Session-Id")
 
               session_id = result[:headers]["Mcp-Session-Id"]
-              expect(session_id).to match(/\A[0-9a-f-]{36}\z/) # UUID format
+              expect(session_id).to match(/\A[0-9a-f-]{36}\z/)
             end
           end
 
@@ -209,7 +171,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               expect(result[:json]).to eq({
                 jsonrpc: "2.0",
                 id: "req-1",
-                result: {text: "pong"}
+                result: {}
               })
               expect(result[:status]).to eq(200)
               expect(result[:headers]["Content-Type"]).to eq("application/json")
@@ -220,6 +182,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         context "when sessions are required" do
           before do
             configuration.transport[:require_sessions] = true
+            new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+              router: server.router,
+              configuration: configuration
+            )
+            server.instance_variable_set(:@transport, new_transport)
           end
 
           it "returns error for missing session ID" do
@@ -263,7 +230,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             expect(result[:json]).to eq({
               jsonrpc: "2.0",
               id: "ping-1",
-              result: {text: "pong"}
+              result: {}
             })
             expect(result[:status]).to eq(200)
           end
@@ -333,7 +300,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             expect(result[:json]).to eq({
               jsonrpc: "2.0",
               id: "ping-1",
-              result: {text: "pong"}
+              result: {}
             })
             expect(result[:status]).to eq(200)
           end
@@ -469,6 +436,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       context "when sessions are required" do
         before do
           configuration.transport[:require_sessions] = true
+          new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+            router: server.router,
+            configuration: configuration
+          )
+          server.instance_variable_set(:@transport, new_transport)
+
           mock_redis.hset("session:#{session_id}", {
             "id" => session_id.to_json,
             "server_instance" => "test-server".to_json,
@@ -490,6 +463,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       context "with invalid session when sessions are required" do
         before do
           configuration.transport[:require_sessions] = true
+          new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+            router: server.router,
+            configuration: configuration
+          )
+          server.instance_variable_set(:@transport, new_transport)
+
           set_request_env(
             method: "GET",
             headers: {
@@ -633,8 +612,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "sends ping messages to detect connection status" do
-        expect(mock_stream).to receive(:write).with(": ping\n\n")
-        expect(mock_stream).to receive(:flush)
+        aggregate_failures do
+          expect(mock_stream).to receive(:write).with(": ping\n\n")
+          expect(mock_stream).to receive(:flush)
+        end
 
         result = transport.send(:stream_connected?, mock_stream)
         expect(result).to be true
@@ -662,24 +643,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   describe "cross-server message routing" do
-    let(:other_server_transport) do
-      other_config = ModelContextProtocol::Server::Configuration.new
-      other_config.name = "other-server"
-      other_config.registry = ModelContextProtocol::Server::Registry.new
-      other_config.version = "1.0.0"
-      other_config.transport = {
-        type: :streamable_http,
-        require_sessions: true
-      }
-
-      described_class.new(
-        router: ModelContextProtocol::Server::Router.new(configuration: other_config),
-        configuration: other_config
-      )
-    end
-
     it "queues messages for sessions across server instances" do
       configuration.transport[:require_sessions] = true
+      new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+        router: server.router,
+        configuration: configuration
+      )
+      server.instance_variable_set(:@transport, new_transport)
 
       init_request = {"method" => "initialize", "id" => "init-1"}
       set_request_env(
@@ -694,30 +664,34 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       session_store = transport.instance_variable_get(:@session_store)
       session_store.mark_stream_active(session_id, first_server_instance)
 
-      other_router = other_server_transport.instance_variable_get(:@router)
-      other_router.map("ping") do |message|
-        TestResponse[text: "pong"]
+      ping_request = {"method" => "ping", "id" => "ping-1"}
+      second_server = ModelContextProtocol::Server.new do |config|
+        config.name = "other-server"
+        config.version = "1.0.0"
+        config.registry = ModelContextProtocol::Server::Registry.new
+        config.transport = {
+          type: :streamable_http,
+          require_sessions: true,
+          env: build_rack_env(
+            body: ping_request.to_json,
+            headers: {
+              "Mcp-Session-Id" => session_id,
+              "Accept" => "application/json"
+            }
+          )
+        }
       end
 
-      ping_request = {"method" => "ping", "id" => "ping-1"}
-      other_config = other_server_transport.instance_variable_get(:@configuration)
-      other_config.transport = {
-        type: :streamable_http,
-        require_sessions: true,
-        env: build_rack_env(
-          body: ping_request.to_json,
-          headers: {
-            "Mcp-Session-Id" => session_id,
-            "Accept" => "application/json"
-          }
-        )
-      }
+      second_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+        router: second_server.router,
+        configuration: second_server.configuration
+      )
 
-      result = other_server_transport.handle
+      result = second_transport.handle
       expect(result[:json]).to eq({accepted: true})
 
-      other_session_store = other_server_transport.instance_variable_get(:@session_store)
-      messages = other_session_store.poll_messages_for_session(session_id)
+      second_session_store = second_transport.instance_variable_get(:@session_store)
+      messages = second_session_store.poll_messages_for_session(session_id)
 
       aggregate_failures do
         expect(messages).not_to be_empty
@@ -730,6 +704,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     it "creates sessions with server context when sessions are required" do
       configuration.transport[:require_sessions] = true
       configuration.context = {user_id: "test-user", app: "test-app"}
+      new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+        router: server.router,
+        configuration: configuration
+      )
+      server.instance_variable_set(:@transport, new_transport)
 
       init_request = {"method" => "initialize", "id" => "init-1"}
       set_request_env(
@@ -746,6 +725,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     it "handles session cleanup on DELETE when sessions are required" do
       configuration.transport[:require_sessions] = true
+      new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+        router: server.router,
+        configuration: configuration
+      )
+      server.instance_variable_set(:@transport, new_transport)
 
       init_request = {"method" => "initialize", "id" => "init-1"}
       set_request_env(
@@ -902,6 +886,172 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
         expect(mcp_logger).to have_received(:error).with("Error in message polling",
           error: "polling error")
+      end
+    end
+  end
+
+  describe "cancellation handling" do
+    let(:request_id) { "test-request-123" }
+    let(:reason) { "User requested cancellation" }
+    let(:cancellation_message) do
+      {
+        "method" => "notifications/cancelled",
+        "params" => {
+          "requestId" => request_id,
+          "reason" => reason
+        }
+      }
+    end
+
+    before do
+      allow(mcp_logger).to receive(:debug)
+      allow(mcp_logger).to receive(:error)
+    end
+
+    describe "#handle_cancellation" do
+      context "when request exists in store" do
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          request_store.register_request(request_id, session_id)
+        end
+
+        it "marks the request as cancelled" do
+          transport.send(:handle_cancellation, cancellation_message, session_id)
+
+          request_store = transport.instance_variable_get(:@request_store)
+          expect(request_store.cancelled?(request_id)).to be true
+        end
+
+        it "stores cancellation reason" do
+          transport.send(:handle_cancellation, cancellation_message, session_id)
+
+          request_store = transport.instance_variable_get(:@request_store)
+          cancellation_info = request_store.get_cancellation_info(request_id)
+          expect(cancellation_info["reason"]).to eq(reason)
+        end
+      end
+
+      context "when request does not exist in store" do
+        it "does not raise error for unknown request" do
+          expect {
+            transport.send(:handle_cancellation, cancellation_message, session_id)
+          }.not_to raise_error
+        end
+      end
+
+      context "with malformed cancellation message" do
+        it "handles missing params gracefully" do
+          malformed_message = {"method" => "notifications/cancelled"}
+
+          expect {
+            transport.send(:handle_cancellation, malformed_message, session_id)
+          }.not_to raise_error
+        end
+
+        it "handles missing request ID gracefully" do
+          malformed_message = {
+            "method" => "notifications/cancelled",
+            "params" => {"reason" => "test reason"}
+          }
+
+          expect {
+            transport.send(:handle_cancellation, malformed_message, session_id)
+          }.not_to raise_error
+        end
+      end
+
+      context "when cancellation without reason" do
+        let(:cancellation_without_reason) do
+          {
+            "method" => "notifications/cancelled",
+            "params" => {"requestId" => request_id}
+          }
+        end
+
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          request_store.register_request(request_id, session_id)
+        end
+
+        it "marks request as cancelled with nil reason" do
+          transport.send(:handle_cancellation, cancellation_without_reason, session_id)
+
+          request_store = transport.instance_variable_get(:@request_store)
+          cancellation_info = request_store.get_cancellation_info(request_id)
+          expect(cancellation_info["reason"]).to be_nil
+        end
+      end
+
+      context "when Redis operation fails" do
+        before do
+          request_store = transport.instance_variable_get(:@request_store)
+          allow(request_store).to receive(:mark_cancelled).and_raise(StandardError.new("Redis connection failed"))
+        end
+
+        it "does not raise error on Redis failures" do
+          expect {
+            transport.send(:handle_cancellation, cancellation_message, session_id)
+          }.not_to raise_error
+        end
+      end
+
+      context "when logging is disabled" do
+        before do
+          configuration.logging_enabled = false
+          transport.instance_variable_set(:@configuration, configuration)
+        end
+
+        it "does not attempt to log" do
+          request_store = transport.instance_variable_get(:@request_store)
+          request_store.register_request(request_id, session_id)
+
+          transport.send(:handle_cancellation, cancellation_message, session_id)
+
+          expect(mcp_logger).not_to have_received(:debug)
+        end
+      end
+    end
+
+    describe "integration with request processing" do
+      let(:regular_request) { {"method" => "ping", "params" => {}, "id" => request_id} }
+
+      before do
+        set_request_env(
+          body: regular_request.to_json,
+          headers: {"Mcp-Session-Id" => session_id, "Accept" => "application/json"}
+        )
+
+        mock_redis.hset("session:#{session_id}", {
+          "id" => session_id.to_json,
+          "server_instance" => "test-server".to_json,
+          "context" => {}.to_json,
+          "created_at" => Time.now.to_f.to_json,
+          "last_activity" => Time.now.to_f.to_json,
+          "active_stream" => false.to_json
+        })
+      end
+
+      it "registers and unregisters requests during processing" do
+        transport.handle
+
+        request_store = transport.instance_variable_get(:@request_store)
+        expect(request_store.active?(request_id)).to be false
+      end
+
+      it "cleans up request from store after processing" do
+        transport.handle
+
+        request_store = transport.instance_variable_get(:@request_store)
+        expect(request_store.active?(request_id)).to be false
+      end
+
+      it "provides cancellation context to handlers" do
+        result = transport.handle
+
+        aggregate_failures do
+          expect(result[:status]).to eq(200)
+          expect(result[:json]).to include(:jsonrpc, :id, :result)
+        end
       end
     end
   end
