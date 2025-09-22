@@ -1,6 +1,7 @@
 module ModelContextProtocol
   class Server::Prompt
-    include Server::ContentHelpers
+    include ModelContextProtocol::Server::ContentHelpers
+    include ModelContextProtocol::Server::Cancellable
 
     attr_reader :arguments, :context, :logger
 
