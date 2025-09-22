@@ -16,11 +16,10 @@ require_relative "../lib/model_context_protocol"
 
 ModelContextProtocol::Server.configure_redis do |config|
   config.redis_url = "redis://localhost:6379/0"
+  config.pool_size = 10
   config.enable_reaper = true
-
-  # Aggressive settings for development/debugging
-  config.reaper_interval = 2    # Check every 2 seconds in dev
-  config.idle_timeout = 5       # Close connections idle for 5+ seconds
+  config.reaper_interval = 10
+  config.idle_timeout = 15
 end
 
 Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
@@ -84,6 +83,11 @@ class MCPHttpApp
       @logger.info("  Request: #{body_content}") unless body_content.empty?
     end
 
+    if ModelContextProtocol::Server::RedisConfig.configured?
+      pool_stats = ModelContextProtocol::Server::RedisConfig.stats
+      @logger.info("  Redis Pool: #{pool_stats}")
+    end
+
     env['rack.input'] = StringIO.new(body_content)
     request = Rack::Request.new(env)
 
@@ -102,10 +106,9 @@ class MCPHttpApp
 
     transport_config = {
       type: :streamable_http,
-      env: env,
-      require_sessions: false,  # Optional sessions for easier testing
+      env:,
+      require_sessions: false,
       session_ttl: 3600,
-      validate_origin: false,   # Disable for testing
       allowed_origins: ["*"]
     }
 
@@ -142,6 +145,10 @@ class MCPHttpApp
               @logger.info("← ERROR RESPONSE (code: #{response_json[:error][:code]})")
             elsif status == 202
               @logger.info("← NOTIFICATION ACCEPTED [NO RESPONSE REQUIRED]")
+            elsif response_json[:accepted] == true && status == 200
+              method = request_json['method'] rescue 'unknown'
+              id = request_json['id'] rescue 'unknown'
+              @logger.info("← #{method} RESPONSE (id: #{id}) [DELIVERED VIA SSE STREAM]")
             elsif response_json[:result]
               method = request_json['method'] rescue 'unknown'
               @logger.info("← #{method} RESPONSE (id: #{response_json[:id]})")
@@ -226,6 +233,7 @@ class MCPHttpApp
           register TestToolWithMixedContentResponse
           register TestToolWithResourceResponse
           register TestToolWithToolErrorResponse
+          register TestToolWithCancellableSleep
         end
       end
     end
