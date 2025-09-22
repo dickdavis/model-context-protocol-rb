@@ -1,8 +1,8 @@
-class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
+class TestToolWithCancellableShortSleep < ModelContextProtocol::Server::Tool
   define do
-    name "cancellable_sleep"
-    title "Cancellable Sleep Tool"
-    description "Sleep for 60 seconds with cancellation support"
+    name "cancellable_short_sleep"
+    title "Cancellable Short Sleep Tool"
+    description "Sleep for 2 seconds with cancellation support"
     input_schema do
       {
         type: "object",
@@ -13,10 +13,10 @@ class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Starting 60 second sleep operation")
+    logger.info("Starting 2 second sleep operation")
 
     result = cancellable do
-      sleep 60
+      sleep 2
       "Sleep completed successfully"
     end
 
