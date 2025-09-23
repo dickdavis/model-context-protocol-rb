@@ -278,7 +278,9 @@ Then, implement a controller endpoint to handle the requests.
 ```ruby
 require 'model_context_protocol'
 
-class ModelContextProtocolController < ApplicationController
+class ModelContextProtocolController < ActionController::API
+  include ActionController::Live
+
   before_action :authenticate_user
 
   def handle
@@ -287,11 +289,11 @@ class ModelContextProtocolController < ApplicationController
       config.title = "My MCP Server"
       config.version = "1.0.0"
       config.logging_enabled = true
+      config.registry = build_registry
       config.context = {
         user_id: current_user.id,
         request_id: request.id
       }
-      config.registry = build_registry
       config.transport = {
         type: :streamable_http,
         env: request.env
@@ -309,16 +311,7 @@ class ModelContextProtocolController < ApplicationController
     end
 
     result = server.start
-
-    # For SSE responses
-    if result[:stream]
-      response.headers.merge!(result[:headers] || {})
-      response.content_type = result[:headers]["Content-Type"] || "text/event-stream"
-      # Handle streaming with result[:stream_proc]
-    else
-      # For regular JSON responses
-      render json: result[:json], status: result[:status], headers: result[:headers]
-    end
+    handle_mcp_response(result)
   end
 
   private
@@ -330,6 +323,35 @@ class ModelContextProtocolController < ApplicationController
         register TestTool if current_user.authorized_for?(TestTool)
       end
     end
+  end
+
+  def handle_mcp_response(result)
+    if result[:headers]&.dig("Content-Type") == "text/event-stream"
+      setup_streaming_headers
+      stream_response(result[:stream_proc])
+    else
+      render_json_response(result)
+    end
+  end
+
+  def setup_streaming_headers
+    response.headers.merge!(
+      "Content-Type" => "text/event-stream",
+      "Cache-Control" => "no-cache",
+      "Connection" => "keep-alive"
+    )
+  end
+
+  def stream_response(stream_proc)
+    stream_proc&.call(response.stream)
+  ensure
+    response.stream.close
+  end
+
+  def render_json_response(result)
+    render json: result[:json],
+      status: result[:status] || 200,
+      headers: result[:headers] || {}
   end
 end
 ```
