@@ -1331,4 +1331,249 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
     end
   end
+
+  describe "stream closing functionality" do
+    let(:stream_registry) { transport.instance_variable_get(:@stream_registry) }
+    let(:session_store) { transport.instance_variable_get(:@session_store) }
+    let(:mock_stream) { double("stream") }
+    let(:session_id) { "test-session-123" }
+
+    before do
+      allow(mock_stream).to receive(:write)
+      allow(mock_stream).to receive(:flush)
+      allow(mock_stream).to receive(:close)
+    end
+
+    describe "#close_stream" do
+      context "when stream exists" do
+        before do
+          stream_registry.register_stream(session_id, mock_stream)
+        end
+
+        it "sends completion event and closes stream" do
+          expect(mock_stream).to receive(:write).with("data: {\"type\":\"stream_complete\",\"reason\":\"completed\"}\n\n")
+          expect(mock_stream).to receive(:close)
+
+          transport.send(:close_stream, session_id)
+        end
+
+        it "unregisters stream from registry" do
+          allow(mock_stream).to receive(:write)
+          allow(mock_stream).to receive(:close)
+
+          expect(stream_registry.has_local_stream?(session_id)).to be true
+          transport.send(:close_stream, session_id)
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+
+        it "marks session as inactive when sessions are required" do
+          allow(transport.instance_variable_get(:@require_sessions)).to receive(:nil?).and_return(false)
+          transport.instance_variable_set(:@require_sessions, true)
+
+          allow(mock_stream).to receive(:write)
+          allow(mock_stream).to receive(:close)
+          expect(session_store).to receive(:mark_stream_inactive).with(session_id)
+
+          transport.send(:close_stream, session_id)
+        end
+
+        it "handles already closed streams gracefully" do
+          allow(mock_stream).to receive(:write).and_raise(IOError)
+          allow(mock_stream).to receive(:close)
+
+          expect { transport.send(:close_stream, session_id) }.not_to raise_error
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+
+        it "accepts custom reason" do
+          expect(mock_stream).to receive(:write).with("data: {\"type\":\"stream_complete\",\"reason\":\"custom_reason\"}\n\n")
+          allow(mock_stream).to receive(:close)
+
+          transport.send(:close_stream, session_id, reason: "custom_reason")
+        end
+      end
+
+      context "when stream does not exist" do
+        it "does nothing gracefully" do
+          expect { transport.send(:close_stream, "nonexistent-session") }.not_to raise_error
+        end
+      end
+    end
+
+    describe "progressive request stream closing" do
+      let(:progressive_request) do
+        {
+          "jsonrpc" => "2.0",
+          "method" => "tools/call",
+          "params" => {
+            "name" => "test_tool",
+            "arguments" => {},
+            "_meta" => {"progressToken" => "test-token"}
+          },
+          "id" => "progressive-1"
+        }
+      end
+
+      before do
+        allow(router).to receive(:route).and_return(
+          double("result", serialized: {content: [{type: "text", text: "Tool completed"}], isError: false})
+        )
+
+        set_request_env(
+          body: progressive_request.to_json,
+          headers: {"Accept" => "text/event-stream"}
+        )
+      end
+
+      it "automatically closes stream after completing request" do
+        allow(mock_stream).to receive(:write)
+        allow(mock_stream).to receive(:close)
+
+        # Expect completion event to be sent
+        expect(mock_stream).to receive(:write).with(include("stream_complete"))
+
+        result = transport.handle
+        result[:stream_proc].call(mock_stream)
+      end
+
+      it "unregisters stream after completion" do
+        allow(mock_stream).to receive(:write)
+        allow(mock_stream).to receive(:close)
+
+        result = transport.handle
+        result[:stream_proc].call(mock_stream)
+
+        # Stream should be cleaned up
+        expect(stream_registry.has_any_local_streams?).to be false
+      end
+
+      it "handles client disconnect during processing" do
+        allow(router).to receive(:route).and_raise(IOError)
+        allow(mock_stream).to receive(:write)
+        allow(mock_stream).to receive(:close)
+
+        result = transport.handle
+        expect { result[:stream_proc].call(mock_stream) }.not_to raise_error
+
+        # Stream should still be cleaned up
+        expect(stream_registry.has_any_local_streams?).to be false
+      end
+    end
+
+    describe "enhanced disconnect detection" do
+      before do
+        stream_registry.register_stream(session_id, mock_stream)
+      end
+
+      describe "#stream_connected?" do
+        it "returns true for connected streams" do
+          allow(mock_stream).to receive(:write)
+          allow(mock_stream).to receive(:flush)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be true
+        end
+
+        it "returns false for disconnected streams (IOError)" do
+          allow(mock_stream).to receive(:write).and_raise(IOError)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be false
+        end
+
+        it "returns false for disconnected streams (EPIPE)" do
+          allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be false
+        end
+
+        it "returns false for disconnected streams (ECONNRESET)" do
+          allow(mock_stream).to receive(:write).and_raise(Errno::ECONNRESET)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be false
+        end
+
+        it "returns false for disconnected streams (ENOTCONN)" do
+          allow(mock_stream).to receive(:write).and_raise(Errno::ENOTCONN)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be false
+        end
+
+        it "returns false for disconnected streams (EBADF)" do
+          allow(mock_stream).to receive(:write).and_raise(Errno::EBADF)
+
+          expect(transport.send(:stream_connected?, mock_stream)).to be false
+        end
+
+        it "returns false for nil streams" do
+          expect(transport.send(:stream_connected?, nil)).to be false
+        end
+      end
+
+      describe "#monitor_streams" do
+        it "closes disconnected streams" do
+          allow(mock_stream).to receive(:write).and_raise(IOError)
+          allow(mock_stream).to receive(:close)
+
+          # Expect completion event to be sent during close_stream
+          expect(mock_stream).to receive(:write).with(include("stream_complete"))
+
+          transport.send(:monitor_streams)
+
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+
+        it "refreshes heartbeat for connected streams" do
+          allow(mock_stream).to receive(:write)
+          allow(mock_stream).to receive(:flush)
+
+          expect(stream_registry).to receive(:refresh_heartbeat).with(session_id)
+
+          transport.send(:monitor_streams)
+        end
+
+        it "handles network errors during monitoring" do
+          # Make get_all_local_streams return the streams first, then fail during processing
+          allow(stream_registry).to receive(:get_all_local_streams).and_return({session_id => mock_stream})
+          allow(mock_stream).to receive(:write).and_raise(Errno::ECONNRESET)
+          allow(mock_stream).to receive(:close)
+
+          expect { transport.send(:monitor_streams) }.not_to raise_error
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+      end
+    end
+
+    describe "enhanced error handling in delivery methods" do
+      before do
+        stream_registry.register_stream(session_id, mock_stream)
+      end
+
+      describe "#deliver_to_session_stream" do
+        it "closes stream on client disconnect" do
+          allow(mock_stream).to receive(:write).and_raise(IOError)
+          allow(mock_stream).to receive(:close)
+
+          # Expect completion event during close_stream
+          expect(mock_stream).to receive(:write).with(include("stream_complete"))
+
+          transport.send(:deliver_to_session_stream, session_id, {test: "data"})
+
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+      end
+
+      describe "#deliver_to_active_streams" do
+        it "closes disconnected streams during broadcast" do
+          allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
+          allow(mock_stream).to receive(:close)
+
+          # Expect completion event during close_stream
+          expect(mock_stream).to receive(:write).with(include("stream_complete"))
+
+          transport.send(:deliver_to_active_streams, {test: "notification"})
+
+          expect(stream_registry.has_local_stream?(session_id)).to be false
+        end
+      end
+    end
+  end
 end
