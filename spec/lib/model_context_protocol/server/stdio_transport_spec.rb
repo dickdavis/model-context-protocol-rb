@@ -456,4 +456,75 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
     end
   end
+
+  describe "transport parameter passing" do
+    let(:transport_passed) { [] }
+
+    before do
+      # Mock the router.route method to capture what transport is passed
+      allow(router).to receive(:route) do |message, **kwargs|
+        transport_passed << kwargs[:transport]
+        TestResponse[text: "success"]
+      end
+    end
+
+    context "when processing a regular request" do
+      let(:request) { {"jsonrpc" => "2.0", "id" => 1, "method" => "test_method"} }
+
+      before do
+        $stdin.puts(JSON.generate(request))
+        $stdin.rewind
+      end
+
+      it "passes the transport instance to router.route" do
+        begin
+          transport.handle
+        rescue EOFError
+          # Expected when stdin is exhausted
+        end
+
+        expect(transport_passed).to contain_exactly(transport)
+      end
+
+      it "passes transport along with request_store" do
+        captured_kwargs = nil
+        allow(router).to receive(:route) do |message, **kwargs|
+          captured_kwargs = kwargs
+          TestResponse[text: "success"]
+        end
+
+        begin
+          transport.handle
+        rescue EOFError
+          # Expected when stdin is exhausted
+        end
+
+        expect(captured_kwargs).to include(
+          request_store: transport.request_store,
+          transport: transport
+        )
+      end
+    end
+
+    context "when processing multiple requests" do
+      let(:request1) { {"jsonrpc" => "2.0", "id" => 1, "method" => "test_method"} }
+      let(:request2) { {"jsonrpc" => "2.0", "id" => 2, "method" => "test_method"} }
+
+      before do
+        $stdin.puts(JSON.generate(request1))
+        $stdin.puts(JSON.generate(request2))
+        $stdin.rewind
+      end
+
+      it "passes transport to each router.route call" do
+        begin
+          transport.handle
+        rescue EOFError
+          # Expected when stdin is exhausted
+        end
+
+        expect(transport_passed).to contain_exactly(transport, transport)
+      end
+    end
+  end
 end

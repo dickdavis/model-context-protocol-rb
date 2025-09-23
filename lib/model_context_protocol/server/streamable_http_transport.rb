@@ -214,7 +214,7 @@ module ModelContextProtocol
     end
 
     def handle_initialization(body, accept_header)
-      result = @router.route(body)
+      result = @router.route(body, transport: self)
       response = Response[id: body["id"], result: result.serialized]
       response_headers = {}
 
@@ -281,7 +281,7 @@ module ModelContextProtocol
         {json: {}, status: 202}
 
       when :request
-        result = @router.route(body, request_store: @request_store, session_id: session_id)
+        result = @router.route(body, request_store: @request_store, session_id: session_id, transport: self)
 
         if result
           response = Response[id: body["id"], result: result.serialized]

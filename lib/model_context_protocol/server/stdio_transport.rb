@@ -39,7 +39,7 @@ module ModelContextProtocol
 
           next if message["method"]&.start_with?("notifications/")
 
-          result = router.route(message, request_store: @request_store)
+          result = router.route(message, request_store: @request_store, transport: self)
 
           if result
             send_message(Response[id: message["id"], result: result.serialized])

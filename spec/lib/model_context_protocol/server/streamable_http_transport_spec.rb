@@ -890,6 +890,135 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
   end
 
+  describe "transport parameter passing to router" do
+    before do
+      router.map("test_method") do |_|
+        double("result", serialized: {success: true})
+      end
+
+      mock_redis.hset("session:#{session_id}", {
+        "id" => session_id.to_json,
+        "server_instance" => "test-server".to_json,
+        "context" => {}.to_json,
+        "created_at" => Time.now.to_f.to_json,
+        "last_activity" => Time.now.to_f.to_json,
+        "active_stream" => false.to_json
+      })
+    end
+
+    context "when handling initialization requests" do
+      let(:init_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 1,
+          "method" => "initialize",
+          "params" => {
+            "protocolVersion" => "2025-03-26",
+            "capabilities" => {},
+            "clientInfo" => {"name" => "test-client"}
+          }
+        }
+      end
+
+      before do
+        set_request_env(
+          body: init_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter to router.route for initialization" do
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          init_request,
+          hash_including(transport: transport)
+        )
+      end
+    end
+
+    context "when handling regular requests with sessions" do
+      let(:regular_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 2,
+          "method" => "test_method",
+          "params" => {"data" => "test"}
+        }
+      end
+
+      before do
+        configuration.transport[:require_sessions] = true
+        new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+          router: server.router,
+          configuration: configuration
+        )
+        server.instance_variable_set(:@transport, new_transport)
+
+        set_request_env(
+          body: regular_request.to_json,
+          headers: {"Mcp-Session-Id" => session_id, "Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter along with request_store and session_id" do
+        transport = server.transport
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(
+            request_store: transport.instance_variable_get(:@request_store),
+            session_id: session_id,
+            transport: transport
+          )
+        )
+      end
+    end
+
+    context "when handling regular requests without sessions" do
+      let(:regular_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 3,
+          "method" => "test_method",
+          "params" => {"data" => "test"}
+        }
+      end
+
+      before do
+        set_request_env(
+          body: regular_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter with request_store but no session_id" do
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(
+            request_store: transport.instance_variable_get(:@request_store),
+            transport: transport
+          )
+        )
+
+        # Verify session_id is nil when sessions not required
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(session_id: nil)
+        )
+      end
+    end
+  end
+
   describe "cancellation handling" do
     let(:request_id) { "test-request-123" }
     let(:reason) { "User requested cancellation" }
