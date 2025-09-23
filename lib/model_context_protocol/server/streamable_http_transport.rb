@@ -1,12 +1,5 @@
 require "json"
 require "securerandom"
-require_relative "streamable_http_transport/stream_registry"
-require_relative "streamable_http_transport/notification_queue"
-require_relative "streamable_http_transport/event_counter"
-require_relative "streamable_http_transport/session_store"
-require_relative "streamable_http_transport/message_poller"
-require_relative "streamable_http_transport/request_store"
-require_relative "redis_client_proxy"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -172,6 +165,29 @@ module ModelContextProtocol
       end
     end
 
+    def create_progressive_request_sse_stream_proc(request_body, session_id)
+      proc do |stream|
+        temp_stream_id = session_id || "temp-#{SecureRandom.hex(8)}"
+        @stream_registry.register_stream(temp_stream_id, stream)
+
+        begin
+          result = @router.route(request_body, request_store: @request_store, session_id: session_id, transport: self)
+
+          if result
+            response = Response[id: request_body["id"], result: result.serialized]
+
+            event_id = next_event_id
+            send_sse_event(stream, response.serialized, event_id)
+          else
+            event_id = next_event_id
+            send_sse_event(stream, {}, event_id)
+          end
+        ensure
+          @stream_registry.unregister_stream(temp_stream_id)
+        end
+      end
+    end
+
     def next_event_id
       @event_counter.next_event_id
     end
@@ -281,35 +297,39 @@ module ModelContextProtocol
         {json: {}, status: 202}
 
       when :request
-        result = @router.route(body, request_store: @request_store, session_id: session_id, transport: self)
+        has_progress_token = body.dig("params", "_meta", "progressToken")
+        should_stream = (accept_header.include?("text/event-stream") && !accept_header.include?("application/json")) ||
+          has_progress_token
 
-        if result
-          response = Response[id: body["id"], result: result.serialized]
+        if should_stream
+          {
+            stream: true,
+            headers: {
+              "Content-Type" => "text/event-stream",
+              "Cache-Control" => "no-cache",
+              "Connection" => "keep-alive"
+            },
+            stream_proc: create_progressive_request_sse_stream_proc(body, session_id)
+          }
+        else
+          result = @router.route(body, request_store: @request_store, session_id: session_id, transport: self)
 
-          if session_id && @session_store.session_has_active_stream?(session_id)
-            deliver_to_session_stream(session_id, response.serialized)
-            return {json: {accepted: true}, status: 200}
-          end
+          if result
+            response = Response[id: body["id"], result: result.serialized]
 
-          if accept_header.include?("text/event-stream") && !accept_header.include?("application/json")
-            {
-              stream: true,
-              headers: {
-                "Content-Type" => "text/event-stream",
-                "Cache-Control" => "no-cache",
-                "Connection" => "keep-alive"
-              },
-              stream_proc: create_request_sse_stream_proc(response.serialized)
-            }
-          else
+            if session_id && @session_store.session_has_active_stream?(session_id)
+              deliver_to_session_stream(session_id, response.serialized)
+              return {json: {accepted: true}, status: 200}
+            end
+
             {
               json: response.serialized,
               status: 200,
               headers: {"Content-Type" => "application/json"}
             }
+          else
+            {json: {}, status: 204}
           end
-        else
-          {json: {}, status: 204}
         end
       end
     end
