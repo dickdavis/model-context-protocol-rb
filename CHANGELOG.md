@@ -1,6 +1,11 @@
 ## [Unreleased]
 
+## [0.5.0] - 2025-09-22
+
 - Make streamable HTTP transport thread-safe by using Redis to manage state.
+- Implement Redis connection pooling with robust management and configuration.
+- Automatically upgrade connection to SSE to send notifications.
+- Add support for cancellations and progress notifications via `cancellable` and `progressable` blocks in prompts, resources, and tools.
 
 ## [0.4.0] - 2025-09-07
 
@@ -69,7 +74,8 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.2...v0.3.3
