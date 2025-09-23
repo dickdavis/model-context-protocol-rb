@@ -5,8 +5,9 @@ module ModelContextProtocol
     # Raised when output schema validation fails.
     class OutputSchemaValidationError < StandardError; end
 
-    include ModelContextProtocol::Server::ContentHelpers
     include ModelContextProtocol::Server::Cancellable
+    include ModelContextProtocol::Server::ContentHelpers
+    include ModelContextProtocol::Server::Progressable
 
     attr_reader :arguments, :context, :logger
 
