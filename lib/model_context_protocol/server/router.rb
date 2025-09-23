@@ -19,13 +19,15 @@ module ModelContextProtocol
     # @param message [Hash] the JSON-RPC message
     # @param request_store [Object] the request store for tracking cancellation
     # @param session_id [String, nil] the session ID for HTTP transport
+    # @param transport [Object, nil] the transport for sending notifications
     # @return [Object] the handler result, or nil if cancelled
-    def route(message, request_store: nil, session_id: nil)
+    def route(message, request_store: nil, session_id: nil, transport: nil)
       method = message["method"]
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
 
       request_id = message["id"]
+      progress_token = message.dig("params", "_meta", "progressToken")
 
       if request_id && request_store
         request_store.register_request(request_id, session_id)
@@ -34,11 +36,7 @@ module ModelContextProtocol
       result = nil
       begin
         with_environment(@configuration&.environment_variables) do
-          context = {
-            request_id: request_id,
-            request_store: request_store,
-            session_id: session_id
-          }
+          context = {request_id:, request_store:, session_id:, progress_token:, transport:}
 
           Thread.current[:mcp_context] = context
 

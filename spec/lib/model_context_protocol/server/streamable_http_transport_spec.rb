@@ -890,6 +890,135 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
   end
 
+  describe "transport parameter passing to router" do
+    before do
+      router.map("test_method") do |_|
+        double("result", serialized: {success: true})
+      end
+
+      mock_redis.hset("session:#{session_id}", {
+        "id" => session_id.to_json,
+        "server_instance" => "test-server".to_json,
+        "context" => {}.to_json,
+        "created_at" => Time.now.to_f.to_json,
+        "last_activity" => Time.now.to_f.to_json,
+        "active_stream" => false.to_json
+      })
+    end
+
+    context "when handling initialization requests" do
+      let(:init_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 1,
+          "method" => "initialize",
+          "params" => {
+            "protocolVersion" => "2025-03-26",
+            "capabilities" => {},
+            "clientInfo" => {"name" => "test-client"}
+          }
+        }
+      end
+
+      before do
+        set_request_env(
+          body: init_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter to router.route for initialization" do
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          init_request,
+          hash_including(transport: transport)
+        )
+      end
+    end
+
+    context "when handling regular requests with sessions" do
+      let(:regular_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 2,
+          "method" => "test_method",
+          "params" => {"data" => "test"}
+        }
+      end
+
+      before do
+        configuration.transport[:require_sessions] = true
+        new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+          router: server.router,
+          configuration: configuration
+        )
+        server.instance_variable_set(:@transport, new_transport)
+
+        set_request_env(
+          body: regular_request.to_json,
+          headers: {"Mcp-Session-Id" => session_id, "Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter along with request_store and session_id" do
+        transport = server.transport
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(
+            request_store: transport.instance_variable_get(:@request_store),
+            session_id: session_id,
+            transport: transport
+          )
+        )
+      end
+    end
+
+    context "when handling regular requests without sessions" do
+      let(:regular_request) do
+        {
+          "jsonrpc" => "2.0",
+          "id" => 3,
+          "method" => "test_method",
+          "params" => {"data" => "test"}
+        }
+      end
+
+      before do
+        set_request_env(
+          body: regular_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+      end
+
+      it "passes transport parameter with request_store but no session_id" do
+        allow(router).to receive(:route).and_call_original
+
+        transport.handle
+
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(
+            request_store: transport.instance_variable_get(:@request_store),
+            transport: transport
+          )
+        )
+
+        # Verify session_id is nil when sessions not required
+        expect(router).to have_received(:route).with(
+          regular_request,
+          hash_including(session_id: nil)
+        )
+      end
+    end
+  end
+
   describe "cancellation handling" do
     let(:request_id) { "test-request-123" }
     let(:reason) { "User requested cancellation" }
@@ -1051,6 +1180,153 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         aggregate_failures do
           expect(result[:status]).to eq(200)
           expect(result[:json]).to include(:jsonrpc, :id, :result)
+        end
+      end
+    end
+
+    describe "progressive streaming for requests with progress tokens" do
+      let(:mock_stream) { StringIO.new }
+      let(:progress_request) do
+        {
+          "jsonrpc" => "2.0",
+          "method" => "tools/call",
+          "params" => {
+            "_meta" => {"progressToken" => 123},
+            "name" => "test_tool",
+            "arguments" => {}
+          },
+          "id" => "progressive-1"
+        }
+      end
+
+      before do
+        allow(router).to receive(:route) do |message, **kwargs|
+          transport = kwargs[:transport]
+
+          transport.send_notification("notifications/progress", {
+            progressToken: 123,
+            progress: 50.0,
+            total: 100,
+            message: "Processing..."
+          })
+
+          transport.send_notification("notifications/progress", {
+            progressToken: 123,
+            progress: 100.0,
+            total: 100,
+            message: "Completed"
+          })
+
+          double("result", serialized: {content: [{type: "text", text: "Tool completed"}], isError: false})
+        end
+
+        set_request_env(
+          body: progress_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+      end
+
+      it "automatically streams responses for requests with progress tokens" do
+        result = transport.handle
+
+        aggregate_failures do
+          expect(result[:stream]).to be true
+          expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+          expect(result[:headers]["Cache-Control"]).to eq("no-cache")
+          expect(result[:headers]["Connection"]).to eq("keep-alive")
+          expect(result[:stream_proc]).to be_a(Proc)
+        end
+      end
+
+      it "delivers progress notifications through the stream" do
+        received_events = []
+
+        allow_any_instance_of(StringIO).to receive(:write) do |instance, data|
+          if data.start_with?("data: ")
+            event_data = data[6..-3]
+            begin
+              parsed_data = JSON.parse(event_data)
+              received_events << parsed_data
+            rescue JSON::ParserError
+              nil
+            end
+          end
+          data.length
+        end
+
+        result = transport.handle
+        result[:stream_proc].call(mock_stream)
+        progress_notifications = received_events.select { |event| event["method"] == "notifications/progress" }
+        final_responses = received_events.select { |event| event.key?("result") }
+
+        aggregate_failures do
+          expect(progress_notifications.size).to eq(2)
+          expect(progress_notifications[0]["params"]["progress"]).to eq(50.0)
+          expect(progress_notifications[1]["params"]["progress"]).to eq(100.0)
+          expect(final_responses.size).to eq(1)
+          expect(final_responses[0]["id"]).to eq("progressive-1")
+        end
+      end
+
+      it "registers and unregisters streams properly" do
+        stream_registry = transport.instance_variable_get(:@stream_registry)
+
+        expect(stream_registry.has_any_local_streams?).to be false
+
+        result = transport.handle
+        result[:stream_proc].call(mock_stream)
+
+        expect(stream_registry.has_any_local_streams?).to be false
+      end
+
+      context "when request does not have progress token" do
+        let(:regular_request) do
+          {
+            "jsonrpc" => "2.0",
+            "method" => "tools/call",
+            "params" => {"name" => "test_tool", "arguments" => {}},
+            "id" => "regular-1"
+          }
+        end
+
+        before do
+          allow(router).to receive(:route).and_return(
+            double("result", serialized: {content: [{type: "text", text: "Tool completed"}], isError: false})
+          )
+
+          set_request_env(
+            body: regular_request.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+        end
+
+        it "returns JSON response instead of streaming" do
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:stream]).to be_nil
+            expect(result[:json]).not_to be_nil
+            expect(result[:status]).to eq(200)
+            expect(result[:headers]["Content-Type"]).to eq("application/json")
+          end
+        end
+      end
+
+      context "when client explicitly requests SSE" do
+        before do
+          set_request_env(
+            body: progress_request.to_json,
+            headers: {"Accept" => "text/event-stream"}
+          )
+        end
+
+        it "streams response even without progress token" do
+          result = transport.handle
+
+          aggregate_failures do
+            expect(result[:stream]).to be true
+            expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+          end
         end
       end
     end

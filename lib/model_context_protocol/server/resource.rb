@@ -1,6 +1,7 @@
 module ModelContextProtocol
   class Server::Resource
     include ModelContextProtocol::Server::Cancellable
+    include ModelContextProtocol::Server::Progressable
 
     attr_reader :mime_type, :uri
 

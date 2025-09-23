@@ -48,7 +48,7 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 | ❌ | [List Changed Notification (Tools)](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#list-changed-notification) |
 | ✅ | [Cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) |
 | ✅ | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
-| ❌ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
+| ✅ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
 
 ## Usage
 
@@ -366,13 +366,14 @@ Define any arguments using `argument` blocks nested within the `define` block. Y
 
 #### Prompt Methods
 
-Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
+Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining prompt metadata and arguments |
 | `call` | Instance method | Main method to implement prompt logic and build response |
 | `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
+| `progressable` | Within `call` | Wrap long-running operations to send clients progress notifications (e.g., `progressable { slow_operation }`) |
 | `message_history` | Within `call` | DSL method to build an array of user and assistant messages |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with messages:`) |
 
@@ -517,13 +518,14 @@ Define any [resource annotations](https://modelcontextprotocol.io/specification/
 
 #### Resource Methods
 
-Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
+Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining resource metadata and annotations |
 | `call` | Instance method | Main method to implement resource logic and build response |
 | `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
+| `progressable` | Within `call` | Wrap long-running operations to send clients progress notifications (e.g., `progressable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with text:` or `respond_with binary:`) |
 
 #### Available Instance Variables
@@ -686,13 +688,14 @@ Use the `define` block to set [tool properties](https://spec.modelcontextprotoco
 
 #### Tool Methods
 
-Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request.
+Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
 | Method | Context | Description |
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining tool metadata and schemas |
 | `call` | Instance method | Main method to implement tool logic and build response |
 | `cancellable` | Within `call` | Wrap long-running operations to allow client cancellation (e.g., `cancellable { slow_operation }`) |
+| `progressable` | Within `call` | Wrap long-running operations to send clients progress notifications (e.g., `progressable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data with various content types |
 
 #### Content Blocks
@@ -1038,6 +1041,57 @@ class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
     end
 
     respond_with content: text_content(text: result)
+  end
+end
+```
+
+This is an example of a tool that automatically sends progress notifications to the client and allows the client to cancel the operation:
+
+```ruby
+class TestToolWithProgressableAndCancellable < ModelContextProtocol::Server::Tool
+  define do
+    name "test_tool_with_progressable_and_cancellable"
+    description "A test tool that demonstrates combined progressable and cancellable functionality"
+
+    input_schema do
+      {
+        type: "object",
+        properties: {
+          max_duration: {
+            type: "number",
+            description: "Expected maximum duration in seconds"
+          },
+          work_steps: {
+            type: "number",
+            description: "Number of work steps to perform"
+          }
+        },
+        required: ["max_duration"]
+      }
+    end
+  end
+
+  def call
+    max_duration = arguments[:max_duration] || 10
+    work_steps = arguments[:work_steps] || 10
+    logger.info("Starting progressable call with max_duration=#{max_duration}, work_steps=#{work_steps}")
+
+    result = progressable(max_duration:, message: "Processing #{work_steps} items") do
+      cancellable do
+        processed_items = []
+
+        work_steps.times do |i|
+          sleep(max_duration / work_steps.to_f)
+          processed_items << "item_#{i + 1}"
+        end
+
+        processed_items
+      end
+    end
+
+    response = text_content(text: "Successfully processed #{result.length} items: #{result.join(", ")}")
+
+    respond_with content: response
   end
 end
 ```
