@@ -7,24 +7,20 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 ## Table of Contents
 
 - [Feature Support (Server)](#feature-support-server)
-- [Usage](#usage)
-  - [Building an MCP Server](#building-an-mcp-server)
-    - [Server Configuration Options](#server-configuration-options)
-    - [Pagination Configuration Options](#pagination-configuration-options)
-    - [Transport Configuration Options](#transport-configuration-options)
-      - [STDIO Transport](#stdio-transport)
-      - [Streamable HTTP Transport](#streamable-http-transport)
-    - [Registry Configuration Options](#registry-configuration-options)
-  - [Integration with Rails](#integration-with-rails)
-  - [Server features](#server-features)
-    - [Prompts](#prompts)
-    - [Resources](#resources)
-    - [Resource Templates](#resource-templates)
-    - [Tools](#tools)
-    - [Completions](#completions)
+- [Quick Start with Rails](#quick-start-with-rails)
 - [Installation](#installation)
+- [Building an MCP Server](#building-an-mcp-server)
+  - [Server Configuration Options](#server-configuration-options)
+  - [Pagination Configuration Options](#pagination-configuration-options)
+  - [Transport Configuration Options](#transport-configuration-options)
+  - [Redis Configuration](#redis-configuration)
+  - [Registry Configuration Options](#registry-configuration-options)
+- [Prompts](#prompts)
+- [Resources](#resources)
+- [Resource Templates](#resource-templates)
+- [Tools](#tools)
+- [Completions](#completions)
 - [Development](#development)
-  - [Releases](#releases)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -50,204 +46,9 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 | ✅ | [Ping](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/ping) |
 | ✅ | [Progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) |
 
-## Usage
+## Quick Start with Rails
 
-Include `model_context_protocol` in your project.
-
-```ruby
-require 'model_context_protocol'
-```
-
-### Building an MCP Server
-
-Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server. Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
-
-```ruby
-server = ModelContextProtocol::Server.new do |config|
-  # Name of the MCP server (intended for programmatic use)
-  config.name = "MCPDevelopmentServer"
-
-  # Version of the MCP server
-  config.version = "1.0.0"
-
-  # Optional: human-readable display name for the MCP server
-  config.title = "My Awesome Server"
-
-  # Optional: instuctions for how the MCP server should be used by LLMs
-  config.instructions = <<~INSTRUCTIONS
-    This server provides file system access and development tools.
-
-    Key capabilities:
-    - Read and write files in the project directory
-    - Execute shell commands for development tasks
-    - Analyze code structure and dependencies
-
-    Use this server when you need to interact with the local development environment.
-  INSTRUCTIONS
-
-  # Enable or disable MCP server logging
-  config.logging_enabled = true
-
-  # Configure pagination options for the following methods:
-  # prompts/list, resources/list, resource_template/list, tools/list
-  config.pagination = {
-    default_page_size: 50,   # Default items per page
-    max_page_size: 500,      # Maximum allowed page size
-    cursor_ttl: 1800         # Cursor expiry in seconds (30 minutes)
-  }
-
-  # Disable pagination support (enabled by default)
-  # config.pagination = false
-
-  # Optional: require specific environment variables to be set
-  config.require_environment_variable("API_KEY")
-
-  # Optional: set environment variables programmatically
-  config.set_environment_variable("DEBUG_MODE", "true")
-
-  # Optional: provide prompts, resources, and tools with contextual variables
-  config.context = {
-    user_id: "123456",
-    request_id: SecureRandom.uuid
-  }
-
-  # Optional: explicitly specify STDIO as the transport
-  # This is not necessary as STDIO is the default transport
-  # config.transport = { type: :stdio }
- 
-  # Optional: configure streamable HTTP transport if required
-  # config.transport = {
-  #   type: :streamable_http,
-  #   env: request.env,
-  #   session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
-  # }
-
-  # Register prompts, resources, resource templates, and tools
-  config.registry = ModelContextProtocol::Server::Registry.new do
-    prompts list_changed: true do
-      register TestPrompt
-    end
-
-    resources list_changed: true, subscribe: true do
-      register TestResource
-    end
-
-    resource_templates do
-      register TestResourceTemplate
-    end
-
-    tools list_changed: true do
-      register TestTool
-    end
-  end
-end
-
-# Start the MCP server
-server.start
-```
-
-#### Server Configuration Options
-
-The following table details all available configuration options for the MCP server:
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `name` | String | Yes | - | Name of the MCP server for programmatic use |
-| `version` | String | Yes | - | Version of the MCP server |
-| `title` | String | No | - | Human-readable display name for the MCP server |
-| `instructions` | String | No | - | Instructions for how the MCP server should be used by LLMs |
-| `logging_enabled` | Boolean | No | `true` | Enable or disable MCP server logging |
-| `pagination` | Hash/Boolean | No | See pagination table | Pagination configuration (or `false` to disable) |
-| `context` | Hash | No | `{}` | Contextual variables available to prompts, resources, and tools |
-| `transport` | Hash | No | `{ type: :stdio }` | Transport configuration |
-| `registry` | Registry | Yes | - | Registry containing prompts, resources, and tools |
-
-#### Pagination Configuration Options
-
-When `pagination` is set to a Hash, the following options are available:
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `default_page_size` | Integer | No | `50` | Default number of items per page |
-| `max_page_size` | Integer | No | `500` | Maximum allowed page size |
-| `cursor_ttl` | Integer | No | `1800` | Cursor expiry time in seconds (30 minutes) |
-
-**Note:** Set `config.pagination = false` to completely disable pagination support.
-
-#### Transport Configuration Options
-
-The transport configuration supports two types: `:stdio` (default) and `:streamable_http`.
-
-##### STDIO Transport
-```ruby
-config.transport = { type: :stdio }  # This is the default, can be omitted
-```
-
-##### Streamable HTTP Transport
-The `:streamable_http` transport requires Redis to be configured globally before use:
-
-```ruby
-ModelContextProtocol::Server.configure_redis do |config|
-  config.redis_url = ENV.fetch('REDIS_URL')
-  config.pool_size = 20
-  config.pool_timeout = 5
-  config.enable_reaper = true
-  config.reaper_interval = 60
-  config.idle_timeout = 300
-end
-```
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `redis_url` | String | Yes | - | Redis connection URL |
-| `pool_size` | Integer | No | `20` | Connection pool size |
-| `pool_timeout` | Integer | No | `5` | Pool checkout timeout in seconds |
-| `enable_reaper` | Boolean | No | `true` | Enable connection reaping |
-| `reaper_interval` | Integer | No | `60` | Reaper check interval in seconds |
-| `idle_timeout` | Integer | No | `300` | Idle connection timeout in seconds |
-
-When using `:streamable_http` transport, the following options are available:
-
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `type` | Symbol | Yes | `:stdio` | Must be `:streamable_http` for HTTP transport |
-| `session_ttl` | Integer | No | `3600` | Session timeout in seconds (1 hour) |
-| `env` | Hash | No | - | Rack environment hash (for Rails integration) |
-
-#### Registry Configuration Options
-
-The registry is configured using `ModelContextProtocol::Server::Registry.new` and supports the following block types:
-
-| Block Type | Options | Description |
-|------------|---------|-------------|
-| `prompts` | `list_changed: Boolean` | Register prompt handlers with optional list change notifications |
-| `resources` | `list_changed: Boolean`, `subscribe: Boolean` | Register resource handlers with optional list change notifications and subscriptions |
-| `resource_templates` | - | Register resource template handlers |
-| `tools` | `list_changed: Boolean` | Register tool handlers with optional list change notifications |
-
-Within each block, use `register ClassName` to register your handlers.
-
-**Example:**
-```ruby
-config.registry = ModelContextProtocol::Server::Registry.new do
-  prompts list_changed: true do
-    register MyPrompt
-    register AnotherPrompt
-  end
-
-  resources list_changed: true, subscribe: true do
-    register MyResource
-  end
-
-  tools do
-    register MyTool
-  end
-end
-```
-
-#### Integration with Rails
-
-The streamable HTTP transport works with any valid Rack request. Here's an example of how you can integrate with Rails.
+The `model-context-protocol-rb` works out of the box with any valid Rack request. However, to support modern application deployments across multiple servers, the streamable HTTP transport requires Redis as an external dependency.  Here's an example of how you can easily integrate with Rails.
 
 First, configure Redis in an initializer:
 
@@ -356,7 +157,226 @@ class ModelContextProtocolController < ActionController::API
 end
 ```
 
-### Prompts
+Read more about the [server configuration options](building-an-mcp-server) to better understand how you can customize your MCP server. From here, you can get started building [prompts](#prompts), [resources](#resources), [resource templates](#resource-templates), and [tools](#tools).
+
+## Installation
+
+Add this line to your application's Gemfile:
+
+```ruby
+gem 'model-context-protocol-rb'
+```
+
+And then execute:
+
+```bash
+bundle
+```
+
+Or install it yourself as:
+
+```bash
+gem install model-context-protocol-rb
+```
+
+## Building an MCP Server
+
+Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server. Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
+
+```ruby
+server = ModelContextProtocol::Server.new do |config|
+  # Name of the MCP server (intended for programmatic use)
+  config.name = "MCPDevelopmentServer"
+
+  # Version of the MCP server
+  config.version = "1.0.0"
+
+  # Optional: human-readable display name for the MCP server
+  config.title = "My Awesome Server"
+
+  # Optional: instuctions for how the MCP server should be used by LLMs
+  config.instructions = <<~INSTRUCTIONS
+    This server provides file system access and development tools.
+
+    Key capabilities:
+    - Read and write files in the project directory
+    - Execute shell commands for development tasks
+    - Analyze code structure and dependencies
+
+    Use this server when you need to interact with the local development environment.
+  INSTRUCTIONS
+
+  # Enable or disable MCP server logging
+  config.logging_enabled = true
+
+  # Configure pagination options for the following methods:
+  # prompts/list, resources/list, resource_template/list, tools/list
+  config.pagination = {
+    default_page_size: 50,   # Default items per page
+    max_page_size: 500,      # Maximum allowed page size
+    cursor_ttl: 1800         # Cursor expiry in seconds (30 minutes)
+  }
+
+  # Disable pagination support (enabled by default)
+  # config.pagination = false
+
+  # Optional: require specific environment variables to be set
+  config.require_environment_variable("API_KEY")
+
+  # Optional: set environment variables programmatically
+  config.set_environment_variable("DEBUG_MODE", "true")
+
+  # Optional: provide prompts, resources, and tools with contextual variables
+  config.context = {
+    user_id: "123456",
+    request_id: SecureRandom.uuid
+  }
+
+  # Optional: explicitly specify STDIO as the transport
+  # This is not necessary as STDIO is the default transport
+  # config.transport = { type: :stdio }
+ 
+  # Optional: configure streamable HTTP transport if required
+  # config.transport = {
+  #   type: :streamable_http,
+  #   env: request.env,
+  #   session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
+  # }
+
+  # Register prompts, resources, resource templates, and tools
+  config.registry = ModelContextProtocol::Server::Registry.new do
+    prompts list_changed: true do
+      register TestPrompt
+    end
+
+    resources list_changed: true, subscribe: true do
+      register TestResource
+    end
+
+    resource_templates do
+      register TestResourceTemplate
+    end
+
+    tools list_changed: true do
+      register TestTool
+    end
+  end
+end
+
+# Start the MCP server
+server.start
+```
+
+### Server Configuration Options
+
+The following table details all available configuration options for the MCP server:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `name` | String | Yes | - | Name of the MCP server for programmatic use |
+| `version` | String | Yes | - | Version of the MCP server |
+| `title` | String | No | - | Human-readable display name for the MCP server |
+| `instructions` | String | No | - | Instructions for how the MCP server should be used by LLMs |
+| `logging_enabled` | Boolean | No | `true` | Enable or disable MCP server logging |
+| `pagination` | Hash/Boolean | No | See pagination table | Pagination configuration (or `false` to disable) |
+| `context` | Hash | No | `{}` | Contextual variables available to prompts, resources, and tools |
+| `transport` | Hash | No | `{ type: :stdio }` | Transport configuration |
+| `registry` | Registry | Yes | - | Registry containing prompts, resources, and tools |
+
+### Pagination Configuration Options
+
+When `pagination` is set to a Hash, the following options are available:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `default_page_size` | Integer | No | `50` | Default number of items per page |
+| `max_page_size` | Integer | No | `500` | Maximum allowed page size |
+| `cursor_ttl` | Integer | No | `1800` | Cursor expiry time in seconds (30 minutes) |
+
+**Note:** Set `config.pagination = false` to completely disable pagination support.
+
+### Transport Configuration Options
+
+The transport configuration supports two types: `:stdio` (default) and `:streamable_http`.
+
+#### STDIO Transport
+
+```ruby
+config.transport = { type: :stdio }  # This is the default, can be omitted
+```
+
+#### Streamable HTTP Transport
+
+```ruby
+config.transport = { type: :streamable_http, env: request.env }
+```
+
+When using `:streamable_http` transport, the following options are available:
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `type` | Symbol | Yes | `:stdio` | Must be `:streamable_http` for HTTP transport |
+| `session_ttl` | Integer | No | `3600` | Session timeout in seconds (1 hour) |
+| `env` | Hash | No | - | Rack environment hash (for Rails integration) |
+
+### Redis Configuration
+
+The `:streamable_http` transport requires Redis to be configured globally before use:
+
+```ruby
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = ENV.fetch('REDIS_URL')
+  config.pool_size = 20
+  config.pool_timeout = 5
+  config.enable_reaper = true
+  config.reaper_interval = 60
+  config.idle_timeout = 300
+end
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `redis_url` | String | Yes | - | Redis connection URL |
+| `pool_size` | Integer | No | `20` | Connection pool size |
+| `pool_timeout` | Integer | No | `5` | Pool checkout timeout in seconds |
+| `enable_reaper` | Boolean | No | `true` | Enable connection reaping |
+| `reaper_interval` | Integer | No | `60` | Reaper check interval in seconds |
+| `idle_timeout` | Integer | No | `300` | Idle connection timeout in seconds |
+
+### Registry Configuration Options
+
+The registry is configured using `ModelContextProtocol::Server::Registry.new` and supports the following block types:
+
+| Block Type | Options | Description |
+|------------|---------|-------------|
+| `prompts` | `list_changed: Boolean` | Register prompt handlers with optional list change notifications |
+| `resources` | `list_changed: Boolean`, `subscribe: Boolean` | Register resource handlers with optional list change notifications and subscriptions |
+| `resource_templates` | - | Register resource template handlers |
+| `tools` | `list_changed: Boolean` | Register tool handlers with optional list change notifications |
+
+Within each block, use `register ClassName` to register your handlers.
+
+**Example:**
+```ruby
+config.registry = ModelContextProtocol::Server::Registry.new do
+  prompts list_changed: true do
+    register MyPrompt
+    register AnotherPrompt
+  end
+
+  resources list_changed: true, subscribe: true do
+    register MyResource
+  end
+
+  tools do
+    register MyTool
+  end
+end
+```
+
+---
+
+## Prompts
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use.
 
@@ -364,7 +384,7 @@ Define the prompt properties and then implement the `call` method to build your 
 
 You can also log from within your prompt by calling a valid logger level method on the `logger` and passing a string message.
 
-#### Prompt Definition
+### Prompt Definition
 
 Use the `define` block to set [prompt properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/prompts/) and configure arguments.
 
@@ -375,7 +395,7 @@ Use the `define` block to set [prompt properties](https://spec.modelcontextproto
 | `description` | Short description of what the prompt does |
 | `argument` | Define an argument block with name, description, required flag, and completion |
 
-#### Argument Definition
+### Argument Definition
 
 Define any arguments using `argument` blocks nested within the `define` block. You can mark an argument as required, and you can optionally provide a completion class. See [Completions](#completions) for more information.
 
@@ -386,7 +406,7 @@ Define any arguments using `argument` blocks nested within the `define` block. Y
 | `required` | Whether the argument is required (boolean) |
 | `completion` | Available hints for completions (array or completion class) |
 
-#### Prompt Methods
+### Prompt Methods
 
 Define your prompt properties and arguments, implement the `call` method using the `message_history` DSL to build prompt messages and `respond_with` to serialize them. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
@@ -399,7 +419,7 @@ Define your prompt properties and arguments, implement the `call` method using t
 | `message_history` | Within `call` | DSL method to build an array of user and assistant messages |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with messages:`) |
 
-#### Message History DSL
+### Message History DSL
 
 Build a message history using the an intuitive DSL, creating an ordered history of user and assistant messages with flexible content blocks that can include text, image, audio, embedded resources, and resource links.
 
@@ -408,7 +428,7 @@ Build a message history using the an intuitive DSL, creating an ordered history 
 | `user_message` | Within `message_history` | Create a message with user role |
 | `assistant_message` | Within `message_history` | Create a message with assistant role |
 
-#### Content Blocks
+### Content Blocks
 
 Use content blocks to properly format the content included in messages.
 
@@ -420,7 +440,7 @@ Use content blocks to properly format the content included in messages.
 | `embedded_resource_content` | Within message blocks | Create embedded resource content block (requires `resource:`) |
 | `resource_link` | Within message blocks | Create resource link content block (requires `name:` and `uri:`) |
 
-#### Available Instance Variables
+### Available Instance Variables
 
 The `arguments` passed from an MCP client are available, as well as the `context` values passed in at server initialization.
 
@@ -430,7 +450,7 @@ The `arguments` passed from an MCP client are available, as well as the `context
 | `context` | Within `call` | Hash containing server configuration context values |
 | `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
 
-#### Examples
+### Examples
 
 This is an example prompt that returns a properly formatted response:
 
@@ -509,13 +529,15 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 end
 ```
 
-### Resources
+---
+
+## Resources
 
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use.
 
 Define the resource properties and optionally annotations, then implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
-#### Resource Definition
+### Resource Definition
 
 Use the `define` block to set [resource properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/resources/) and configure annotations.
 
@@ -528,7 +550,7 @@ Use the `define` block to set [resource properties](https://spec.modelcontextpro
 | `uri` | URI identifier for the resource |
 | `annotations` | Block for defining resource annotations |
 
-#### Annotation Definition
+### Annotation Definition
 
 Define any [resource annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#annotations) using an `annotations` block nested within the `define` block.
 
@@ -538,7 +560,7 @@ Define any [resource annotations](https://modelcontextprotocol.io/specification/
 | `priority` | Priority level (numeric value, e.g., `0.9`) |
 | `last_modified` | Last modified timestamp (ISO 8601 string) |
 
-#### Resource Methods
+### Resource Methods
 
 Define your resource properties and annotations, implement the `call` method to build resource content and `respond_with` to serialize the response. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
@@ -550,7 +572,7 @@ Define your resource properties and annotations, implement the `call` method to 
 | `progressable` | Within `call` | Wrap long-running operations to send clients progress notifications (e.g., `progressable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data (e.g., `respond_with text:` or `respond_with binary:`) |
 
-#### Available Instance Variables
+### Available Instance Variables
 
 Resources are stateless and only have access to their configured properties.
 
@@ -559,7 +581,7 @@ Resources are stateless and only have access to their configured properties.
 | `mime_type` | Within `call` | The configured MIME type for this resource |
 | `uri` | Within `call` | The configured URI identifier for this resource |
 
-#### Examples
+### Examples
 
 This is an example resource that returns a text response:
 
@@ -621,13 +643,15 @@ class TestBinaryResource < ModelContextProtocol::Server::Resource
 end
 ```
 
-### Resource Templates
+---
+
+## Resource Templates
 
 The `ModelContextProtocol::Server::ResourceTemplate` base class allows subclasses to define a resource template that the MCP client can use.
 
 Define the resource template properties and URI template with optional parameter completions. Resource templates are used to define parameterized resources that clients can instantiate.
 
-#### Resource Template Definition
+### Resource Template Definition
 
 Use the `define` block to set [resource template properties](https://modelcontextprotocol.io/specification/2025-06-18/server/resources#resource-templates).
 
@@ -638,7 +662,7 @@ Use the `define` block to set [resource template properties](https://modelcontex
 | `mime_type` | MIME type of resources created from this template |
 | `uri_template` | URI template with parameters (e.g., `"file:///{name}"`) |
 
-#### URI Template Configuration
+### URI Template Configuration
 
 Define the URI template and configure parameter completions within the `uri_template` block.
 
@@ -646,7 +670,7 @@ Define the URI template and configure parameter completions within the `uri_temp
 |--------|---------|-------------|
 | `completion` | Within `uri_template` block | Define completion for a URI parameter (e.g., `completion :name, ["value1", "value2"]`) |
 
-#### Resource Template Methods
+### Resource Template Methods
 
 Resource templates only use the `define` method to configure their properties - they don't have a `call` method.
 
@@ -654,7 +678,7 @@ Resource templates only use the `define` method to configure their properties - 
 |--------|---------|-------------|
 | `define` | Class definition | Block for defining resource template metadata and URI template |
 
-#### Examples
+### Examples
 
 This is an example resource template that provides a completion for a parameter of the URI template:
 
@@ -690,13 +714,15 @@ class TestResourceTemplate < ModelContextProtocol::Server::ResourceTemplate
 end
 ```
 
-### Tools
+---
+
+## Tools
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use.
 
 Define the tool properties and schemas, then implement the `call` method to build your tool response. Arguments from the MCP client and server context are available, along with logging capabilities.
 
-#### Tool Definition
+### Tool Definition
 
 Use the `define` block to set [tool properties](https://spec.modelcontextprotocol.io/specification/2025-06-18/server/tools/) and configure schemas.
 
@@ -708,7 +734,7 @@ Use the `define` block to set [tool properties](https://spec.modelcontextprotoco
 | `input_schema` | JSON schema block for validating tool inputs |
 | `output_schema` | JSON schema block for validating structured content outputs |
 
-#### Tool Methods
+### Tool Methods
 
 Define your tool properties and schemas, implement the `call` method using content helpers and `respond_with` to serialize responses. You can wrap long running operations in a `cancellable` block to allow clients to cancel the request. Also, you can automatically send progress notifications to clients by wrapping long-running operations in a `progressable` block.
 
@@ -720,7 +746,7 @@ Define your tool properties and schemas, implement the `call` method using conte
 | `progressable` | Within `call` | Wrap long-running operations to send clients progress notifications (e.g., `progressable { slow_operation }`) |
 | `respond_with` | Within `call` | Return properly formatted response data with various content types |
 
-#### Content Blocks
+### Content Blocks
 
 Use content blocks to properly format the content included in tool responses.
 
@@ -732,7 +758,7 @@ Use content blocks to properly format the content included in tool responses.
 | `embedded_resource_content` | Within `call` | Create embedded resource content block (requires `resource:`) |
 | `resource_link` | Within `call` | Create resource link content block (requires `name:` and `uri:`) |
 
-#### Response Types
+### Response Types
 
 Tools can return different types of responses using `respond_with`.
 
@@ -743,7 +769,7 @@ Tools can return different types of responses using `respond_with`.
 | `content:` | `respond_with content: [content_blocks]` | Return array of mixed content blocks |
 | `error:` | `respond_with error: "message"` | Return tool error response |
 
-#### Available Instance Variables
+### Available Instance Variables
 
 Arguments from MCP clients and server context are available, along with logging capabilities.
 
@@ -753,7 +779,7 @@ Arguments from MCP clients and server context are available, along with logging 
 | `context` | Within `call` | Hash containing server configuration context values |
 | `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
 
-#### Examples
+### Examples
 
 This is an example of a tool that returns structured content validated by an output schema:
 
@@ -1118,13 +1144,15 @@ class TestToolWithProgressableAndCancellable < ModelContextProtocol::Server::Too
 end
 ```
 
-### Completions
+---
+
+## Completions
 
 The `ModelContextProtocol::Server::Completion` base class allows subclasses to define a completion that the MCP client can use to obtain hints or suggestions for arguments to prompts and resources.
 
 Implement the `call` method to build your completion logic using the provided argument name and value. Completions are simpler than other server features - they don't use a `define` block and only provide filtered suggestion lists.
 
-#### Completion Methods
+### Completion Methods
 
 Completions only implement the `call` method to provide completion logic.
 
@@ -1133,7 +1161,7 @@ Completions only implement the `call` method to provide completion logic.
 | `call` | Instance method | Main method to implement completion logic and build response |
 | `respond_with` | Within `call` | Return properly formatted completion response (e.g., `respond_with values:`) |
 
-#### Available Instance Variables
+### Available Instance Variables
 
 Completions receive the argument name and current value being completed.
 
@@ -1142,7 +1170,7 @@ Completions receive the argument name and current value being completed.
 | `argument_name` | Within `call` | String name of the argument being completed |
 | `argument_value` | Within `call` | Current partial value being typed by the user |
 
-#### Examples
+### Examples
 
 This is an example completion that returns an array of values in the response:
 
@@ -1159,25 +1187,7 @@ class TestCompletion < ModelContextProtocol::Server::Completion
 end
 ```
 
-## Installation
-
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'model-context-protocol-rb'
-```
-
-And then execute:
-
-```bash
-bundle
-```
-
-Or install it yourself as:
-
-```bash
-gem install model-context-protocol-rb
-```
+---
 
 ## Development
 
