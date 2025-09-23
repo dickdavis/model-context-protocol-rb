@@ -48,7 +48,9 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 
 ## Quick Start with Rails
 
-The `model-context-protocol-rb` works out of the box with any valid Rack request. However, to support modern application deployments across multiple servers, the streamable HTTP transport requires Redis as an external dependency.  Here's an example of how you can easily integrate with Rails.
+The `model-context-protocol-rb` works out of the box with any valid Rack request. Currently, this project has no plans for building a deeper Rails integration, but it is fairly simple to build it out yourself. To support modern application deployments across multiple servers, the streamable HTTP transport requires Redis as an external dependency.
+
+Here's an example of how you can easily integrate with Rails.
 
 First, configure Redis in an initializer:
 
@@ -146,7 +148,7 @@ class ModelContextProtocolController < ActionController::API
   def stream_response(stream_proc)
     stream_proc&.call(response.stream)
   ensure
-    response.stream.close
+    response.stream.close rescue nil
   end
 
   def render_json_response(result)
@@ -157,7 +159,9 @@ class ModelContextProtocolController < ActionController::API
 end
 ```
 
-Read more about the [server configuration options](building-an-mcp-server) to better understand how you can customize your MCP server. From here, you can get started building [prompts](#prompts), [resources](#resources), [resource templates](#resource-templates), and [tools](#tools).
+Read more about the [server configuration options](building-an-mcp-server) to better understand how you can customize your MCP server.
+
+From here, you can get started building [prompts](#prompts), [resources](#resources), [resource templates](#resource-templates), and [tools](#tools).
 
 ## Installation
 
