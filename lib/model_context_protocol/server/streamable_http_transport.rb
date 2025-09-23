@@ -182,7 +182,13 @@ module ModelContextProtocol
             event_id = next_event_id
             send_sse_event(stream, {}, event_id)
           end
+
+          # Close stream immediately when work is complete
+          close_stream(temp_stream_id, reason: "request_completed")
+        rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+          # Client disconnected during processing
         ensure
+          # Fallback cleanup
           @stream_registry.unregister_stream(temp_stream_id)
         end
       end
@@ -199,6 +205,20 @@ module ModelContextProtocol
       message = data.is_a?(String) ? data : data.to_json
       stream.write("data: #{message}\n\n")
       stream.flush if stream.respond_to?(:flush)
+    end
+
+    def close_stream(session_id, reason: "completed")
+      if (stream = @stream_registry.get_local_stream(session_id))
+        begin
+          send_sse_event(stream, {type: "stream_complete", reason: reason})
+          stream.close
+        rescue IOError, Errno::EPIPE, Errno::ECONNRESET, Errno::ENOTCONN, Errno::EBADF
+          nil
+        end
+
+        @stream_registry.unregister_stream(session_id)
+        @session_store.mark_stream_inactive(session_id) if @require_sessions
+      end
     end
 
     def handle_post_request(env)
@@ -404,7 +424,7 @@ module ModelContextProtocol
         stream.write(": ping\n\n")
         stream.flush if stream.respond_to?(:flush)
         true
-      rescue IOError, Errno::EPIPE, Errno::ECONNRESET
+      rescue IOError, Errno::EPIPE, Errno::ECONNRESET, Errno::ENOTCONN, Errno::EBADF
         false
       end
     end
@@ -438,12 +458,10 @@ module ModelContextProtocol
           send_ping_to_stream(stream)
           @stream_registry.refresh_heartbeat(session_id)
         else
-          @stream_registry.unregister_stream(session_id)
-          @session_store.mark_stream_inactive(session_id)
+          close_stream(session_id, reason: "client_disconnected")
         end
-      rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-        @stream_registry.unregister_stream(session_id)
-        @session_store.mark_stream_inactive(session_id)
+      rescue IOError, Errno::EPIPE, Errno::ECONNRESET, Errno::ENOTCONN, Errno::EBADF
+        close_stream(session_id, reason: "network_error")
       end
     end
 
@@ -468,7 +486,7 @@ module ModelContextProtocol
           send_to_stream(stream, data)
           return true
         rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-          @stream_registry.unregister_stream(session_id)
+          close_stream(session_id, reason: "client_disconnected")
         end
       end
 
@@ -493,7 +511,7 @@ module ModelContextProtocol
       @stream_registry.get_all_local_streams.each do |session_id, stream|
         send_to_stream(stream, notification)
       rescue IOError, Errno::EPIPE, Errno::ECONNRESET
-        @stream_registry.unregister_stream(session_id)
+        close_stream(session_id, reason: "client_disconnected")
       end
     end
 
