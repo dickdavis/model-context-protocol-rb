@@ -316,4 +316,111 @@ RSpec.describe ModelContextProtocol::Server::Router do
       end
     end
   end
+
+  describe "progress token handling" do
+    let(:transport) { double("transport") }
+    let(:progress_token) { "test-progress-token-123" }
+    let(:request_id) { "test-request-456" }
+
+    before do
+      router.map("progress_test") do |_|
+        context = Thread.current[:mcp_context]
+        {
+          progress_token: context&.dig(:progress_token),
+          transport: context&.dig(:transport),
+          request_id: context&.dig(:request_id)
+        }
+      end
+    end
+
+    context "when progress token is provided in params._meta" do
+      let(:message) do
+        {
+          "method" => "progress_test",
+          "id" => request_id,
+          "params" => {
+            "data" => "test",
+            "_meta" => {
+              "progressToken" => progress_token
+            }
+          }
+        }
+      end
+
+      it "extracts progress token and makes it available in thread context" do
+        result = router.route(message, transport: transport)
+
+        aggregate_failures do
+          expect(result[:progress_token]).to eq(progress_token)
+          expect(result[:transport]).to eq(transport)
+          expect(result[:request_id]).to eq(request_id)
+        end
+      end
+    end
+
+    context "when progress token is not provided" do
+      let(:message) do
+        {
+          "method" => "progress_test",
+          "id" => request_id,
+          "params" => {
+            "data" => "test"
+          }
+        }
+      end
+
+      it "sets progress token to nil in thread context" do
+        result = router.route(message, transport: transport)
+
+        aggregate_failures do
+          expect(result[:progress_token]).to be_nil
+          expect(result[:transport]).to eq(transport)
+          expect(result[:request_id]).to eq(request_id)
+        end
+      end
+    end
+
+    context "when params is nil" do
+      let(:message) do
+        {
+          "method" => "progress_test",
+          "id" => request_id
+        }
+      end
+
+      it "handles missing params gracefully" do
+        result = router.route(message, transport: transport)
+
+        aggregate_failures do
+          expect(result[:progress_token]).to be_nil
+          expect(result[:transport]).to eq(transport)
+          expect(result[:request_id]).to eq(request_id)
+        end
+      end
+    end
+
+    context "when transport is not provided" do
+      let(:message) do
+        {
+          "method" => "progress_test",
+          "id" => request_id,
+          "params" => {
+            "_meta" => {
+              "progressToken" => progress_token
+            }
+          }
+        }
+      end
+
+      it "sets transport to nil in thread context" do
+        result = router.route(message)
+
+        aggregate_failures do
+          expect(result[:progress_token]).to eq(progress_token)
+          expect(result[:transport]).to be_nil
+          expect(result[:request_id]).to eq(request_id)
+        end
+      end
+    end
+  end
 end
