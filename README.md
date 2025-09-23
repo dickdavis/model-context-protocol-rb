@@ -253,8 +253,10 @@ First, configure Redis in an initializer:
 
 ```ruby
 # config/initializers/model_context_protocol.rb
+require "model_context_protocol"
+
 ModelContextProtocol::Server.configure_redis do |config|
-  config.redis_url = ENV.fetch('REDIS_URL')
+  config.redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
   config.pool_size = 20
   config.pool_timeout = 5
   config.enable_reaper = true
@@ -276,8 +278,6 @@ end
 Then, implement a controller endpoint to handle the requests.
 
 ```ruby
-require 'model_context_protocol'
-
 class ModelContextProtocolController < ActionController::API
   include ActionController::Live
 
