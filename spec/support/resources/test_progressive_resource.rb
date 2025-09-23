@@ -1,5 +1,6 @@
 class TestProgressiveResource < ModelContextProtocol::Server::Resource
   define do
+    name "progressive-test"
     mime_type "text/plain"
     uri "progressive://test"
     title "Progressive Test Resource"
