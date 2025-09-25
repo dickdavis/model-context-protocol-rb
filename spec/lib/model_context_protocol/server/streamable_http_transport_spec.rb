@@ -1123,22 +1123,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           }.not_to raise_error
         end
       end
-
-      context "when logging is disabled" do
-        before do
-          configuration.logging_enabled = false
-          transport.instance_variable_set(:@configuration, configuration)
-        end
-
-        it "does not attempt to log" do
-          request_store = transport.instance_variable_get(:@request_store)
-          request_store.register_request(request_id, session_id)
-
-          transport.send(:handle_cancellation, cancellation_message, session_id)
-
-          expect(mcp_logger).not_to have_received(:debug)
-        end
-      end
     end
 
     describe "integration with request processing" do

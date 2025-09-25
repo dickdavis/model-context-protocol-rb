@@ -29,11 +29,10 @@ module ModelContextProtocol
     }.freeze
 
     attr_accessor :transport
-    attr_reader :logger_name, :enabled
+    attr_reader :logger_name
 
-    def initialize(logger_name: "server", level: "info", enabled: true)
+    def initialize(logger_name: "server", level: "info")
       @logger_name = logger_name
-      @enabled = enabled
       @internal_logger = Logger.new(nil)
       @internal_logger.level = LEVEL_MAP[level] || Logger::INFO
       @transport = nil
@@ -42,13 +41,11 @@ module ModelContextProtocol
 
     %i[debug info warn error fatal unknown].each do |severity|
       define_method(severity) do |message = nil, **data, &block|
-        return true unless @enabled
         add(Logger.const_get(severity.to_s.upcase), message, data, &block)
       end
     end
 
     def add(severity, message = nil, data = {}, &block)
-      return true unless @enabled
       return true if severity < @internal_logger.level
 
       message = block.call if message.nil? && block_given?
@@ -70,14 +67,12 @@ module ModelContextProtocol
 
     def connect_transport(transport)
       @transport = transport
-      flush_queued_messages if @enabled
+      flush_queued_messages
     end
 
     private
 
     def send_notification(severity, message, data)
-      return unless @enabled
-
       notification_params = {
         level: REVERSE_LEVEL_MAP[severity] || "info",
         logger: @logger_name,
@@ -99,7 +94,7 @@ module ModelContextProtocol
     end
 
     def flush_queued_messages
-      return unless @transport && @enabled
+      return unless @transport
       @queued_messages.each do |params|
         @transport.send_notification("notifications/message", params)
       end

@@ -10,17 +10,15 @@ RSpec.describe ModelContextProtocol::Server::MCPLogger do
 
       aggregate_failures do
         expect(logger.logger_name).to eq("server")
-        expect(logger.enabled).to be(true)
         expect(logger.level).to eq(Logger::INFO)
       end
     end
 
     it "accepts custom settings" do
-      logger = described_class.new(logger_name: "custom", level: "debug", enabled: false)
+      logger = described_class.new(logger_name: "custom", level: "debug")
 
       aggregate_failures do
         expect(logger.logger_name).to eq("custom")
-        expect(logger.enabled).to be(false)
         expect(logger.level).to eq(Logger::DEBUG)
       end
     end
@@ -32,7 +30,7 @@ RSpec.describe ModelContextProtocol::Server::MCPLogger do
       logger.connect_transport(transport)
     end
 
-    describe "when enabled" do
+    describe "logging behavior" do
       it "sends debug messages when level is debug" do
         logger.level = Logger::DEBUG
         logger.debug("test message", key: "value")
@@ -138,15 +136,6 @@ RSpec.describe ModelContextProtocol::Server::MCPLogger do
         )
       end
     end
-
-    describe "when disabled" do
-      let(:logger) { described_class.new(enabled: false) }
-
-      it "does not send notifications" do
-        logger.info("test message")
-        expect(transport).not_to have_received(:send_notification)
-      end
-    end
   end
 
   describe "log level filtering" do
@@ -235,16 +224,6 @@ RSpec.describe ModelContextProtocol::Server::MCPLogger do
             }
           )
         end
-      end
-
-      it "does not flush when disabled" do
-        disabled_logger = described_class.new(enabled: false)
-        disabled_logger.info("disabled message")
-
-        allow(transport).to receive(:send_notification)
-        disabled_logger.connect_transport(transport)
-
-        expect(transport).not_to have_received(:send_notification)
       end
     end
   end

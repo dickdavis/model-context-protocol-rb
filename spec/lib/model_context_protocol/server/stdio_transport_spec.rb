@@ -264,20 +264,6 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           transport.send_notification("notifications/message", {level: "error", data: {}})
         }.not_to raise_error
       end
-
-      context "when logging is disabled" do
-        before do
-          configuration.logging_enabled = false
-        end
-
-        it "does not log debug messages about failed notifications when logging disabled" do
-          allow($stdout).to receive(:puts).and_raise(IOError, "broken pipe")
-          allow($stdout).to receive(:flush)
-          expect(mcp_logger).not_to receive(:debug)
-
-          transport.send_notification("notifications/message", {level: "info", data: {}})
-        end
-      end
     end
   end
 

@@ -72,7 +72,7 @@ module ModelContextProtocol
       $stdout.puts(JSON.generate(notification))
       $stdout.flush
     rescue IOError => e
-      @configuration.logger.debug("Failed to send notification", error: e.message) if @configuration.logging_enabled?
+      @configuration.logger.debug("Failed to send notification", error: e.message)
     end
 
     private

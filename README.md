@@ -91,7 +91,6 @@ class ModelContextProtocolController < ActionController::API
       config.name = "MyMCPServer"
       config.title = "My MCP Server"
       config.version = "1.0.0"
-      config.logging_enabled = true
       config.registry = build_registry
       config.context = {
         user_id: current_user.id,
@@ -210,9 +209,6 @@ server = ModelContextProtocol::Server.new do |config|
     Use this server when you need to interact with the local development environment.
   INSTRUCTIONS
 
-  # Enable or disable MCP server logging
-  config.logging_enabled = true
-
   # Configure pagination options for the following methods:
   # prompts/list, resources/list, resource_template/list, tools/list
   config.pagination = {
@@ -281,7 +277,6 @@ The following table details all available configuration options for the MCP serv
 | `version` | String | Yes | - | Version of the MCP server |
 | `title` | String | No | - | Human-readable display name for the MCP server |
 | `instructions` | String | No | - | Instructions for how the MCP server should be used by LLMs |
-| `logging_enabled` | Boolean | No | `true` | Enable or disable MCP server logging |
 | `pagination` | Hash/Boolean | No | See pagination table | Pagination configuration (or `false` to disable) |
 | `context` | Hash | No | `{}` | Contextual variables available to prompts, resources, and tools |
 | `transport` | Hash | No | `{ type: :stdio }` | Transport configuration |
