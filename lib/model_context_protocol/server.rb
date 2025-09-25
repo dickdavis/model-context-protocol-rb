@@ -257,7 +257,7 @@ module ModelContextProtocol
     def build_capabilities
       {}.tap do |capabilities|
         capabilities[:completions] = {}
-        capabilities[:logging] = {} if configuration.logging_enabled?
+        capabilities[:logging] = {}
 
         registry = configuration.registry
 

@@ -36,25 +36,10 @@ module ModelContextProtocol
     attr_reader :logger
 
     def initialize
-      @logging_enabled = true
       @default_log_level = "info"
       @logger = ModelContextProtocol::Server::MCPLogger.new(
         logger_name: "server",
-        level: @default_log_level,
-        enabled: @logging_enabled
-      )
-    end
-
-    def logging_enabled?
-      @logging_enabled
-    end
-
-    def logging_enabled=(value)
-      @logging_enabled = value
-      @logger = ModelContextProtocol::Server::MCPLogger.new(
-        logger_name: "server",
-        level: @default_log_level,
-        enabled: value
+        level: @default_log_level
       )
     end
 

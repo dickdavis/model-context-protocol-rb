@@ -11,7 +11,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
         config.name = "test-server"
         config.registry = registry
         config.version = "1.0.0"
-        config.logging_enabled = true
       end
 
       config = server.configuration
@@ -19,27 +18,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
         expect(config.name).to eq("test-server")
         expect(config.registry).to eq(registry)
         expect(config.version).to eq("1.0.0")
-        expect(config.logging_enabled?).to be true
-      end
-    end
-  end
-
-  describe "#logging_enabled?" do
-    it "returns true by default" do
-      expect(configuration.logging_enabled?).to be(true)
-    end
-
-    context "when logging_enabled is explicitly set to true" do
-      it "returns true" do
-        configuration.logging_enabled = true
-        expect(configuration.logging_enabled?).to be(true)
-      end
-    end
-
-    context "when logging_enabled is set to false" do
-      it "returns false" do
-        configuration.logging_enabled = false
-        expect(configuration.logging_enabled?).to be(false)
       end
     end
   end
@@ -49,42 +27,12 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       expect(configuration.logger).to be_a(ModelContextProtocol::Server::MCPLogger)
     end
 
-    it "creates an enabled logger by default" do
-      expect(configuration.logger.enabled).to be(true)
-    end
-
-    it "creates a disabled logger when logging is disabled" do
-      configuration.logging_enabled = false
-      expect(configuration.logger.enabled).to be(false)
-    end
-
     it "sets default logger name to 'server'" do
       expect(configuration.logger.logger_name).to eq("server")
     end
 
     it "sets default log level to INFO" do
       expect(configuration.logger.level).to eq(Logger::INFO)
-    end
-  end
-
-  describe "#logging_enabled=" do
-    it "recreates the logger with new enabled state" do
-      original_logger = configuration.logger
-
-      configuration.logging_enabled = false
-
-      aggregate_failures do
-        expect(configuration.logger).not_to eq(original_logger)
-        expect(configuration.logger.enabled).to be(false)
-      end
-    end
-
-    it "preserves log level when recreating logger" do
-      configuration.default_log_level = "debug"
-
-      configuration.logging_enabled = false
-
-      expect(configuration.logger.level).to eq(Logger::DEBUG)
     end
   end
 

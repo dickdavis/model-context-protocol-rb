@@ -6,7 +6,6 @@ RSpec.describe ModelContextProtocol::Server do
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
         config.transport = :unknown_transport
       end
@@ -39,7 +38,6 @@ RSpec.describe ModelContextProtocol::Server do
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
       end
       server.start
@@ -59,7 +57,6 @@ RSpec.describe ModelContextProtocol::Server do
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
         config.version = "1.0.0"
-        config.logging_enabled = true
         config.registry = ModelContextProtocol::Server::Registry.new
         config.transport = {
           type: :streamable_http
