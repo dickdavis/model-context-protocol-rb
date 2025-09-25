@@ -3,10 +3,12 @@ require "forwardable"
 require "json"
 
 module ModelContextProtocol
-  class Server::MCPLogger
+  class Server::ClientLogger
     extend Forwardable
 
     def_delegators :@internal_logger, :datetime_format=, :formatter=, :progname, :progname=
+
+    VALID_LOG_LEVELS = %w[debug info notice warning error critical alert emergency].freeze
 
     LEVEL_MAP = {
       "debug" => Logger::DEBUG,

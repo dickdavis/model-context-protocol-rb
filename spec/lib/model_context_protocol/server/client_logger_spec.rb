@@ -1,6 +1,6 @@
 require "spec_helper"
 
-RSpec.describe ModelContextProtocol::Server::MCPLogger do
+RSpec.describe ModelContextProtocol::Server::ClientLogger do
   let(:transport) { double("transport") }
   let(:logger) { described_class.new(logger_name: "test-logger") }
 
