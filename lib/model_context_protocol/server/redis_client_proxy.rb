@@ -5,6 +5,11 @@ module ModelContextProtocol
     class RedisClientProxy
       def initialize(pool)
         @pool = pool
+        @redis_collector = nil
+      end
+
+      def set_redis_collector(collector)
+        @redis_collector = collector
       end
 
       def get(key)
@@ -112,7 +117,26 @@ module ModelContextProtocol
       private
 
       def with_connection(&block)
-        @pool.with(&block)
+        if @redis_collector && Thread.current[:mcp_instrumentation_context]
+          start_time = Time.now
+          begin
+            result = @pool.with(&block)
+            duration_ms = ((Time.now - start_time) * 1000).round(2)
+
+            # Extract command name from caller
+            command = caller_locations(1, 1)[0].label.to_s.upcase
+            @redis_collector.record_operation(command, duration_ms)
+
+            result
+          rescue
+            duration_ms = ((Time.now - start_time) * 1000).round(2)
+            command = caller_locations(1, 1)[0].label.to_s.upcase
+            @redis_collector.record_operation("#{command}_ERROR", duration_ms)
+            raise
+          end
+        else
+          @pool.with(&block)
+        end
       end
 
       # Wrapper for Redis multi/pipeline operations
