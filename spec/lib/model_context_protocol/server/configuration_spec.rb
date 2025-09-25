@@ -22,62 +22,17 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     end
   end
 
-  describe "#logger" do
+  describe "#client_logger" do
     it "always provides a logger instance" do
-      expect(configuration.logger).to be_a(ModelContextProtocol::Server::MCPLogger)
+      expect(configuration.client_logger).to be_a(ModelContextProtocol::Server::ClientLogger)
     end
 
     it "sets default logger name to 'server'" do
-      expect(configuration.logger.logger_name).to eq("server")
+      expect(configuration.client_logger.logger_name).to eq("server")
     end
 
     it "sets default log level to INFO" do
-      expect(configuration.logger.level).to eq(Logger::INFO)
-    end
-  end
-
-  describe "#default_log_level=" do
-    it "updates the logger's level" do
-      configuration.default_log_level = "debug"
-
-      expect(configuration.logger.level).to eq(Logger::DEBUG)
-    end
-
-    it "handles all MCP log levels" do
-      {
-        "debug" => Logger::DEBUG,
-        "info" => Logger::INFO,
-        "notice" => Logger::INFO,
-        "warning" => Logger::WARN,
-        "error" => Logger::ERROR,
-        "critical" => Logger::FATAL,
-        "alert" => Logger::FATAL,
-        "emergency" => Logger::UNKNOWN
-      }.each do |mcp_level, logger_level|
-        configuration.default_log_level = mcp_level
-        expect(configuration.logger.level).to eq(logger_level)
-      end
-    end
-
-    it "raises error for invalid log levels" do
-      expect {
-        configuration.default_log_level = "invalid"
-      }.to raise_error(
-        ModelContextProtocol::Server::Configuration::InvalidLogLevelError,
-        "Invalid log level: invalid. Valid levels are: debug, info, notice, warning, error, critical, alert, emergency"
-      )
-    end
-
-    it "accepts symbol log levels" do
-      configuration.default_log_level = :debug
-
-      expect(configuration.logger.level).to eq(Logger::DEBUG)
-    end
-
-    it "accepts string log levels" do
-      configuration.default_log_level = "warning"
-
-      expect(configuration.logger.level).to eq(Logger::WARN)
+      expect(configuration.client_logger.level).to eq(Logger::INFO)
     end
   end
 
