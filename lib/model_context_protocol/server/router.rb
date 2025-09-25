@@ -27,6 +27,32 @@ module ModelContextProtocol
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
 
       request_id = message["id"]
+
+      # Wrap execution with instrumentation (configuration-level first, then global)
+      instrumentation_registries = [
+        @configuration&.instrumentation_registry,
+        ModelContextProtocol::Server.instrumentation_registry
+      ].compact.select(&:enabled?)
+
+      if instrumentation_registries.any?
+        # Nest instrumentation calls for multiple registries
+        execution_proc = -> { execute_handler(message, handler, request_store, session_id, transport) }
+
+        instrumentation_registries.reverse_each do |registry|
+          current_proc = execution_proc
+          execution_proc = -> { registry.instrument(method: method, request_id: request_id, &current_proc) }
+        end
+
+        execution_proc.call
+      else
+        execute_handler(message, handler, request_store, session_id, transport)
+      end
+    end
+
+    private
+
+    def execute_handler(message, handler, request_store, session_id, transport)
+      request_id = message["id"]
       progress_token = message.dig("params", "_meta", "progressToken")
 
       if request_id && request_store
@@ -54,8 +80,6 @@ module ModelContextProtocol
 
       result
     end
-
-    private
 
     def with_environment(vars)
       original = ENV.to_h
