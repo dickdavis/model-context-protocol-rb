@@ -284,4 +284,160 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
       expect(final_thread_count).to be <= initial_thread_count + 1
     end
   end
+
+  describe "timer cancellation" do
+    let(:request_store) { double("request_store") }
+
+    before do
+      Thread.current[:mcp_context] = {
+        request_id: "test-request-123",
+        progress_token: progress_token,
+        transport: transport,
+        request_store: request_store
+      }
+    end
+
+    after do
+      Thread.current[:mcp_context] = nil
+    end
+
+    context "when request is cancelled during execution" do
+      it "stops timer immediately when request is marked as cancelled" do
+        allow(request_store).to receive(:cancelled?).with("test-request-123").and_return(false, false, true)
+
+        start_time = Time.now
+        result = test_instance.progressable(max_duration: 5) do
+          sleep 0.3
+          "completed"
+        end
+        end_time = Time.now
+
+        aggregate_failures do
+          expect(result).to eq("completed")
+          expect(end_time - start_time).to be < 5
+          expect(transport).to have_received(:send_notification).with(
+            "notifications/progress",
+            hash_including(progress: 100, message: "Completed")
+          )
+        end
+      end
+
+      it "prevents timer from running when request is already cancelled" do
+        allow(request_store).to receive(:cancelled?).with("test-request-123").and_return(true)
+
+        result = test_instance.progressable(max_duration: 1) do
+          sleep 0.1
+          "completed despite cancellation"
+        end
+
+        aggregate_failures do
+          expect(result).to eq("completed despite cancellation")
+          expect(transport).to have_received(:send_notification).with(
+            "notifications/progress",
+            hash_including(progress: 100, message: "Completed")
+          )
+        end
+      end
+    end
+
+    context "when transport fails during progress notifications" do
+      it "stops timer when transport send_notification raises an error" do
+        call_count = 0
+        allow(transport).to receive(:send_notification) do |method, data|
+          call_count += 1
+          if method == "notifications/progress" && data[:progress] != 100
+            raise IOError, "Transport connection broken"
+          end
+        end
+        allow(request_store).to receive(:cancelled?).and_return(false)
+
+        result = test_instance.progressable(max_duration: 2) do
+          sleep 0.2
+          "completed"
+        end
+
+        aggregate_failures do
+          expect(result).to eq("completed")
+          expect(transport).to have_received(:send_notification).with(
+            "notifications/progress",
+            hash_including(progress: 100, message: "Completed")
+          )
+        end
+      end
+    end
+
+    context "thread cleanup with cancellation support" do
+      it "properly cleans up timer threads even when request store is present" do
+        allow(request_store).to receive(:cancelled?).and_return(false)
+        initial_thread_count = Thread.list.size
+
+        test_instance.progressable(max_duration: 0.2) do
+          sleep 0.05
+          "result"
+        end
+
+        sleep 0.1
+
+        final_thread_count = Thread.list.size
+        expect(final_thread_count).to be <= initial_thread_count
+      end
+
+      it "handles missing request_store gracefully" do
+        Thread.current[:mcp_context] = {
+          request_id: "test-request-123",
+          progress_token: progress_token,
+          transport: transport
+        }
+
+        result = test_instance.progressable(max_duration: 0.1) do
+          "works without request_store"
+        end
+
+        expect(result).to eq("works without request_store")
+      end
+    end
+
+    context "when HTTP request terminates silently (no explicit cancellation)" do
+      it "eventually stops timer when transport succeeds but request is dead" do
+        allow(request_store).to receive(:cancelled?).and_return(false)
+        allow(transport).to receive(:send_notification).and_return(true)
+
+        initial_thread_count = Thread.list.size
+
+        result = test_instance.progressable(max_duration: 1) do
+          sleep 0.1
+          "completed"
+        end
+
+        sleep 0.3
+
+        final_thread_count = Thread.list.size
+
+        aggregate_failures do
+          expect(result).to eq("completed")
+          expect(final_thread_count).to be <= initial_thread_count
+          expect(transport).to have_received(:send_notification).at_least(:once)
+        end
+      end
+
+      it "timer auto-shuts down after max_duration even without cancellation" do
+        allow(request_store).to receive(:cancelled?).and_return(false)
+        allow(transport).to receive(:send_notification).and_return(true)
+
+        start_time = Time.now
+
+        result = test_instance.progressable(max_duration: 0.2) do
+          sleep 0.5
+          "should complete despite timer timeout"
+        end
+
+        end_time = Time.now
+
+        aggregate_failures do
+          expect(result).to eq("should complete despite timer timeout")
+          expect(end_time - start_time).to be >= 0.2
+        end
+      end
+    end
+  end
 end
