@@ -136,7 +136,7 @@ RSpec.describe ModelContextProtocol::Server do
           "params" => {"level" => "debug"}
         }
 
-        expect(server.configuration.logger).to receive(:set_mcp_level).with("debug")
+        expect(server.configuration.client_logger).to receive(:set_mcp_level).with("debug")
         response = server.router.route(message)
         expect(response.serialized).to eq({})
       end
