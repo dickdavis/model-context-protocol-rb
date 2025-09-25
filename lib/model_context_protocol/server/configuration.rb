@@ -1,4 +1,5 @@
 require_relative "mcp_logger"
+require_relative "instrumentation"
 
 module ModelContextProtocol
   class Server::Configuration
@@ -33,7 +34,7 @@ module ModelContextProtocol
     VALID_LOG_LEVELS = %w[debug info notice warning error critical alert emergency].freeze
 
     attr_accessor :name, :registry, :version, :transport, :pagination, :title, :instructions
-    attr_reader :logger
+    attr_reader :logger, :instrumentation_registry
 
     def initialize
       @logging_enabled = true
@@ -43,6 +44,10 @@ module ModelContextProtocol
         level: @default_log_level,
         enabled: @logging_enabled
       )
+      @instrumentation_registry = Server::Instrumentation::Registry.new
+      @instrumentation_collectors = []
+      @redis_pool_manager = nil
+      @redis_client = nil
     end
 
     def logging_enabled?
@@ -117,6 +122,56 @@ module ModelContextProtocol
           cursor_ttl: 3600
         }
       end
+    end
+
+    def enable_instrumentation(collectors: [:timing])
+      @instrumentation_registry.enable!
+
+      collectors.each do |collector|
+        case collector
+        when :timing
+          @instrumentation_registry.register_collector(
+            :timing,
+            Server::Instrumentation::TimingCollector.new
+          )
+        when :redis
+          # Will be set up when Redis is configured
+          @instrumentation_collectors << :redis
+        when Class
+          instance = collector.new
+          @instrumentation_registry.register_collector(collector.name, instance)
+        else
+          instance = collector
+          @instrumentation_registry.register_collector(instance.class.name, instance)
+        end
+      end
+    end
+
+    def disable_instrumentation
+      @instrumentation_registry.disable!
+    end
+
+    def instrumentation_enabled?
+      @instrumentation_registry.enabled?
+    end
+
+    # Set up Redis instrumentation when Redis configuration is complete
+    def setup_redis_instrumentation
+      return unless @instrumentation_collectors.include?(:redis)
+      return unless @redis_pool_manager
+
+      redis_collector = Server::Instrumentation::RedisCollector.new(@redis_pool_manager)
+      @instrumentation_registry.register_collector(:redis, redis_collector)
+
+      # Pass collector to Redis proxy
+      @redis_client&.set_redis_collector(redis_collector)
+    end
+
+    # Store references to Redis components for instrumentation
+    def set_redis_components(pool_manager:, client:)
+      @redis_pool_manager = pool_manager
+      @redis_client = client
+      setup_redis_instrumentation
     end
 
     def validate!

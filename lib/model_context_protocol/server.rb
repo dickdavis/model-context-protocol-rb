@@ -1,4 +1,5 @@
 require "logger"
+require_relative "server/instrumentation"
 
 module ModelContextProtocol
   class Server
@@ -285,6 +286,16 @@ module ModelContextProtocol
     class << self
       def configure_redis(&block)
         RedisConfig.configure(&block)
+      end
+
+      def instrument(&block)
+        @global_instrumentation_registry ||= Server::Instrumentation::Registry.new
+        @global_instrumentation_registry.add_callback(&block)
+        @global_instrumentation_registry.enable!
+      end
+
+      def instrumentation_registry
+        @global_instrumentation_registry
       end
     end
   end
