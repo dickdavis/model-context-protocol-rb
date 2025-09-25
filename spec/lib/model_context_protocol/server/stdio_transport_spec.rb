@@ -11,7 +11,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
   let(:router) { ModelContextProtocol::Server::Router.new }
   let(:configuration) { ModelContextProtocol::Server::Configuration.new }
-  let(:mcp_logger) { configuration.logger }
+  let(:client_logger) { configuration.client_logger }
 
   before do
     @original_stdin = $stdin
@@ -97,7 +97,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends an error response" do
-        allow(mcp_logger).to receive(:error)
+        allow(client_logger).to receive(:error)
 
         begin
           transport.handle
@@ -115,7 +115,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(error_response).to include("error")
           expect(error_response["error"]["code"]).to eq(-32700)
           expect(error_response["error"]["message"]).to include("unexpected token")
-          expect(mcp_logger).to have_received(:error).with("Parser error", error: String)
+          expect(client_logger).to have_received(:error).with("Parser error", error: String)
         end
       end
     end
@@ -129,7 +129,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends a validation error response" do
-        allow(mcp_logger).to receive(:error)
+        allow(client_logger).to receive(:error)
 
         begin
           transport.handle
@@ -145,7 +145,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(response_json).to include("error")
           expect(response_json["error"]["code"]).to eq(-32602)
           expect(response_json["error"]["message"]).to eq("Invalid parameters")
-          expect(mcp_logger).to have_received(:error).with("Validation error", error: "Invalid parameters")
+          expect(client_logger).to have_received(:error).with("Validation error", error: "Invalid parameters")
         end
       end
     end
@@ -159,7 +159,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
       end
 
       it "sends an internal error response" do
-        allow(mcp_logger).to receive(:error)
+        allow(client_logger).to receive(:error)
 
         begin
           transport.handle
@@ -175,7 +175,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
           expect(response_json).to include("error")
           expect(response_json["error"]["code"]).to eq(-32603)
           expect(response_json["error"]["message"]).to eq("Something went wrong")
-          expect(mcp_logger).to have_received(:error).with("Internal error",
+          expect(client_logger).to have_received(:error).with("Internal error",
             error: "Something went wrong",
             backtrace: kind_of(Array))
         end
@@ -221,7 +221,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
   describe "MCP logging integration" do
     it "connects the logger to the transport when handle starts" do
-      expect(mcp_logger).to receive(:connect_transport).with(transport)
+      expect(client_logger).to receive(:connect_transport).with(transport)
 
       begin
         transport.handle
@@ -232,8 +232,7 @@ RSpec.describe ModelContextProtocol::Server::StdioTransport do
 
     describe "#send_notification" do
       before do
-        # Connect logger so notifications can be sent
-        mcp_logger.connect_transport(transport)
+        client_logger.connect_transport(transport)
       end
 
       it "sends MCP notifications to stdout" do

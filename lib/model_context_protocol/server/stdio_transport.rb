@@ -1,5 +1,3 @@
-require_relative "stdio_transport/request_store"
-
 module ModelContextProtocol
   class Server::StdioTransport
     Response = Data.define(:id, :result) do
@@ -14,16 +12,17 @@ module ModelContextProtocol
       end
     end
 
-    attr_reader :router, :configuration, :request_store
+    attr_reader :router, :client_logger, :configuration, :request_store
 
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
-      @request_store = RequestStore.new
+      @client_logger = configuration.client_logger
+      @request_store = ModelContextProtocol::Server::StdioTransport::RequestStore.new
     end
 
     def handle
-      @configuration.logger.connect_transport(self)
+      client_logger.connect_transport(self)
 
       loop do
         line = receive_message
@@ -45,17 +44,17 @@ module ModelContextProtocol
             send_message(Response[id: message["id"], result: result.serialized])
           end
         rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
-          @configuration.logger.error("Validation error", error: validation_error.message)
+          client_logger.error("Validation error", error: validation_error.message)
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32602, message: validation_error.message}]
           )
         rescue JSON::ParserError => parser_error
-          @configuration.logger.error("Parser error", error: parser_error.message)
+          client_logger.error("Parser error", error: parser_error.message)
           send_message(
             ErrorResponse[id: "", error: {code: -32700, message: parser_error.message}]
           )
         rescue => error
-          @configuration.logger.error("Internal error", error: error.message, backtrace: error.backtrace.first(5))
+          client_logger.error("Internal error", error: error.message, backtrace: error.backtrace.first(5))
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32603, message: error.message}]
           )
@@ -72,7 +71,7 @@ module ModelContextProtocol
       $stdout.puts(JSON.generate(notification))
       $stdout.flush
     rescue IOError => e
-      @configuration.logger.debug("Failed to send notification", error: e.message)
+      @configuration.client_logger.debug("Failed to send notification", error: e.message)
     end
 
     private
