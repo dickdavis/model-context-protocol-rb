@@ -18,7 +18,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
   let(:router) { server.router }
   let(:mock_redis) { MockRedis.new }
-  let(:mcp_logger) { server.configuration.logger }
+  let(:client_logger) { server.configuration.client_logger }
   let(:rack_env) { build_rack_env }
   let(:session_id) { "test-session-123" }
   let(:configuration) { server.configuration }
@@ -378,7 +378,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
             "active_stream" => false.to_json
           })
 
-          allow(mcp_logger).to receive(:error)
+          allow(client_logger).to receive(:error)
         end
 
         it "returns internal server error" do
@@ -391,7 +391,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               error: {code: -32603, message: "Internal error"}
             })
             expect(result[:status]).to eq(500)
-            expect(mcp_logger).to have_received(:error).with("Error handling POST request",
+            expect(client_logger).to have_received(:error).with("Error handling POST request",
               error: String,
               backtrace: kind_of(Array))
           end
@@ -767,7 +767,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "connects the logger to the transport when handle starts" do
-      expect(mcp_logger).to receive(:connect_transport).with(transport)
+      expect(client_logger).to receive(:connect_transport).with(transport)
 
       transport.handle
     end
@@ -777,7 +777,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       let(:session_id) { "test-session-123" }
 
       before do
-        mcp_logger.connect_transport(transport)
+        client_logger.connect_transport(transport)
       end
 
       context "when there are active streams" do
@@ -872,19 +872,19 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       it "uses MCP logger for stream monitor errors" do
-        allow(mcp_logger).to receive(:error)
+        allow(client_logger).to receive(:error)
 
-        mcp_logger.error("Stream monitor error", error: "monitor error")
+        client_logger.error("Stream monitor error", error: "monitor error")
 
-        expect(mcp_logger).to have_received(:error).with("Stream monitor error", error: "monitor error")
+        expect(client_logger).to have_received(:error).with("Stream monitor error", error: "monitor error")
       end
 
       it "uses MCP logger for message poller errors" do
-        allow(mcp_logger).to receive(:error)
+        allow(client_logger).to receive(:error)
 
-        mcp_logger.error("Error in message polling", error: "polling error")
+        client_logger.error("Error in message polling", error: "polling error")
 
-        expect(mcp_logger).to have_received(:error).with("Error in message polling",
+        expect(client_logger).to have_received(:error).with("Error in message polling",
           error: "polling error")
       end
     end
@@ -1033,8 +1033,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     before do
-      allow(mcp_logger).to receive(:debug)
-      allow(mcp_logger).to receive(:error)
+      allow(client_logger).to receive(:debug)
+      allow(client_logger).to receive(:error)
     end
 
     describe "#handle_cancellation" do
