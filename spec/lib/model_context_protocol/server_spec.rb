@@ -850,4 +850,34 @@ RSpec.describe ModelContextProtocol::Server do
       expect(block_executed).to be true
     end
   end
+
+  describe ".configure_server_logging" do
+    it "delegates to GlobalConfig::ServerLogging.configure" do
+      expect(ModelContextProtocol::Server::GlobalConfig::ServerLogging).to receive(:configure)
+
+      described_class.configure_server_logging do |config|
+        config.level = Logger::DEBUG
+        config.progname = "TestServer"
+      end
+    end
+
+    it "passes the block to GlobalConfig::ServerLogging.configure" do
+      block_executed = false
+
+      allow(ModelContextProtocol::Server::GlobalConfig::ServerLogging).to receive(:configure) do |&block|
+        config = double("config")
+        allow(config).to receive(:level=)
+        allow(config).to receive(:progname=)
+        block&.call(config)
+        block_executed = true
+      end
+
+      described_class.configure_server_logging do |config|
+        config.level = Logger::DEBUG
+        config.progname = "TestServer"
+      end
+
+      expect(block_executed).to be true
+    end
+  end
 end

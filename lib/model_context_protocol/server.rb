@@ -282,7 +282,11 @@ module ModelContextProtocol
 
     class << self
       def configure_redis(&block)
-        RedisConfig.configure(&block)
+        ModelContextProtocol::Server::RedisConfig.configure(&block)
+      end
+
+      def configure_server_logging(&block)
+        ModelContextProtocol::Server::GlobalConfig::ServerLogging.configure(&block)
       end
     end
   end
