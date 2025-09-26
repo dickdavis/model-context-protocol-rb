@@ -5,19 +5,19 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePoller do
   let(:redis) { MockRedis.new }
   let(:stream_registry) { double("StreamRegistry") }
-  let(:logger) { double("Logger") }
+  let(:client_logger) { double("Logger") }
   let(:message_delivery_block) { double("MessageDeliveryBlock") }
 
   let(:poller) do
-    described_class.new(redis, stream_registry, logger) do |stream, message|
+    described_class.new(redis, stream_registry, client_logger) do |stream, message|
       message_delivery_block.call(stream, message)
     end
   end
 
   before do
     redis.flushdb
-    allow(logger).to receive(:debug)
-    allow(logger).to receive(:error)
+    allow(client_logger).to receive(:debug)
+    allow(client_logger).to receive(:error)
     allow(stream_registry).to receive(:get_all_local_streams).and_return({})
   end
 
@@ -26,7 +26,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
       aggregate_failures do
         expect(poller.instance_variable_get(:@redis)).to eq(redis)
         expect(poller.instance_variable_get(:@stream_registry)).to eq(stream_registry)
-        expect(poller.instance_variable_get(:@logger)).to eq(logger)
+        expect(poller.instance_variable_get(:@client_logger)).to eq(client_logger)
         expect(poller.instance_variable_get(:@running)).to eq(false)
         expect(poller.instance_variable_get(:@poll_thread)).to be_nil
       end
@@ -59,7 +59,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
     end
 
     it "logs debug message when started" do
-      expect(logger).to receive(:debug).with("Message poller started")
+      expect(client_logger).to receive(:debug).with("Message poller started")
 
       poller.start
     end
@@ -101,7 +101,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
           allow(failing_thread).to receive(:join) do
             poller.send(:poll_and_deliver_messages) if poller.respond_to?(:poll_and_deliver_messages, true)
           rescue => e
-            logger.error("Message poller thread error", error: e.message, backtrace: e.backtrace&.first(5))
+            client_logger.error("Message poller thread error", error: e.message, backtrace: e.backtrace&.first(5))
           end
           failing_thread
         end
@@ -110,7 +110,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
       it "logs errors and continues running" do
         allow(poller).to receive(:poll_and_deliver_messages).and_raise("Test error")
 
-        expect(logger).to receive(:error).with("Message poller thread error",
+        expect(client_logger).to receive(:error).with("Message poller thread error",
           hash_including(error: "Test error"))
 
         poller.start
@@ -143,7 +143,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
     end
 
     it "logs debug message when stopped" do
-      expect(logger).to receive(:debug).with("Message poller stopped")
+      expect(client_logger).to receive(:debug).with("Message poller stopped")
 
       poller.stop
     end
@@ -341,7 +341,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
 
     context "when message delivery block is nil" do
       let(:poller_without_block) do
-        described_class.new(redis, stream_registry, logger)
+        described_class.new(redis, stream_registry, client_logger)
       end
 
       it "handles gracefully" do
@@ -357,7 +357,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
       it "unregisters the stream" do
         aggregate_failures do
           expect(stream_registry).to receive(:unregister_stream).with(session_id)
-          expect(logger).to receive(:debug).with("Unregistered disconnected stream", session_id: session_id)
+          expect(client_logger).to receive(:debug).with("Unregistered disconnected stream", session_id: session_id)
         end
 
         poller.send(:deliver_message_to_stream, stream, message, session_id)
@@ -387,7 +387,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
 
       it "logs the error without unregistering stream" do
         aggregate_failures do
-          expect(logger).to receive(:error).with("Error delivering message to stream",
+          expect(client_logger).to receive(:error).with("Error delivering message to stream",
             session_id: session_id, error: "Other error")
           expect(stream_registry).not_to receive(:unregister_stream)
         end
@@ -451,12 +451,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
 
       allow(poller).to receive(:poll_and_deliver_messages).and_raise("Polling error")
 
-      expect(logger).to receive(:error).with("Error in message polling", error: "Polling error")
+      expect(client_logger).to receive(:error).with("Error in message polling", error: "Polling error")
 
       begin
         poller.send(:poll_and_deliver_messages)
       rescue => e
-        logger.error("Error in message polling", error: e.message)
+        client_logger.error("Error in message polling", error: e.message)
       end
     end
   end
