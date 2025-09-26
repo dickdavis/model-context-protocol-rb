@@ -469,7 +469,7 @@ RSpec.describe ModelContextProtocol::Server do
         tools do
           15.times do |i|
             tool_class = Class.new(ModelContextProtocol::Server::Tool) do
-              define_method(:call) do |args, logger, context|
+              define_method(:call) do |args, client_logger, context|
                 ModelContextProtocol::Server::CallToolResponse[
                   content: [
                     {
@@ -499,7 +499,7 @@ RSpec.describe ModelContextProtocol::Server do
         prompts do
           30.times do |i|
             prompt_class = Class.new(ModelContextProtocol::Server::Prompt) do
-              define_method(:call) do |args, logger, context|
+              define_method(:call) do |args, client_logger, context|
                 ModelContextProtocol::Server::GetPromptResponse[
                   description: "Test prompt #{i}",
                   messages: [
