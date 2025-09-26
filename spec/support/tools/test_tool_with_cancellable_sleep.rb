@@ -13,7 +13,7 @@ class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Starting 60 second sleep operation")
+    client_logger.info("Starting 60 second sleep operation")
 
     result = cancellable do
       sleep 60

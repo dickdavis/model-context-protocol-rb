@@ -16,7 +16,7 @@ class TestToolWithMixedContentResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Getting comprehensive temperature history data")
+    client_logger.info("Getting comprehensive temperature history data")
 
     zip = arguments[:zip]
     temperature_history = retrieve_temperature_history(zip:)

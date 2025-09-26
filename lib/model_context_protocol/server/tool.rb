@@ -9,13 +9,13 @@ module ModelContextProtocol
     include ModelContextProtocol::Server::ContentHelpers
     include ModelContextProtocol::Server::Progressable
 
-    attr_reader :arguments, :context, :logger
+    attr_reader :arguments, :context, :client_logger
 
-    def initialize(arguments, logger, context = {})
+    def initialize(arguments, client_logger, context = {})
       validate!(arguments)
       @arguments = arguments
       @context = context
-      @logger = logger
+      @client_logger = client_logger
     end
 
     def call
@@ -103,8 +103,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@output_schema, @output_schema)
       end
 
-      def call(arguments, logger, context = {})
-        new(arguments, logger, context).call
+      def call(arguments, client_logger, context = {})
+        new(arguments, client_logger, context).call
       rescue JSON::Schema::ValidationError => validation_error
         raise ModelContextProtocol::Server::ParameterValidationError, validation_error.message
       rescue OutputSchemaValidationError, ModelContextProtocol::Server::ResponseArgumentsError => tool_error
