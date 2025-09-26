@@ -45,11 +45,11 @@ class TestToolWithStructuredContentResponse < ModelContextProtocol::Server::Tool
   def call
     # Use values provided by the server as context
     user_id = context[:user_id]
-    logger.info("Initiating request for user #{user_id}...")
+    client_logger.info("Initiating request for user #{user_id}...")
 
     # Use values provided by clients as tool arguments
     location = arguments[:location]
-    logger.info("Getting weather data for #{location}...")
+    client_logger.info("Getting weather data for #{location}...")
 
     # Returns a hash that validates against the output schema
     weather_data = get_weather_data(location)

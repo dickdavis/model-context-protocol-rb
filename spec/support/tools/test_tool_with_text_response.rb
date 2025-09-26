@@ -17,7 +17,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Silly user doesn't know how to double a number")
+    client_logger.info("Silly user doesn't know how to double a number")
     number = arguments[:number].to_i
     calculation = number * 2
 

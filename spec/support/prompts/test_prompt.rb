@@ -44,8 +44,8 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 
   # The call method is invoked by the MCP Server to generate a response to resource/read requests
   def call
-    # You can use the logger
-    logger.info("Brainstorming excuses...")
+    # You can use the client_logger
+    client_logger.info("Brainstorming excuses...")
 
     # Build an array of user and assistant messages
     messages = message_history do

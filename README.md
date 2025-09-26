@@ -379,9 +379,9 @@ end
 
 The `ModelContextProtocol::Server::Prompt` base class allows subclasses to define a prompt that the MCP client can use.
 
-Define the prompt properties and then implement the `call` method to build your prompt. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+Define the prompt properties and then implement the `call` method to build your prompt. Any arguments passed to the prompt from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
-You can also log from within your prompt by calling a valid logger level method on the `logger` and passing a string message.
+You can also send MCP log messages to clients from within your prompt by calling a valid logger level method on the `client_logger` and passing a string message.
 
 ### Prompt Definition
 
@@ -447,7 +447,7 @@ The `arguments` passed from an MCP client are available, as well as the `context
 |----------|---------|-------------|
 | `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
 | `context` | Within `call` | Hash containing server configuration context values |
-| `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
+| `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
 
 ### Examples
 
@@ -500,8 +500,8 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
 
   # The call method is invoked by the MCP Server to generate a response to resource/read requests
   def call
-    # You can use the logger
-    logger.info("Brainstorming excuses...")
+    # You can use the client_logger
+    client_logger.info("Brainstorming excuses...")
 
     # Build an array of user and assistant messages
     messages = message_history do
@@ -535,6 +535,8 @@ end
 The `ModelContextProtocol::Server::Resource` base class allows subclasses to define a resource that the MCP client can use.
 
 Define the resource properties and optionally annotations, then implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
+
+You can also send MCP log messages to clients from within your resource by calling a valid logger level method on the `client_logger` and passing a string message.
 
 ### Resource Definition
 
@@ -573,12 +575,14 @@ Define your resource properties and annotations, implement the `call` method to 
 
 ### Available Instance Variables
 
-Resources are stateless and only have access to their configured properties.
+Resources have access to their configured properties and server context.
 
 | Variable | Context | Description |
 |----------|---------|-------------|
 | `mime_type` | Within `call` | The configured MIME type for this resource |
 | `uri` | Within `call` | The configured URI identifier for this resource |
+| `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
+| `context` | Within `call` | Hash containing server configuration context values |
 
 ### Examples
 
@@ -719,7 +723,9 @@ end
 
 The `ModelContextProtocol::Server::Tool` base class allows subclasses to define a tool that the MCP client can use.
 
-Define the tool properties and schemas, then implement the `call` method to build your tool response. Arguments from the MCP client and server context are available, along with logging capabilities.
+Define the tool properties and schemas, then implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
+
+You can also send MCP log messages to clients from within your tool by calling a valid logger level method on the `client_logger` and passing a string message.
 
 ### Tool Definition
 
@@ -776,7 +782,7 @@ Arguments from MCP clients and server context are available, along with logging 
 |----------|---------|-------------|
 | `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
 | `context` | Within `call` | Hash containing server configuration context values |
-| `logger` | Within `call` | Logger instance for logging (e.g., `logger.info("message")`) |
+| `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
 
 ### Examples
 
@@ -830,11 +836,11 @@ class TestToolWithStructuredContentResponse < ModelContextProtocol::Server::Tool
   def call
     # Use values provided by the server as context
     user_id = context[:user_id]
-    logger.info("Initiating request for user #{user_id}...")
+    client_logger.info("Initiating request for user #{user_id}...")
 
     # Use values provided by clients as tool arguments
     location = arguments[:location]
-    logger.info("Getting weather data for #{location}...")
+    client_logger.info("Getting weather data for #{location}...")
 
     # Returns a hash that validates against the output schema
     weather_data = get_weather_data(location)
@@ -878,7 +884,7 @@ class TestToolWithTextResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Silly user doesn't know how to double a number")
+    client_logger.info("Silly user doesn't know how to double a number")
     number = arguments[:number].to_i
     calculation = number * 2
 
@@ -970,7 +976,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
       return respond_with :error, text: "Resource `#{name}` not found"
     end
 
-    resource_data = resource_klass.call
+    resource_data = resource_klass.call(client_logger, context)
 
     respond_with content: embedded_resource_content(resource: resource_data)
   end
@@ -998,7 +1004,7 @@ class TestToolWithMixedContentResponse < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Getting comprehensive temperature history data")
+    client_logger.info("Getting comprehensive temperature history data")
 
     zip = arguments[:zip]
     temperature_history = retrieve_temperature_history(zip:)
@@ -1080,7 +1086,7 @@ class TestToolWithCancellableSleep < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Starting 3 second sleep operation")
+    client_logger.info("Starting 3 second sleep operation")
 
     result = cancellable do
       sleep 3
@@ -1121,7 +1127,7 @@ class TestToolWithProgressableAndCancellable < ModelContextProtocol::Server::Too
   def call
     max_duration = arguments[:max_duration] || 10
     work_steps = arguments[:work_steps] || 10
-    logger.info("Starting progressable call with max_duration=#{max_duration}, work_steps=#{work_steps}")
+    client_logger.info("Starting progressable call with max_duration=#{max_duration}, work_steps=#{work_steps}")
 
     result = progressable(max_duration:, message: "Processing #{work_steps} items") do
       cancellable do

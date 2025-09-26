@@ -25,17 +25,17 @@ class TestToolWithProgressableAndCancellable < ModelContextProtocol::Server::Too
     max_duration = arguments[:max_duration] || 10
     work_steps = arguments[:work_steps] || 10
 
-    logger.info("Starting progressable call with max_duration=#{max_duration}, work_steps=#{work_steps}")
+    client_logger.info("Starting progressable call with max_duration=#{max_duration}, work_steps=#{work_steps}")
 
     context = Thread.current[:mcp_context]
-    logger.info("MCP Context: #{context.inspect}")
+    client_logger.info("MCP Context: #{context.inspect}")
 
     result = progressable(max_duration:, message: "Processing #{work_steps} items") do
       cancellable do
         processed_items = []
 
         work_steps.times do |i|
-          logger.info("Processing item #{i + 1} of #{work_steps}")
+          client_logger.info("Processing item #{i + 1} of #{work_steps}")
           sleep(max_duration / work_steps.to_f)
           processed_items << "item_#{i + 1}"
         end

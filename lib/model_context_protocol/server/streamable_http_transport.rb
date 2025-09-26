@@ -18,6 +18,7 @@ module ModelContextProtocol
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
+      @client_logger = configuration.client_logger
 
       transport_options = @configuration.transport_options
       @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
@@ -39,7 +40,7 @@ module ModelContextProtocol
       @event_counter = EventCounter.new(@redis, @server_instance)
       @request_store = RequestStore.new(@redis, @server_instance)
       @stream_monitor_thread = nil
-      @message_poller = MessagePoller.new(@redis, @stream_registry, @configuration.logger) do |stream, message|
+      @message_poller = MessagePoller.new(@redis, @stream_registry, @client_logger) do |stream, message|
         send_to_stream(stream, message)
       end
 
@@ -48,7 +49,7 @@ module ModelContextProtocol
     end
 
     def shutdown
-      @configuration.logger.info("Shutting down StreamableHttpTransport")
+      @client_logger.info("Shutting down StreamableHttpTransport")
 
       # Stop the message poller
       @message_poller&.stop
@@ -64,16 +65,16 @@ module ModelContextProtocol
         @stream_registry.unregister_stream(session_id)
         @session_store.mark_stream_inactive(session_id)
       rescue => e
-        @configuration.logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
+        @client_logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
       end
 
       @redis_pool.checkin(@redis) if @redis_pool && @redis
 
-      @configuration.logger.info("StreamableHttpTransport shutdown complete")
+      @client_logger.info("StreamableHttpTransport shutdown complete")
     end
 
     def handle
-      @configuration.logger.connect_transport(self)
+      @client_logger.connect_transport(self)
 
       env = @configuration.transport_options[:env]
 
@@ -240,11 +241,11 @@ module ModelContextProtocol
       error_response = ErrorResponse[id: "", error: {code: -32700, message: "Parse error"}]
       {json: error_response.serialized, status: 400}
     rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
-      @configuration.logger.error("Validation error", error: validation_error.message)
+      @client_logger.error("Validation error", error: validation_error.message)
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32602, message: validation_error.message}]
       {json: error_response.serialized, status: 400}
     rescue => e
-      @configuration.logger.error("Error handling POST request", error: e.message, backtrace: e.backtrace.first(5))
+      @client_logger.error("Error handling POST request", error: e.message, backtrace: e.backtrace.first(5))
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32603, message: "Internal error"}]
       {json: error_response.serialized, status: 500}
     end
@@ -437,11 +438,11 @@ module ModelContextProtocol
           begin
             monitor_streams
           rescue => e
-            @configuration.logger.error("Stream monitor error", error: e.message)
+            @client_logger.error("Stream monitor error", error: e.message)
           end
         end
       rescue => e
-        @configuration.logger.error("Stream monitor thread error", error: e.message)
+        @client_logger.error("Stream monitor thread error", error: e.message)
         sleep 5
         retry
       end

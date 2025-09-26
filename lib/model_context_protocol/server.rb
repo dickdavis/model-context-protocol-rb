@@ -1,5 +1,3 @@
-require "logger"
-
 module ModelContextProtocol
   class Server
     # Raised when invalid response arguments are provided.
@@ -98,11 +96,11 @@ module ModelContextProtocol
       router.map("logging/setLevel") do |message|
         level = message["params"]["level"]
 
-        unless Configuration::VALID_LOG_LEVELS.include?(level)
-          raise ParameterValidationError, "Invalid log level: #{level}. Valid levels are: #{Configuration::VALID_LOG_LEVELS.join(", ")}"
+        unless ClientLogger::VALID_LOG_LEVELS.include?(level)
+          raise ParameterValidationError, "Invalid log level: #{level}. Valid levels are: #{ClientLogger::VALID_LOG_LEVELS.join(", ")}"
         end
 
-        configuration.logger.set_mcp_level(level)
+        configuration.client_logger.set_mcp_level(level)
         LoggingSetLevelResponse[]
       end
 
@@ -160,7 +158,7 @@ module ModelContextProtocol
           raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
 
-        resource.call
+        resource.call(configuration.client_logger, configuration.context)
       end
 
       router.map("resources/templates/list") do |message|
@@ -217,7 +215,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_prompt(message["params"]["name"])
-          .call(symbolized_arguments, configuration.logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.context)
       end
 
       router.map("tools/list") do |message|
@@ -250,7 +248,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_tool(message["params"]["name"])
-          .call(symbolized_arguments, configuration.logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.context)
       end
     end
 

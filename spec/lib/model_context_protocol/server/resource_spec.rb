@@ -1,9 +1,15 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Resource do
+  let(:client_logger) { double("client_logger") }
+
+  before do
+    allow(client_logger).to receive(:info)
+  end
+
   describe ".call" do
     it "returns the response from the instance's call method" do
-      response = TestResource.call
+      response = TestResource.call(client_logger)
       aggregate_failures do
         expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
         expect(response.serialized).to eq(
@@ -22,16 +28,34 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
   describe "#initialize" do
     it "sets mime_type and uri from class definition" do
-      resource = TestResource.new
-      expect(resource.mime_type).to eq("text/plain")
-      expect(resource.uri).to eq("file:///top-secret-plans.txt")
+      resource = TestResource.new(client_logger)
+
+      aggregate_failures do
+        expect(resource.mime_type).to eq("text/plain")
+        expect(resource.uri).to eq("file:///top-secret-plans.txt")
+      end
+    end
+
+    it "stores the client_logger and context" do
+      context = {user_id: "test-user"}
+      resource = TestResource.new(client_logger, context)
+
+      aggregate_failures do
+        expect(resource.client_logger).to eq(client_logger)
+        expect(resource.context).to eq(context)
+      end
+    end
+
+    it "defaults to empty context when not provided" do
+      resource = TestResource.new(client_logger)
+      expect(resource.context).to eq({})
     end
   end
 
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        response = TestResource.call
+        response = TestResource.call(client_logger)
         expect(response.serialized).to eq(
           contents: [
             {
@@ -47,7 +71,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     describe "binary response" do
       it "formats binary responses correctly" do
-        response = TestBinaryResource.call
+        response = TestBinaryResource.call(client_logger)
 
         expect(response.serialized).to eq(
           contents: [
@@ -98,7 +122,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "includes annotations in serialized response" do
-        response = TestAnnotatedResource.call
+        response = TestAnnotatedResource.call(client_logger)
 
         expect(response.serialized).to eq(
           contents: [
@@ -123,7 +147,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "does not include annotations in serialized response" do
-        response = TestResource.call
+        response = TestResource.call(client_logger)
 
         content = response.serialized[:contents].first
         expect(content).not_to have_key(:annotations)
@@ -235,6 +259,30 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
   end
 
+  describe "client logger integration" do
+    it "calls client_logger.info during execution" do
+      expect(client_logger).to receive(:info).with("Accessing top secret plans")
+
+      TestResource.call(client_logger)
+    end
+
+    it "uses context values in logging" do
+      context = {user_id: "test-user-123"}
+      aggregate_failures do
+        expect(client_logger).to receive(:info).with("Accessing top secret plans")
+        expect(client_logger).to receive(:info).with("User test-user-123 is accessing secret plans")
+      end
+
+      TestResource.call(client_logger, context)
+    end
+
+    it "handles empty context gracefully" do
+      expect(client_logger).to receive(:info).with("Accessing top secret plans")
+
+      TestResource.call(client_logger, {})
+    end
+  end
+
   describe "optional title field" do
     let(:resource_without_title) do
       Class.new(ModelContextProtocol::Server::Resource) do
@@ -257,7 +305,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
 
     it "does not include title in serialized response when not provided" do
-      response = resource_without_title.call
+      response = resource_without_title.call(client_logger)
       content = response.serialized[:contents].first
       expect(content).not_to have_key(:title)
     end

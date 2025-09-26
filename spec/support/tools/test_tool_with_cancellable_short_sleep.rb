@@ -13,7 +13,7 @@ class TestToolWithCancellableShortSleep < ModelContextProtocol::Server::Tool
   end
 
   def call
-    logger.info("Starting 2 second sleep operation")
+    client_logger.info("Starting 2 second sleep operation")
 
     result = cancellable do
       sleep 2
