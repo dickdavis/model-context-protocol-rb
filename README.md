@@ -14,6 +14,7 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
   - [Pagination Configuration Options](#pagination-configuration-options)
   - [Transport Configuration Options](#transport-configuration-options)
   - [Redis Configuration](#redis-configuration)
+  - [Server Logging Configuration](#server-logging-configuration)
   - [Registry Configuration Options](#registry-configuration-options)
 - [Prompts](#prompts)
 - [Resources](#resources)
@@ -342,6 +343,30 @@ end
 | `reaper_interval` | Integer | No | `60` | Reaper check interval in seconds |
 | `idle_timeout` | Integer | No | `300` | Idle connection timeout in seconds |
 
+### Server Logging Configuration
+
+Server logging can be configured globally to customize how your MCP server writes debug and operational logs. This logging is separate from client logging (which sends messages to MCP clients via the protocol) and is used for server-side debugging, monitoring, and troubleshooting:
+
+```ruby
+ModelContextProtocol::Server.configure_server_logging do |config|
+  config.logdev = $stderr           # or a file path like '/var/log/mcp-server.log'
+  config.level = Logger::INFO       # Logger::DEBUG, Logger::INFO, Logger::WARN, Logger::ERROR, Logger::FATAL
+  config.progname = "MyMCPServer"   # Program name for log entries
+  config.formatter = proc do |severity, datetime, progname, msg|
+    "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} #{severity} [#{progname}] #{msg}\n"
+  end
+end
+```
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `logdev` | IO/String | No | `$stderr` | Log destination (IO object or file path) |
+| `level` | Integer | No | `Logger::INFO` | Minimum log level to output |
+| `progname` | String | No | `"MCP-Server"` | Program name for log entries |
+| `formatter` | Proc | No | Default timestamp format | Custom log formatter |
+
+**Note:** When using `:stdio` transport, server logging must not use `$stdout` as it conflicts with the MCP protocol communication. Use `$stderr` or a file instead.
+
 ### Registry Configuration Options
 
 The registry is configured using `ModelContextProtocol::Server::Registry.new` and supports the following block types:
@@ -381,7 +406,7 @@ The `ModelContextProtocol::Server::Prompt` base class allows subclasses to defin
 
 Define the prompt properties and then implement the `call` method to build your prompt. Any arguments passed to the prompt from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
-You can also send MCP log messages to clients from within your prompt by calling a valid logger level method on the `client_logger` and passing a string message.
+You can also send MCP log messages to clients from within your prompt by calling a valid logger level method on the `client_logger` and passing a string message. For server-side debugging and monitoring, use the `server_logger` to write logs that are not sent to clients.
 
 ### Prompt Definition
 
@@ -448,6 +473,7 @@ The `arguments` passed from an MCP client are available, as well as the `context
 | `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
 | `context` | Within `call` | Hash containing server configuration context values |
 | `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
+| `server_logger` | Within `call` | Server logger instance for debugging and monitoring (e.g., `server_logger.debug("message")`) |
 
 ### Examples
 
@@ -503,6 +529,10 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
     # You can use the client_logger
     client_logger.info("Brainstorming excuses...")
 
+    # Server logging for debugging and monitoring (not sent to client)
+    server_logger.debug("Prompt called with arguments: #{arguments}")
+    server_logger.info("Generating excuse brainstorming prompt")
+
     # Build an array of user and assistant messages
     messages = message_history do
       # Create a message with the user role
@@ -536,7 +566,7 @@ The `ModelContextProtocol::Server::Resource` base class allows subclasses to def
 
 Define the resource properties and optionally annotations, then implement the `call` method to build your resource. Use the `respond_with` instance method to ensure your resource responds with appropriately formatted response data.
 
-You can also send MCP log messages to clients from within your resource by calling a valid logger level method on the `client_logger` and passing a string message.
+You can also send MCP log messages to clients from within your resource by calling a valid logger level method on the `client_logger` and passing a string message. For server-side debugging and monitoring, use the `server_logger` to write logs that are not sent to clients.
 
 ### Resource Definition
 
@@ -582,6 +612,7 @@ Resources have access to their configured properties and server context.
 | `mime_type` | Within `call` | The configured MIME type for this resource |
 | `uri` | Within `call` | The configured URI identifier for this resource |
 | `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
+| `server_logger` | Within `call` | Server logger instance for debugging and monitoring (e.g., `server_logger.debug("message")`) |
 | `context` | Within `call` | Hash containing server configuration context values |
 
 ### Examples
@@ -725,7 +756,7 @@ The `ModelContextProtocol::Server::Tool` base class allows subclasses to define 
 
 Define the tool properties and schemas, then implement the `call` method to build your tool. Any arguments passed to the tool from the MCP client will be available in the `arguments` hash with symbol keys (e.g., `arguments[:argument_name]`), and any context values provided in the server configuration will be available in the `context` hash. Use the `respond_with` instance method to ensure your prompt responds with appropriately formatted response data.
 
-You can also send MCP log messages to clients from within your tool by calling a valid logger level method on the `client_logger` and passing a string message.
+You can also send MCP log messages to clients from within your tool by calling a valid logger level method on the `client_logger` and passing a string message. For server-side debugging and monitoring, use the `server_logger` to write logs that are not sent to clients.
 
 ### Tool Definition
 
@@ -783,6 +814,7 @@ Arguments from MCP clients and server context are available, along with logging 
 | `arguments` | Within `call` | Hash containing client-provided arguments (symbol keys) |
 | `context` | Within `call` | Hash containing server configuration context values |
 | `client_logger` | Within `call` | Client logger instance for sending MCP log messages (e.g., `client_logger.info("message")`) |
+| `server_logger` | Within `call` | Server logger instance for debugging and monitoring (e.g., `server_logger.debug("message")`) |
 
 ### Examples
 
