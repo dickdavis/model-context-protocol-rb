@@ -158,7 +158,7 @@ module ModelContextProtocol
           raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
 
-        resource.call(configuration.client_logger, configuration.context)
+        resource.call(configuration.client_logger, configuration.server_logger, configuration.context)
       end
 
       router.map("resources/templates/list") do |message|
@@ -215,7 +215,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_prompt(message["params"]["name"])
-          .call(symbolized_arguments, configuration.client_logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, configuration.context)
       end
 
       router.map("tools/list") do |message|
@@ -248,7 +248,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_tool(message["params"]["name"])
-          .call(symbolized_arguments, configuration.client_logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, configuration.context)
       end
     end
 

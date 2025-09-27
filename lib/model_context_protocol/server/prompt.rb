@@ -4,13 +4,14 @@ module ModelContextProtocol
     include ModelContextProtocol::Server::ContentHelpers
     include ModelContextProtocol::Server::Progressable
 
-    attr_reader :arguments, :context, :client_logger
+    attr_reader :arguments, :context, :client_logger, :server_logger
 
-    def initialize(arguments, client_logger, context = {})
+    def initialize(arguments, client_logger, server_logger, context = {})
       validate!(arguments)
       @arguments = arguments
       @context = context
       @client_logger = client_logger
+      @server_logger = server_logger
     end
 
     def call
@@ -90,8 +91,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@defined_arguments, @defined_arguments&.dup)
       end
 
-      def call(arguments, client_logger, context = {})
-        new(arguments, client_logger, context).call
+      def call(arguments, client_logger, server_logger, context = {})
+        new(arguments, client_logger, server_logger, context).call
       rescue ArgumentError => error
         raise ModelContextProtocol::Server::ParameterValidationError, error.message
       end
@@ -129,6 +130,10 @@ module ModelContextProtocol
 
       def client_logger
         @prompt_instance.client_logger
+      end
+
+      def server_logger
+        @prompt_instance.server_logger
       end
 
       def user_message(&block)

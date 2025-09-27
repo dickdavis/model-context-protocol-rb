@@ -2,6 +2,7 @@ require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Prompt do
   let(:client_logger) { double("client_logger") }
+  let(:server_logger) { ModelContextProtocol::Server::ServerLogger.new }
 
   describe ".call" do
     context "when argument validation fails" do
@@ -10,7 +11,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       it "raises a ParameterValidationError" do
         expect {
           allow(client_logger).to receive(:info)
-          TestPrompt.call(invalid_arguments, client_logger)
+          TestPrompt.call(invalid_arguments, client_logger, server_logger)
         }.to raise_error(ModelContextProtocol::Server::ParameterValidationError)
       end
     end
@@ -21,13 +22,13 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       it "instantiates the prompt with the provided arguments" do
         allow(client_logger).to receive(:info)
         allow(client_logger).to receive(:info)
-        expect(TestPrompt).to receive(:new).with(valid_arguments, client_logger, {}).and_call_original
-        TestPrompt.call(valid_arguments, client_logger)
+        expect(TestPrompt).to receive(:new).with(valid_arguments, client_logger, server_logger, {}).and_call_original
+        TestPrompt.call(valid_arguments, client_logger, server_logger)
       end
 
       it "returns the response from the instance's call method" do
         allow(client_logger).to receive(:info)
-        response = TestPrompt.call(valid_arguments, client_logger)
+        response = TestPrompt.call(valid_arguments, client_logger, server_logger)
         aggregate_failures do
           expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
           expect(response.serialized[:description]).to eq("A prompt for brainstorming excuses to get out of something")
@@ -45,19 +46,19 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     it "passes context to the instance" do
       allow(client_logger).to receive(:info)
-      expect(TestPrompt).to receive(:new).with(valid_arguments, client_logger, context).and_call_original
-      TestPrompt.call(valid_arguments, client_logger, context)
+      expect(TestPrompt).to receive(:new).with(valid_arguments, client_logger, server_logger, context).and_call_original
+      TestPrompt.call(valid_arguments, client_logger, server_logger, context)
     end
 
     it "works with empty context" do
       allow(client_logger).to receive(:info)
-      response = TestPrompt.call(valid_arguments, client_logger, {})
+      response = TestPrompt.call(valid_arguments, client_logger, server_logger, {})
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
 
     it "works when context is not provided" do
       allow(client_logger).to receive(:info)
-      response = TestPrompt.call(valid_arguments, client_logger)
+      response = TestPrompt.call(valid_arguments, client_logger, server_logger)
       expect(response.messages.first[:content][:text]).to eq("My wife wants me to: clean the garage... Can you believe it?")
     end
   end
@@ -72,34 +73,34 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
     context "when invalid arguments are provided" do
       it "raises an ArgumentError" do
         allow(client_logger).to receive(:info)
-        expect { TestPrompt.new({foo: "bar"}, client_logger) }.to raise_error(ArgumentError)
+        expect { TestPrompt.new({foo: "bar"}, client_logger, server_logger) }.to raise_error(ArgumentError)
       end
     end
 
     context "when valid arguments are provided" do
       it "stores the arguments" do
         allow(client_logger).to receive(:info)
-        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger)
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger, server_logger)
         expect(prompt.arguments).to eq({undesirable_activity: "clean the garage"})
       end
 
       it "stores context when provided" do
         context = {"user_id" => "123", "session" => "abc"}
         allow(client_logger).to receive(:info)
-        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger, context)
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger, server_logger, context)
         expect(prompt.context).to eq(context)
       end
 
       it "defaults to empty hash when no context provided" do
         allow(client_logger).to receive(:info)
-        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger)
+        prompt = TestPrompt.new({undesirable_activity: "clean the garage"}, client_logger, server_logger)
         expect(prompt.context).to eq({})
       end
 
       context "when optional arguments are provided" do
         it "stores the arguments" do
           allow(client_logger).to receive(:info)
-          prompt = TestPrompt.new({undesirable_activity: "clean the garage", tone: "whiny"}, client_logger)
+          prompt = TestPrompt.new({undesirable_activity: "clean the garage", tone: "whiny"}, client_logger, server_logger)
           expect(prompt.arguments).to eq({undesirable_activity: "clean the garage", tone: "whiny"})
         end
       end
@@ -249,7 +250,7 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
 
     it "does not include title in serialized response when not provided" do
       double("logger")
-      response = prompt_without_title.call({}, client_logger)
+      response = prompt_without_title.call({}, client_logger, server_logger)
       expect(response.serialized).not_to have_key(:title)
     end
   end
@@ -279,6 +280,40 @@ RSpec.describe ModelContextProtocol::Server::Prompt do
       result = test_array_prompt.complete_for("tone", "xyz")
       expect(result.values).to eq([])
       expect(result.total).to eq(0)
+    end
+  end
+
+  describe "server logger integration" do
+    it "calls server_logger during execution" do
+      allow(client_logger).to receive(:info)
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with(a_string_matching(/Prompt called with arguments:/))
+        expect(server_logger).to receive(:info).with("Generating excuse brainstorming prompt")
+      end
+
+      TestPrompt.call({undesirable_activity: "clean the garage"}, client_logger, server_logger)
+    end
+
+    it "uses context values in server logging" do
+      allow(client_logger).to receive(:info)
+      context = {user_id: "test-user-456"}
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with(a_string_matching(/Prompt called with arguments:/))
+        expect(server_logger).to receive(:info).with("Generating excuse brainstorming prompt")
+        expect(server_logger).to receive(:info).with("User test-user-456 is generating excuses")
+      end
+
+      TestPrompt.call({undesirable_activity: "clean the garage"}, client_logger, server_logger, context)
+    end
+
+    it "handles empty context gracefully in server logging" do
+      allow(client_logger).to receive(:info)
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with(a_string_matching(/Prompt called with arguments:/))
+        expect(server_logger).to receive(:info).with("Generating excuse brainstorming prompt")
+      end
+
+      TestPrompt.call({undesirable_activity: "clean the garage"}, client_logger, server_logger, {})
     end
   end
 end

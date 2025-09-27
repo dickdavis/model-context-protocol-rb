@@ -190,7 +190,9 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
     before do
       router.map("cancellable_test") do |_|
-        tool = TestToolWithCancellableShortSleep.new({}, double("logger", info: nil))
+        client_logger = double("logger", info: nil)
+        server_logger = ModelContextProtocol::Server::ServerLogger.new
+        tool = TestToolWithCancellableShortSleep.new({}, client_logger, server_logger)
         response = tool.call
         response.content.first.text
       end

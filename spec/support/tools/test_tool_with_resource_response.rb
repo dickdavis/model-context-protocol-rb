@@ -29,7 +29,7 @@ class TestToolWithResourceResponse < ModelContextProtocol::Server::Tool
       return respond_with :error, text: "Resource `#{name}` not found"
     end
 
-    resource_data = resource_klass.call(client_logger, context)
+    resource_data = resource_klass.call(client_logger, server_logger, context)
 
     respond_with content: embedded_resource_content(resource: resource_data)
   end
