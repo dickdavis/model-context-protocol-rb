@@ -16,8 +16,8 @@ module ModelContextProtocol
 
       self.formatter = formatter || proc do |severity, datetime, progname, msg|
         timestamp = datetime.strftime("%Y-%m-%d %H:%M:%S.%3N")
-        prog_name = progname ? "[#{progname}] " : ""
-        "#{timestamp} #{severity} #{prog_name}#{msg}\n"
+        prog_name = progname ? "[#{progname}]" : ""
+        "[#{timestamp}] #{prog_name} #{severity}: #{msg}\n"
       end
     end
   end

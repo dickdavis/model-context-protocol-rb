@@ -86,7 +86,7 @@ RSpec.describe ModelContextProtocol::Server::ServerLogger do
 
       output.rewind
       log_output = output.read
-      expect(log_output).to match(/INFO.*MCP-Server.*Test message/)
+      expect(log_output).to match(/\[MCP-Server\] INFO: Test message/)
     end
 
     it "logs messages with custom formatter" do

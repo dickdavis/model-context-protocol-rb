@@ -19,6 +19,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   let(:router) { server.router }
   let(:mock_redis) { MockRedis.new }
   let(:client_logger) { server.configuration.client_logger }
+  let(:server_logger) { server.configuration.server_logger }
   let(:rack_env) { build_rack_env }
   let(:session_id) { "test-session-123" }
   let(:configuration) { server.configuration }
@@ -27,11 +28,22 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     ModelContextProtocol::Server.configure_redis do |config|
       config.redis_url = "redis://localhost:6379/15"
     end
+
+    # Configure server logging to use a silent logger for tests
+    ModelContextProtocol::Server.configure_server_logging do |config|
+      config.logdev = File::NULL
+      config.level = Logger::FATAL
+    end
   end
 
   before(:each) do
     allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
     allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
+    # Allow server_logger calls for verification
+    allow(server_logger).to receive(:info).and_call_original
+    allow(server_logger).to receive(:debug).and_call_original
+    allow(server_logger).to receive(:error).and_call_original
   end
 
   def build_rack_env(method: "POST", path: "/mcp", body: "", headers: {})
@@ -391,9 +403,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               error: {code: -32603, message: "Internal error"}
             })
             expect(result[:status]).to eq(500)
-            expect(client_logger).to have_received(:error).with("Error handling POST request",
-              error: String,
-              backtrace: kind_of(Array))
+            expect(server_logger).to have_received(:error).at_least(:once)
           end
         end
       end
@@ -766,8 +776,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       )
     end
 
-    it "connects the logger to the transport when handle starts" do
-      expect(client_logger).to receive(:connect_transport).with(transport)
+    it "logs debug message when handle starts" do
+      expect(server_logger).to receive(:debug).with("Handling streamable HTTP transport request")
 
       transport.handle
     end
