@@ -19,10 +19,10 @@ module ModelContextProtocol
 
       # Register a new request with its associated session
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @param session_id [String] the session identifier (can be nil for sessionless requests)
       # @return [void]
-      def register_request(request_id, session_id = nil)
+      def register_request(jsonrpc_request_id, session_id = nil)
         request_data = {
           session_id: session_id,
           server_instance: @server_instance,
@@ -30,11 +30,11 @@ module ModelContextProtocol
         }
 
         @redis.multi do |multi|
-          multi.set("#{REQUEST_KEY_PREFIX}#{request_id}",
+          multi.set("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}",
             request_data.to_json, ex: @ttl)
 
           if session_id
-            multi.set("#{SESSION_KEY_PREFIX}#{session_id}:#{request_id}",
+            multi.set("#{SESSION_KEY_PREFIX}#{session_id}:#{jsonrpc_request_id}",
               true, ex: @ttl)
           end
         end
@@ -42,34 +42,34 @@ module ModelContextProtocol
 
       # Mark a request as cancelled
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @param reason [String] optional reason for cancellation
       # @return [Boolean] true if cancellation was recorded
-      def mark_cancelled(request_id, reason = nil)
+      def mark_cancelled(jsonrpc_request_id, reason = nil)
         cancellation_data = {
           cancelled_at: Time.now.to_f,
           reason: reason
         }
 
-        result = @redis.set("#{CANCELLED_KEY_PREFIX}#{request_id}",
+        result = @redis.set("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}",
           cancellation_data.to_json, ex: @ttl)
         result == "OK"
       end
 
       # Check if a request has been cancelled
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Boolean] true if the request is cancelled, false otherwise
-      def cancelled?(request_id)
-        @redis.exists("#{CANCELLED_KEY_PREFIX}#{request_id}") == 1
+      def cancelled?(jsonrpc_request_id)
+        @redis.exists("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}") == 1
       end
 
       # Get cancellation information for a request
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Hash, nil] cancellation data or nil if not cancelled
-      def get_cancellation_info(request_id)
-        data = @redis.get("#{CANCELLED_KEY_PREFIX}#{request_id}")
+      def get_cancellation_info(jsonrpc_request_id)
+        data = @redis.get("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}")
         data ? JSON.parse(data) : nil
       rescue JSON::ParserError
         nil
@@ -77,13 +77,13 @@ module ModelContextProtocol
 
       # Unregister a request (typically called when request completes)
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [void]
-      def unregister_request(request_id)
-        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{request_id}")
+      def unregister_request(jsonrpc_request_id)
+        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}")
 
-        keys_to_delete = ["#{REQUEST_KEY_PREFIX}#{request_id}",
-          "#{CANCELLED_KEY_PREFIX}#{request_id}"]
+        keys_to_delete = ["#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}",
+          "#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}"]
 
         if request_data
           begin
@@ -91,7 +91,7 @@ module ModelContextProtocol
             session_id = data["session_id"]
 
             if session_id
-              keys_to_delete << "#{SESSION_KEY_PREFIX}#{session_id}:#{request_id}"
+              keys_to_delete << "#{SESSION_KEY_PREFIX}#{session_id}:#{jsonrpc_request_id}"
             end
           rescue JSON::ParserError
             nil
@@ -103,10 +103,10 @@ module ModelContextProtocol
 
       # Get information about a specific request
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Hash, nil] request information or nil if not found
-      def get_request(request_id)
-        data = @redis.get("#{REQUEST_KEY_PREFIX}#{request_id}")
+      def get_request(jsonrpc_request_id)
+        data = @redis.get("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}")
         data ? JSON.parse(data) : nil
       rescue JSON::ParserError
         nil
@@ -114,10 +114,10 @@ module ModelContextProtocol
 
       # Check if a request is currently active
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Boolean] true if the request is active, false otherwise
-      def active?(request_id)
-        @redis.exists("#{REQUEST_KEY_PREFIX}#{request_id}") == 1
+      def active?(jsonrpc_request_id)
+        @redis.exists("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}") == 1
       end
 
       # Clean up all requests associated with a session
@@ -131,20 +131,20 @@ module ModelContextProtocol
         return [] if request_keys.empty?
 
         # Extract request IDs from the keys
-        request_ids = request_keys.map do |key|
+        jsonrpc_request_ids = request_keys.map do |key|
           key.sub("#{SESSION_KEY_PREFIX}#{session_id}:", "")
         end
 
         # Delete all related keys
         all_keys = []
-        request_ids.each do |request_id|
-          all_keys << "#{REQUEST_KEY_PREFIX}#{request_id}"
-          all_keys << "#{CANCELLED_KEY_PREFIX}#{request_id}"
+        jsonrpc_request_ids.each do |jsonrpc_request_id|
+          all_keys << "#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}"
+          all_keys << "#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}"
         end
         all_keys.concat(request_keys)
 
         @redis.del(*all_keys) unless all_keys.empty?
-        request_ids
+        jsonrpc_request_ids
       end
 
       # Get all active request IDs for a specific session
@@ -196,21 +196,21 @@ module ModelContextProtocol
 
       # Refresh the TTL for an active request
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Boolean] true if TTL was refreshed, false if request doesn't exist
-      def refresh_request_ttl(request_id)
-        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{request_id}")
+      def refresh_request_ttl(jsonrpc_request_id)
+        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}")
         return false unless request_data
 
         @redis.multi do |multi|
-          multi.expire("#{REQUEST_KEY_PREFIX}#{request_id}", @ttl)
-          multi.expire("#{CANCELLED_KEY_PREFIX}#{request_id}", @ttl)
+          multi.expire("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}", @ttl)
+          multi.expire("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}", @ttl)
 
           begin
             data = JSON.parse(request_data)
             session_id = data["session_id"]
             if session_id
-              multi.expire("#{SESSION_KEY_PREFIX}#{session_id}:#{request_id}", @ttl)
+              multi.expire("#{SESSION_KEY_PREFIX}#{session_id}:#{jsonrpc_request_id}", @ttl)
             end
           rescue JSON::ParserError
             nil

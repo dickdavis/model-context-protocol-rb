@@ -112,7 +112,7 @@ module ModelContextProtocol
       @server_logger.info("  Notification: #{notification.to_json}")
 
       if @stream_registry.has_any_local_streams?
-        active_stream_count = @stream_registry.get_all_local_streams.size
+        @stream_registry.get_all_local_streams.size
         @server_logger.debug("Delivering notification to active streams")
         deliver_to_active_streams(notification)
       else
@@ -663,14 +663,14 @@ module ModelContextProtocol
       params = message["params"]
       return unless params
 
-      request_id = params["requestId"]
+      jsonrpc_request_id = params["requestId"]
       reason = params["reason"]
 
-      return unless request_id
+      return unless jsonrpc_request_id
 
-      @server_logger.info("Processing cancellation for request #{request_id} (reason: #{reason || "unknown"})")
+      @server_logger.info("Processing cancellation for request #{jsonrpc_request_id} (reason: #{reason || "unknown"})")
 
-      @request_store.mark_cancelled(request_id, reason)
+      @request_store.mark_cancelled(jsonrpc_request_id, reason)
     rescue => e
       @server_logger.error("Error processing cancellation: #{e.message}")
       nil

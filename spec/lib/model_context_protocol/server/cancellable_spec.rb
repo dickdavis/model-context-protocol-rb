@@ -15,7 +15,7 @@ RSpec.describe ModelContextProtocol::Server::Cancellable do
 
     before do
       Thread.current[:mcp_context] = {
-        request_id: request_id,
+        jsonrpc_request_id: request_id,
         request_store: request_store
       }
     end

@@ -24,8 +24,8 @@ module ModelContextProtocol
       update_interval = [1.0, max_duration * 0.05].max
 
       timer_task = Concurrent::TimerTask.new(execution_interval: update_interval) do
-        if context[:request_store] && context[:request_id]
-          break if context[:request_store].cancelled?(context[:request_id])
+        if context[:request_store] && context[:jsonrpc_request_id]
+          break if context[:request_store].cancelled?(context[:jsonrpc_request_id])
         end
 
         elapsed_seconds = Time.now - start_time

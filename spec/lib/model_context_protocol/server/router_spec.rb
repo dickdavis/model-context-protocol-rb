@@ -287,7 +287,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         router.map("context_test") do |_|
           context = Thread.current[:mcp_context]
           {
-            request_id: context[:request_id],
+            jsonrpc_request_id: context[:jsonrpc_request_id],
             has_request_store: !context[:request_store].nil?,
             session_id: context[:session_id]
           }
@@ -300,7 +300,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         )
 
         aggregate_failures do
-          expect(result[:request_id]).to eq(request_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
           expect(result[:has_request_store]).to be true
           expect(result[:session_id]).to eq("test-session")
           expect(Thread.current[:mcp_context]).to be_nil
@@ -330,7 +330,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         {
           progress_token: context&.dig(:progress_token),
           transport: context&.dig(:transport),
-          request_id: context&.dig(:request_id)
+          jsonrpc_request_id: context&.dig(:jsonrpc_request_id)
         }
       end
     end
@@ -355,7 +355,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         aggregate_failures do
           expect(result[:progress_token]).to eq(progress_token)
           expect(result[:transport]).to eq(transport)
-          expect(result[:request_id]).to eq(request_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
         end
       end
     end
@@ -377,7 +377,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         aggregate_failures do
           expect(result[:progress_token]).to be_nil
           expect(result[:transport]).to eq(transport)
-          expect(result[:request_id]).to eq(request_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
         end
       end
     end
@@ -396,7 +396,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         aggregate_failures do
           expect(result[:progress_token]).to be_nil
           expect(result[:transport]).to eq(transport)
-          expect(result[:request_id]).to eq(request_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
         end
       end
     end
@@ -420,7 +420,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         aggregate_failures do
           expect(result[:progress_token]).to eq(progress_token)
           expect(result[:transport]).to be_nil
-          expect(result[:request_id]).to eq(request_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
         end
       end
     end

@@ -90,10 +90,10 @@ module ModelContextProtocol
       params = message["params"]
       return unless params
 
-      request_id = params["requestId"]
-      return unless request_id
+      jsonrpc_request_id = params["requestId"]
+      return unless jsonrpc_request_id
 
-      @request_store.mark_cancelled(request_id)
+      @request_store.mark_cancelled(jsonrpc_request_id)
     rescue
       nil
     end

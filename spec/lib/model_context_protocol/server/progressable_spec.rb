@@ -31,7 +31,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
     context "when MCP context is present but no progress token" do
       before do
         Thread.current[:mcp_context] = {
-          request_id: "123",
+          jsonrpc_request_id: "123",
           transport: transport
         }
       end
@@ -53,7 +53,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
     context "when MCP context is present but no transport" do
       before do
         Thread.current[:mcp_context] = {
-          request_id: "123",
+          jsonrpc_request_id: "123",
           progress_token: progress_token
         }
       end
@@ -71,7 +71,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
     context "when full MCP context with progress token is present" do
       before do
         Thread.current[:mcp_context] = {
-          request_id: "123",
+          jsonrpc_request_id: "123",
           progress_token: progress_token,
           transport: transport
         }
@@ -163,7 +163,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
     context "with very short max_duration" do
       before do
         Thread.current[:mcp_context] = {
-          request_id: "123",
+          jsonrpc_request_id: "123",
           progress_token: progress_token,
           transport: transport
         }
@@ -193,7 +193,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
 
     before do
       Thread.current[:mcp_context] = {
-        request_id: "123",
+        jsonrpc_request_id: "123",
         progress_token: progress_token,
         transport: transport,
         request_store: request_store
@@ -244,7 +244,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
   describe "timer cleanup" do
     before do
       Thread.current[:mcp_context] = {
-        request_id: "123",
+        jsonrpc_request_id: "123",
         progress_token: progress_token,
         transport: transport
       }
@@ -290,7 +290,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
 
     before do
       Thread.current[:mcp_context] = {
-        request_id: "test-request-123",
+        jsonrpc_request_id: "test-request-123",
         progress_token: progress_token,
         transport: transport,
         request_store: request_store
@@ -384,7 +384,7 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
 
       it "handles missing request_store gracefully" do
         Thread.current[:mcp_context] = {
-          request_id: "test-request-123",
+          jsonrpc_request_id: "test-request-123",
           progress_token: progress_token,
           transport: transport
         }

@@ -10,12 +10,12 @@ module ModelContextProtocol
 
       # Register a new request with its associated thread
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @param thread [Thread] the thread processing this request (defaults to current thread)
       # @return [void]
-      def register_request(request_id, thread = Thread.current)
+      def register_request(jsonrpc_request_id, thread = Thread.current)
         @mutex.synchronize do
-          @requests[request_id] = {
+          @requests[jsonrpc_request_id] = {
             thread:,
             cancelled: false,
             started_at: Time.now
@@ -25,11 +25,11 @@ module ModelContextProtocol
 
       # Mark a request as cancelled
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Boolean] true if request was found and marked cancelled, false otherwise
-      def mark_cancelled(request_id)
+      def mark_cancelled(jsonrpc_request_id)
         @mutex.synchronize do
-          if (request = @requests[request_id])
+          if (request = @requests[jsonrpc_request_id])
             request[:cancelled] = true
             return true
           end
@@ -39,31 +39,31 @@ module ModelContextProtocol
 
       # Check if a request has been cancelled
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Boolean] true if the request is cancelled, false otherwise
-      def cancelled?(request_id)
+      def cancelled?(jsonrpc_request_id)
         @mutex.synchronize do
-          @requests[request_id]&.fetch(:cancelled, false) || false
+          @requests[jsonrpc_request_id]&.fetch(:cancelled, false) || false
         end
       end
 
       # Unregister a request (typically called when request completes)
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Hash, nil] the removed request data, or nil if not found
-      def unregister_request(request_id)
+      def unregister_request(jsonrpc_request_id)
         @mutex.synchronize do
-          @requests.delete(request_id)
+          @requests.delete(jsonrpc_request_id)
         end
       end
 
       # Get information about a specific request
       #
-      # @param request_id [String] the unique request identifier
+      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
       # @return [Hash, nil] request information or nil if not found
-      def get_request(request_id)
+      def get_request(jsonrpc_request_id)
         @mutex.synchronize do
-          @requests[request_id]&.dup
+          @requests[jsonrpc_request_id]&.dup
         end
       end
 
@@ -85,9 +85,9 @@ module ModelContextProtocol
         removed_ids = []
 
         @mutex.synchronize do
-          @requests.delete_if do |request_id, data|
+          @requests.delete_if do |jsonrpc_request_id, data|
             if data[:started_at] < cutoff_time
-              removed_ids << request_id
+              removed_ids << jsonrpc_request_id
               true
             else
               false
