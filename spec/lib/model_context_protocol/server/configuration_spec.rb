@@ -1,4 +1,5 @@
 require "spec_helper"
+require "tempfile"
 
 RSpec.describe ModelContextProtocol::Server::Configuration do
   subject(:configuration) { described_class.new }
@@ -33,6 +34,16 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
 
     it "sets default log level to INFO" do
       expect(configuration.client_logger.level).to eq(Logger::INFO)
+    end
+  end
+
+  describe "#server_logger" do
+    it "always provides a logger instance after initialization" do
+      expect(configuration.server_logger).to be_a(ModelContextProtocol::Server::ServerLogger)
+    end
+
+    it "sets default log level to INFO" do
+      expect(configuration.server_logger.level).to eq(Logger::INFO)
     end
   end
 
@@ -679,6 +690,87 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
           max_page_size: 200,
           cursor_ttl: 1800
         })
+      end
+    end
+  end
+
+  describe "server logger configuration" do
+    before do
+      configuration.name = "test-server"
+      configuration.registry = registry
+      configuration.version = "1.0.0"
+    end
+
+    after do
+      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
+    end
+
+    describe "server logger initialization" do
+      context "when global server logging is not configured" do
+        it "creates a default server logger during initialization" do
+          logger = configuration.server_logger
+
+          aggregate_failures do
+            expect(logger).to be_a(ModelContextProtocol::Server::ServerLogger)
+            expect(logger.logdev).to eq($stderr)
+            expect(logger.level).to eq(Logger::INFO)
+            expect(logger.progname).to eq("MCP-Server")
+          end
+        end
+      end
+
+      context "when global server logging is configured" do
+        before do
+          ModelContextProtocol::Server.configure_server_logging do |config|
+            config.level = Logger::ERROR
+            config.progname = "GloballyConfigured"
+          end
+        end
+
+        it "applies global configuration during initialization" do
+          fresh_config = described_class.new
+          logger = fresh_config.server_logger
+
+          aggregate_failures do
+            expect(logger).to be_a(ModelContextProtocol::Server::ServerLogger)
+            expect(logger.level).to eq(Logger::ERROR)
+            expect(logger.progname).to eq("GloballyConfigured")
+          end
+        end
+      end
+
+      context "transport validation constraints in validate!" do
+        it "validates constraints during validate! when stdio transport with stdout logger" do
+          ModelContextProtocol::Server.configure_server_logging do |config|
+            config.logdev = $stdout
+          end
+
+          config_with_stdout = described_class.new
+          config_with_stdout.name = "test-server"
+          config_with_stdout.version = "1.0.0"
+          config_with_stdout.registry = registry
+          config_with_stdout.transport = :stdio
+
+          expect { config_with_stdout.validate! }.to raise_error(/StdioTransport cannot log to stdout/)
+        end
+
+        it "allows stdout logger for streamable_http transport" do
+          ModelContextProtocol::Server.configure_redis do |config|
+            config.redis_url = "redis://localhost:6379"
+          end
+
+          ModelContextProtocol::Server.configure_server_logging do |config|
+            config.logdev = $stdout
+          end
+
+          config_with_stdout = described_class.new
+          config_with_stdout.name = "test-server"
+          config_with_stdout.version = "1.0.0"
+          config_with_stdout.registry = registry
+          config_with_stdout.transport = :streamable_http
+
+          expect { config_with_stdout.validate! }.not_to raise_error
+        end
       end
     end
   end
