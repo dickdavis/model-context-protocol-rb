@@ -54,16 +54,13 @@ module ModelContextProtocol
     def shutdown
       @server_logger.info("Shutting down StreamableHttpTransport")
 
-      # Stop the message poller
       @message_poller&.stop
 
-      # Stop the stream monitor thread
       if @stream_monitor_thread&.alive?
         @stream_monitor_thread.kill
         @stream_monitor_thread.join(timeout: 5)
       end
 
-      # Unregister all local streams
       @stream_registry.get_all_local_streams.each do |session_id, stream|
         @stream_registry.unregister_stream(session_id)
         @session_store.mark_stream_inactive(session_id)
@@ -108,11 +105,12 @@ module ModelContextProtocol
         params: params
       }
 
-      @server_logger.info("← #{method} [outgoing]")
-      @server_logger.info("  Notification: #{notification.to_json}")
+      log_to_server_with_context do |logger|
+        logger.info("← #{method} [outgoing]")
+        logger.info("  Notification: #{notification.to_json}")
+      end
 
       if @stream_registry.has_any_local_streams?
-        @stream_registry.get_all_local_streams.size
         @server_logger.debug("Delivering notification to active streams")
         deliver_to_active_streams(notification)
       else
@@ -123,73 +121,17 @@ module ModelContextProtocol
 
     private
 
-    # Log incoming request with request ID and details
-    def log_incoming_request(body, session_id = nil)
-      method = body["method"]
-      id = body["id"]
-
-      if method&.start_with?("notifications/")
-        @server_logger.info("→ #{method} [notification]")
-      elsif id.nil?
-        @server_logger.info("→ #{method} [notification]")
-      else
-        @server_logger.info("→ #{method} (id: #{id}) [request]")
+    def log_to_server_with_context(request_id: nil, &block)
+      original_context = Thread.current[:mcp_context]
+      if request_id && !Thread.current[:mcp_context]
+        Thread.current[:mcp_context] = {jsonrpc_request_id: request_id}
       end
 
-      @server_logger.info("  Request: #{body.to_json}")
-
-      # Log Redis pool stats if available
-      log_redis_pool_stats
-    end
-
-    # Log Redis pool statistics
-    def log_redis_pool_stats
-      if ModelContextProtocol::Server::RedisConfig.configured?
-        pool_stats = ModelContextProtocol::Server::RedisConfig.stats
-        @server_logger.info("  Redis Pool: #{pool_stats}")
+      begin
+        block.call(@server_logger) if block_given?
+      ensure
+        Thread.current[:mcp_context] = original_context if request_id && original_context.nil?
       end
-    end
-
-    # Log SSE stream events
-    def log_sse_stream_opened(session_id = nil)
-      @server_logger.info("← SSE stream [opened]")
-      @server_logger.info("  Connection will remain open for real-time notifications")
-    end
-
-    def log_sse_stream_closed(session_id = nil, reason = nil)
-      reason_text = reason ? " [#{reason}]" : ""
-      @server_logger.info("← SSE stream [closed]#{reason_text}")
-    end
-
-    # Log response details
-    def log_response(response_data, status = 200, session_id = nil)
-      if response_data.is_a?(Hash)
-        if response_data[:error] || response_data["error"]
-          error = response_data[:error] || response_data["error"]
-          @server_logger.info("← Error response (code: #{error[:code] || error["code"]})")
-        elsif status == 202
-          @server_logger.info("← Notification [accepted]")
-        elsif response_data[:result] || response_data["result"]
-          id = response_data[:id] || response_data["id"]
-          @server_logger.info("← Response (id: #{id})")
-        else
-          @server_logger.info("← Response (status: #{status})")
-        end
-
-        unless status == 202 && response_data.empty?
-          response_json = response_data.to_json
-          @server_logger.info("  Response: #{response_json}")
-        end
-      end
-    end
-
-    # Log session events
-    def log_session_created(session_id, protocol_version = nil)
-      @server_logger.info("Session created: #{session_id} (protocol: #{protocol_version})")
-    end
-
-    def log_session_cleanup(session_id)
-      @server_logger.info("Session cleanup: #{session_id}")
     end
 
     def validate_headers(env)
@@ -252,6 +194,11 @@ module ModelContextProtocol
         temp_stream_id = session_id || "temp-#{SecureRandom.hex(8)}"
         @stream_registry.register_stream(temp_stream_id, stream)
 
+        log_to_server_with_context(request_id: request_body["id"]) do |logger|
+          logger.info("← SSE stream [opened] (#{temp_stream_id})")
+          logger.info("  Connection will remain open for real-time notifications")
+        end
+
         begin
           result = @router.route(request_body, request_store: @request_store, session_id: session_id, transport: self)
 
@@ -267,14 +214,11 @@ module ModelContextProtocol
             @server_logger.debug("Sent empty response via SSE stream (id: #{request_body["id"]})")
           end
 
-          # Close stream immediately when work is complete
           close_stream(temp_stream_id, reason: "request_completed")
         rescue IOError, Errno::EPIPE, Errno::ECONNRESET => e
-          # Client disconnected during processing
           @server_logger.debug("Client disconnected during progressive request processing: #{e.class.name}")
-          log_sse_stream_closed(temp_stream_id, "client_disconnected")
+          log_to_server_with_context { |logger| logger.info("← SSE stream [closed] (#{temp_stream_id}) [client_disconnected]") }
         ensure
-          # Fallback cleanup
           @stream_registry.unregister_stream(temp_stream_id)
         end
       end
@@ -302,7 +246,8 @@ module ModelContextProtocol
           nil
         end
 
-        log_sse_stream_closed(session_id, reason)
+        reason_text = reason ? " [#{reason}]" : ""
+        log_to_server_with_context { |logger| logger.info("← SSE stream [closed] (#{session_id})#{reason_text}") }
         @stream_registry.unregister_stream(session_id)
         @session_store.mark_stream_inactive(session_id) if @require_sessions
       end
@@ -317,8 +262,21 @@ module ModelContextProtocol
       session_id = env["HTTP_MCP_SESSION_ID"]
       accept_header = env["HTTP_ACCEPT"] || ""
 
-      # Log incoming request details
-      log_incoming_request(body, session_id)
+      log_to_server_with_context(request_id: body["id"]) do |logger|
+        method = body["method"]
+        id = body["id"]
+
+        if method&.start_with?("notifications/")
+          logger.info("→ #{method} [notification]")
+        elsif id.nil?
+          logger.info("→ #{method} [notification]")
+        else
+          logger.info("→ #{method} (id: #{id}) [request]")
+        end
+
+        logger.info("  Request: #{body.to_json}")
+        logger.info("  Redis Pool: #{ModelContextProtocol::Server::RedisConfig.stats}")
+      end
 
       case body["method"]
       when "initialize"
@@ -327,20 +285,35 @@ module ModelContextProtocol
         handle_regular_request(body, session_id, accept_header)
       end
     rescue JSON::ParserError => e
-      @server_logger.error("JSON parse error in streamable HTTP transport: #{e.message}")
+      log_to_server_with_context do |logger|
+        logger.error("JSON parse error in streamable HTTP transport: #{e.message}")
+      end
       error_response = ErrorResponse[id: "", error: {code: -32700, message: "Parse error"}]
-      log_response(error_response.serialized, 400)
+      log_to_server_with_context do |logger|
+        logger.info("← Error response (code: #{error_response.error[:code]})")
+        logger.info("  #{error_response.serialized.to_json}")
+      end
       {json: error_response.serialized, status: 400}
     rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
-      @server_logger.error("Parameter validation failed in streamable HTTP transport: #{validation_error.message}")
+      log_to_server_with_context(request_id: body&.dig("id")) do |logger|
+        logger.error("Parameter validation failed in streamable HTTP transport: #{validation_error.message}")
+      end
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32602, message: validation_error.message}]
-      log_response(error_response.serialized, 400, session_id)
+      log_to_server_with_context(request_id: error_response.id) do |logger|
+        logger.info("← Error response (code: #{error_response.error[:code]})")
+        logger.info("  #{error_response.serialized.to_json}")
+      end
       {json: error_response.serialized, status: 400}
     rescue => e
-      @server_logger.error("Internal error handling POST request in streamable HTTP transport: #{e.message}")
-      @server_logger.debug("Backtrace: #{e.backtrace.join("\n")}")
+      log_to_server_with_context(request_id: body&.dig("id")) do |logger|
+        logger.error("Internal error handling POST request in streamable HTTP transport: #{e.message}")
+        logger.debug("Backtrace: #{e.backtrace.join("\n")}")
+      end
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32603, message: "Internal error"}]
-      log_response(error_response.serialized, 500, session_id)
+      log_to_server_with_context(request_id: error_response.id) do |logger|
+        logger.info("← Error response (code: #{error_response.error[:code]})")
+        logger.info("  #{error_response.serialized.to_json}")
+      end
       {json: error_response.serialized, status: 500}
     end
 
@@ -361,7 +334,7 @@ module ModelContextProtocol
         })
         response_headers["Mcp-Session-Id"] = session_id
         @session_protocol_versions[session_id] = negotiated_protocol_version
-        log_session_created(session_id, negotiated_protocol_version)
+        log_to_server_with_context { |logger| logger.info("Session created: #{session_id} (protocol: #{negotiated_protocol_version})") }
       else
         @session_protocol_versions[:default] = negotiated_protocol_version
       end
@@ -373,8 +346,6 @@ module ModelContextProtocol
           "Connection" => "keep-alive"
         })
 
-        log_sse_stream_opened(session_id)
-
         {
           stream: true,
           headers: response_headers,
@@ -382,7 +353,10 @@ module ModelContextProtocol
         }
       else
         response_headers["Content-Type"] = "application/json"
-        log_response(response.serialized, 200, session_id)
+        log_to_server_with_context(request_id: response.id) do |logger|
+          logger.info("← #{body["method"]} Response")
+          logger.info("  #{response.serialized.to_json}")
+        end
         {
           json: response.serialized,
           status: 200,
@@ -413,7 +387,9 @@ module ModelContextProtocol
         elsif session_id && @session_store.session_has_active_stream?(session_id)
           deliver_to_session_stream(session_id, body)
         end
-        log_response({}, 202, session_id)
+        log_to_server_with_context do |logger|
+          logger.info("← Notification [accepted]")
+        end
         {json: {}, status: 202}
 
       when :request
@@ -422,7 +398,6 @@ module ModelContextProtocol
           has_progress_token
 
         if should_stream
-          log_sse_stream_opened(session_id)
           {
             stream: true,
             headers: {
@@ -440,18 +415,25 @@ module ModelContextProtocol
 
             if session_id && @session_store.session_has_active_stream?(session_id)
               deliver_to_session_stream(session_id, response.serialized)
-              @server_logger.info("← #{body["method"]} Response (id: #{body["id"]}) [via stream]")
+              log_to_server_with_context(request_id: body["id"]) do |logger|
+                logger.info("← #{body["method"]} Response [via stream]")
+              end
               return {json: {accepted: true}, status: 200}
             end
 
-            log_response(response.serialized, 200, session_id)
+            log_to_server_with_context(request_id: response.id) do |logger|
+              logger.info("← #{body["method"]} Response")
+              logger.info("  #{response.serialized.to_json}")
+            end
             {
               json: response.serialized,
               status: 200,
               headers: {"Content-Type" => "application/json"}
             }
           else
-            log_response({}, 204, session_id)
+            log_to_server_with_context do |logger|
+              logger.info("← Response (status: 204)")
+            end
             {json: {}, status: 204}
           end
         end
@@ -481,7 +463,6 @@ module ModelContextProtocol
         @session_store.mark_stream_active(session_id, @server_instance)
       end
 
-      log_sse_stream_opened(session_id)
       {
         stream: true,
         headers: {
@@ -500,16 +481,24 @@ module ModelContextProtocol
 
       if session_id
         cleanup_session(session_id)
-        log_session_cleanup(session_id)
+        log_to_server_with_context { |logger| logger.info("Session cleanup: #{session_id}") }
       end
 
-      log_response({success: true}, 200, session_id)
+      log_to_server_with_context do |logger|
+        logger.info("← DELETE Response")
+        logger.info("  #{{"success" => true}.to_json}")
+      end
       {json: {success: true}, status: 200}
     end
 
     def create_sse_stream_proc(session_id, last_event_id = nil)
       proc do |stream|
         @stream_registry.register_stream(session_id, stream) if session_id
+
+        log_to_server_with_context do |logger|
+          logger.info("← SSE stream [opened] (#{session_id || "no-session"})")
+          logger.info("  Connection will remain open for real-time notifications")
+        end
 
         if last_event_id
           replay_messages_after_event_id(stream, session_id, last_event_id)
@@ -523,7 +512,7 @@ module ModelContextProtocol
         end
       ensure
         if session_id
-          log_sse_stream_closed(session_id, "loop_ended")
+          log_to_server_with_context { |logger| logger.info("← SSE stream [closed] (#{session_id}) [loop_ended]") }
           @stream_registry.unregister_stream(session_id)
         end
       end
@@ -544,7 +533,7 @@ module ModelContextProtocol
     def start_stream_monitor
       @stream_monitor_thread = Thread.new do
         loop do
-          sleep 30 # Check every 30 seconds
+          sleep 30
 
           begin
             monitor_streams
@@ -638,10 +627,6 @@ module ModelContextProtocol
         @server_logger.debug("Failed to deliver notification to stream #{session_id}, client disconnected: #{e.class.name}")
         close_stream(session_id, reason: "client_disconnected")
       end
-
-      if delivered_count > 0
-        @server_logger.info("← #{notification[:method]} [delivered]")
-      end
     end
 
     def flush_notifications_to_stream(stream)
@@ -668,11 +653,15 @@ module ModelContextProtocol
 
       return unless jsonrpc_request_id
 
-      @server_logger.info("Processing cancellation for request #{jsonrpc_request_id} (reason: #{reason || "unknown"})")
+      log_to_server_with_context(request_id: jsonrpc_request_id) do |logger|
+        logger.info("Processing cancellation (reason: #{reason || "unknown"})")
+      end
 
       @request_store.mark_cancelled(jsonrpc_request_id, reason)
     rescue => e
-      @server_logger.error("Error processing cancellation: #{e.message}")
+      log_to_server_with_context(request_id: jsonrpc_request_id) do |logger|
+        logger.error("Error processing cancellation: #{e.message}")
+      end
       nil
     end
 
