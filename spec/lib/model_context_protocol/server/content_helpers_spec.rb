@@ -10,6 +10,7 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
 
   let(:helper) { test_class.new }
   let(:client_logger) { double("client_logger") }
+  let(:server_logger) { ModelContextProtocol::Server::ServerLogger.new }
 
   before do
     allow(client_logger).to receive(:info)
@@ -193,7 +194,7 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
   describe "#embedded_resource_content" do
     context "with valid data" do
       it "returns an EmbeddedResource content object" do
-        resource_data = TestResource.call(client_logger)
+        resource_data = TestResource.call(client_logger, server_logger)
         result = helper.embedded_resource_content(resource: resource_data)
 
         aggregate_failures do
@@ -203,7 +204,7 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
       end
 
       it "returns an EmbeddedResource content object with annotations" do
-        resource_data = TestResource.call(client_logger)
+        resource_data = TestResource.call(client_logger, server_logger)
         result = helper.embedded_resource_content(resource: resource_data)
 
         aggregate_failures do

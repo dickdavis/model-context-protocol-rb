@@ -2,6 +2,7 @@ require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Resource do
   let(:client_logger) { double("client_logger") }
+  let(:server_logger) { ModelContextProtocol::Server::ServerLogger.new }
 
   before do
     allow(client_logger).to receive(:info)
@@ -9,7 +10,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
   describe ".call" do
     it "returns the response from the instance's call method" do
-      response = TestResource.call(client_logger)
+      response = TestResource.call(client_logger, server_logger)
       aggregate_failures do
         expect(response.text).to eq("I'm finna eat all my wife's leftovers.")
         expect(response.serialized).to eq(
@@ -28,7 +29,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
   describe "#initialize" do
     it "sets mime_type and uri from class definition" do
-      resource = TestResource.new(client_logger)
+      resource = TestResource.new(client_logger, server_logger)
 
       aggregate_failures do
         expect(resource.mime_type).to eq("text/plain")
@@ -38,7 +39,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     it "stores the client_logger and context" do
       context = {user_id: "test-user"}
-      resource = TestResource.new(client_logger, context)
+      resource = TestResource.new(client_logger, server_logger, context)
 
       aggregate_failures do
         expect(resource.client_logger).to eq(client_logger)
@@ -47,7 +48,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
 
     it "defaults to empty context when not provided" do
-      resource = TestResource.new(client_logger)
+      resource = TestResource.new(client_logger, server_logger)
       expect(resource.context).to eq({})
     end
   end
@@ -55,7 +56,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
   describe "responses" do
     describe "text response" do
       it "formats text responses correctly" do
-        response = TestResource.call(client_logger)
+        response = TestResource.call(client_logger, server_logger)
         expect(response.serialized).to eq(
           contents: [
             {
@@ -71,7 +72,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
 
     describe "binary response" do
       it "formats binary responses correctly" do
-        response = TestBinaryResource.call(client_logger)
+        response = TestBinaryResource.call(client_logger, server_logger)
 
         expect(response.serialized).to eq(
           contents: [
@@ -122,7 +123,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "includes annotations in serialized response" do
-        response = TestAnnotatedResource.call(client_logger)
+        response = TestAnnotatedResource.call(client_logger, server_logger)
 
         expect(response.serialized).to eq(
           contents: [
@@ -147,7 +148,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
       end
 
       it "does not include annotations in serialized response" do
-        response = TestResource.call(client_logger)
+        response = TestResource.call(client_logger, server_logger)
 
         content = response.serialized[:contents].first
         expect(content).not_to have_key(:annotations)
@@ -263,7 +264,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     it "calls client_logger.info during execution" do
       expect(client_logger).to receive(:info).with("Accessing top secret plans")
 
-      TestResource.call(client_logger)
+      TestResource.call(client_logger, server_logger)
     end
 
     it "uses context values in logging" do
@@ -273,13 +274,44 @@ RSpec.describe ModelContextProtocol::Server::Resource do
         expect(client_logger).to receive(:info).with("User test-user-123 is accessing secret plans")
       end
 
-      TestResource.call(client_logger, context)
+      TestResource.call(client_logger, server_logger, context)
     end
 
     it "handles empty context gracefully" do
       expect(client_logger).to receive(:info).with("Accessing top secret plans")
 
-      TestResource.call(client_logger, {})
+      TestResource.call(client_logger, server_logger, {})
+    end
+  end
+
+  describe "server logger integration" do
+    it "calls server_logger during execution" do
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with("Resource access requested")
+        expect(server_logger).to receive(:info).with("Serving top secret plans content")
+      end
+
+      TestResource.call(client_logger, server_logger)
+    end
+
+    it "uses context values in server logging" do
+      context = {user_id: "test-user-123"}
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with("Resource access requested")
+        expect(server_logger).to receive(:info).with("Serving top secret plans content")
+        expect(server_logger).to receive(:info).with("User test-user-123 accessed secret plans resource")
+      end
+
+      TestResource.call(client_logger, server_logger, context)
+    end
+
+    it "handles empty context gracefully in server logging" do
+      aggregate_failures do
+        expect(server_logger).to receive(:debug).with("Resource access requested")
+        expect(server_logger).to receive(:info).with("Serving top secret plans content")
+      end
+
+      TestResource.call(client_logger, server_logger, {})
     end
   end
 
@@ -305,7 +337,7 @@ RSpec.describe ModelContextProtocol::Server::Resource do
     end
 
     it "does not include title in serialized response when not provided" do
-      response = resource_without_title.call(client_logger)
+      response = resource_without_title.call(client_logger, server_logger)
       content = response.serialized[:contents].first
       expect(content).not_to have_key(:title)
     end

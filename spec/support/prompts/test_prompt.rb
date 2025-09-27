@@ -47,6 +47,10 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
     # You can use the client_logger
     client_logger.info("Brainstorming excuses...")
 
+    # Server logging for debugging and monitoring (not sent to client)
+    server_logger.debug("Prompt called with arguments: #{arguments}")
+    server_logger.info("Generating excuse brainstorming prompt")
+
     # Build an array of user and assistant messages
     messages = message_history do
       # Create a message with the user role
@@ -64,6 +68,11 @@ class TestPrompt < ModelContextProtocol::Server::Prompt
         # Reference any inputs from the client by accessing the appropriate key in the arguments hash
         text_content(text: "Can you generate some excuses for me?" + (arguments[:tone] ? " Make them as #{arguments[:tone]} as possible." : ""))
       end
+    end
+
+    user_id = context[:user_id]
+    if user_id
+      server_logger.info("User #{user_id} is generating excuses")
     end
 
     # Respond with the messages

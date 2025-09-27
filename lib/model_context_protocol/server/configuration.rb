@@ -25,13 +25,21 @@ module ModelContextProtocol
     class InvalidPaginationError < StandardError; end
 
     attr_accessor :name, :registry, :version, :transport, :pagination, :title, :instructions
-    attr_reader :client_logger
+    attr_reader :client_logger, :server_logger
 
     def initialize
       @client_logger = ModelContextProtocol::Server::ClientLogger.new(
         logger_name: "server",
         level: "info"
       )
+
+      server_logger_params = if ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?
+        ModelContextProtocol::Server::GlobalConfig::ServerLogging.logger_params
+      else
+        {}
+      end
+
+      @server_logger = ModelContextProtocol::Server::ServerLogger.new(**server_logger_params)
     end
 
     def transport_type
@@ -90,12 +98,13 @@ module ModelContextProtocol
       raise InvalidServerNameError unless valid_name?
       raise InvalidRegistryError unless valid_registry?
       raise InvalidServerVersionError unless valid_version?
+
       validate_transport!
       validate_pagination!
       validate_title!
       validate_instructions!
-
       validate_environment_variables!
+      validate_server_logging_transport_constraints!
     end
 
     def environment_variables
@@ -141,6 +150,13 @@ module ModelContextProtocol
       required_environment_variables.each do |key|
         raise MissingRequiredEnvironmentVariable, "#{key} is not set" unless environment_variable(key)
       end
+    end
+
+    def validate_server_logging_transport_constraints!
+      return unless transport_type == :stdio && server_logger.logdev == $stdout
+
+      raise ModelContextProtocol::Server::ServerLogger::StdoutNotAllowedError,
+        "StdioTransport cannot log to stdout. Use stderr or a file instead."
     end
 
     def valid_name?

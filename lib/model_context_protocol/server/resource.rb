@@ -3,12 +3,13 @@ module ModelContextProtocol
     include ModelContextProtocol::Server::Cancellable
     include ModelContextProtocol::Server::Progressable
 
-    attr_reader :mime_type, :uri, :client_logger, :context
+    attr_reader :mime_type, :uri, :client_logger, :server_logger, :context
 
-    def initialize(client_logger, context = {})
+    def initialize(client_logger, server_logger, context = {})
       @mime_type = self.class.mime_type
       @uri = self.class.uri
       @client_logger = client_logger
+      @server_logger = server_logger
       @context = context
     end
 
@@ -73,8 +74,8 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@annotations, @annotations&.dup)
       end
 
-      def call(client_logger, context = {})
-        new(client_logger, context).call
+      def call(client_logger, server_logger, context = {})
+        new(client_logger, server_logger, context).call
       end
 
       def definition

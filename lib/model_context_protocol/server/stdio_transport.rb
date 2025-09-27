@@ -12,17 +12,19 @@ module ModelContextProtocol
       end
     end
 
-    attr_reader :router, :client_logger, :configuration, :request_store
+    attr_reader :router, :client_logger, :server_logger, :configuration, :request_store
 
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
       @client_logger = configuration.client_logger
+      @server_logger = configuration.server_logger
       @request_store = ModelContextProtocol::Server::StdioTransport::RequestStore.new
     end
 
     def handle
       client_logger.connect_transport(self)
+      server_logger.info("Starting stdio transport handler")
 
       loop do
         line = receive_message
@@ -45,16 +47,20 @@ module ModelContextProtocol
           end
         rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
           client_logger.error("Validation error", error: validation_error.message)
+          server_logger.error("Parameter validation failed in stdio transport: #{validation_error.message}")
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32602, message: validation_error.message}]
           )
         rescue JSON::ParserError => parser_error
           client_logger.error("Parser error", error: parser_error.message)
+          server_logger.error("JSON parsing failed in stdio transport: #{parser_error.message}")
           send_message(
             ErrorResponse[id: "", error: {code: -32700, message: parser_error.message}]
           )
         rescue => error
           client_logger.error("Internal error", error: error.message, backtrace: error.backtrace.first(5))
+          server_logger.error("Internal error in stdio transport: #{error.message}")
+          server_logger.debug("Backtrace: #{error.backtrace.join("\n")}")
           send_message(
             ErrorResponse[id: message["id"], error: {code: -32603, message: error.message}]
           )
@@ -72,6 +78,7 @@ module ModelContextProtocol
       $stdout.flush
     rescue IOError => e
       @configuration.client_logger.debug("Failed to send notification", error: e.message)
+      @configuration.server_logger.debug("Failed to send notification via stdio: #{e.message}")
     end
 
     private
