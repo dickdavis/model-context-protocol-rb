@@ -20,41 +20,52 @@ module ModelContextProtocol
 
       progress_token = context[:progress_token]
       transport = context[:transport]
+      jsonrpc_request_id = context[:jsonrpc_request_id]
+      request_store = context[:request_store]
       start_time = Time.now
       update_interval = [1.0, max_duration * 0.05].max
 
       timer_task = Concurrent::TimerTask.new(execution_interval: update_interval) do
-        if context[:request_store] && context[:jsonrpc_request_id]
-          break if context[:request_store].cancelled?(context[:jsonrpc_request_id])
-        end
-
-        elapsed_seconds = Time.now - start_time
-        progress_pct = [(elapsed_seconds / max_duration) * 100, 99].min
-
-        progress_message = if message
-          "#{message} (#{elapsed_seconds.round(1)}s / ~#{max_duration}s)"
-        else
-          "Processing... (#{elapsed_seconds.round(1)}s / ~#{max_duration}s)"
-        end
+        Thread.current[:mcp_context] = {jsonrpc_request_id:}
 
         begin
-          transport.send_notification("notifications/progress", {
-            progressToken: progress_token,
-            progress: progress_pct.round(1),
-            total: 100,
-            message: progress_message
-          })
-        rescue
-          break
-        end
+          if request_store && jsonrpc_request_id
+            break if request_store.cancelled?(jsonrpc_request_id)
+          end
 
-        timer_task.shutdown if elapsed_seconds >= max_duration
+          elapsed_seconds = Time.now - start_time
+          progress_pct = [(elapsed_seconds / max_duration) * 100, 99].min
+
+          progress_message = if message
+            "#{message} (#{elapsed_seconds.round(1)}s / ~#{max_duration}s)"
+          else
+            "Processing... (#{elapsed_seconds.round(1)}s / ~#{max_duration}s)"
+          end
+
+          begin
+            transport.send_notification("notifications/progress", {
+              progressToken: progress_token,
+              progress: progress_pct.round(1),
+              total: 100,
+              message: progress_message
+            })
+          rescue
+            break
+          end
+
+          timer_task.shutdown if elapsed_seconds >= max_duration
+        ensure
+          Thread.current[:mcp_context] = nil
+        end
       end
 
       begin
         timer_task.execute
 
         result = yield
+
+        original_context = Thread.current[:mcp_context]
+        Thread.current[:mcp_context] = {jsonrpc_request_id:}
 
         begin
           transport.send_notification("notifications/progress", {
@@ -65,6 +76,8 @@ module ModelContextProtocol
           })
         rescue
           nil
+        ensure
+          Thread.current[:mcp_context] = original_context
         end
 
         result
