@@ -15,10 +15,13 @@ module ModelContextProtocol
       end
     end
 
+    attr_reader :server_logger
+
     def initialize(router:, configuration:)
       @router = router
       @configuration = configuration
       @client_logger = configuration.client_logger
+      @server_logger = configuration.server_logger
 
       transport_options = @configuration.transport_options
       @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
@@ -50,6 +53,7 @@ module ModelContextProtocol
 
     def shutdown
       @client_logger.info("Shutting down StreamableHttpTransport")
+      @server_logger.info("Shutting down StreamableHttpTransport")
 
       # Stop the message poller
       @message_poller&.stop
@@ -66,15 +70,18 @@ module ModelContextProtocol
         @session_store.mark_stream_inactive(session_id)
       rescue => e
         @client_logger.error("Error during stream cleanup", session_id: session_id, error: e.message)
+        @server_logger.error("Error during stream cleanup for session #{session_id}: #{e.message}")
       end
 
       @redis_pool.checkin(@redis) if @redis_pool && @redis
 
       @client_logger.info("StreamableHttpTransport shutdown complete")
+      @server_logger.info("StreamableHttpTransport shutdown complete")
     end
 
     def handle
       @client_logger.connect_transport(self)
+      @server_logger.debug("Handling streamable HTTP transport request")
 
       env = @configuration.transport_options[:env]
 
@@ -84,10 +91,13 @@ module ModelContextProtocol
 
       case env["REQUEST_METHOD"]
       when "POST"
+        @server_logger.debug("Handling POST request")
         handle_post_request(env)
       when "GET"
+        @server_logger.debug("Handling GET request (SSE)")
         handle_sse_request(env)
       when "DELETE"
+        @server_logger.debug("Handling DELETE request")
         handle_delete_request(env)
       else
         error_response = ErrorResponse[id: nil, error: {code: -32601, message: "Method not allowed"}]
@@ -242,10 +252,13 @@ module ModelContextProtocol
       {json: error_response.serialized, status: 400}
     rescue ModelContextProtocol::Server::ParameterValidationError => validation_error
       @client_logger.error("Validation error", error: validation_error.message)
+      @server_logger.error("Parameter validation failed in streamable HTTP transport: #{validation_error.message}")
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32602, message: validation_error.message}]
       {json: error_response.serialized, status: 400}
     rescue => e
       @client_logger.error("Error handling POST request", error: e.message, backtrace: e.backtrace.first(5))
+      @server_logger.error("Internal error handling POST request in streamable HTTP transport: #{e.message}")
+      @server_logger.debug("Backtrace: #{e.backtrace.join("\n")}")
       error_response = ErrorResponse[id: body&.dig("id"), error: {code: -32603, message: "Internal error"}]
       {json: error_response.serialized, status: 500}
     end
@@ -439,10 +452,12 @@ module ModelContextProtocol
             monitor_streams
           rescue => e
             @client_logger.error("Stream monitor error", error: e.message)
+            @server_logger.error("Stream monitor error: #{e.message}")
           end
         end
       rescue => e
         @client_logger.error("Stream monitor thread error", error: e.message)
+        @server_logger.error("Stream monitor thread error: #{e.message}")
         sleep 5
         retry
       end
