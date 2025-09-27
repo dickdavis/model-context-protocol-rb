@@ -24,8 +24,8 @@ module ModelContextProtocol
       executing_thread = Concurrent::AtomicReference.new(nil)
 
       timer_task = Concurrent::TimerTask.new(execution_interval: interval) do
-        if context && context[:request_store] && context[:request_id]
-          if context[:request_store].cancelled?(context[:request_id])
+        if context && context[:request_store] && context[:jsonrpc_request_id]
+          if context[:request_store].cancelled?(context[:jsonrpc_request_id])
             thread = executing_thread.get
             thread&.raise(CancellationError, "Request was cancelled") if thread&.alive?
           end
@@ -35,9 +35,9 @@ module ModelContextProtocol
       begin
         executing_thread.set(Thread.current)
 
-        if context && context[:request_store] && context[:request_id]
-          if context[:request_store].cancelled?(context[:request_id])
-            raise CancellationError, "Request #{context[:request_id]} was cancelled"
+        if context && context[:request_store] && context[:jsonrpc_request_id]
+          if context[:request_store].cancelled?(context[:jsonrpc_request_id])
+            raise CancellationError, "Request #{context[:jsonrpc_request_id]} was cancelled"
           end
         end
 

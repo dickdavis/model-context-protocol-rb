@@ -78,7 +78,7 @@ RSpec.describe ModelContextProtocol::Server::ServerLogger do
   end
 
   describe "logging functionality" do
-    it "logs messages with default formatter" do
+    it "logs messages with default formatter (no request context)" do
       output = StringIO.new
       logger = logger_class.new(logdev: output)
 
@@ -86,7 +86,64 @@ RSpec.describe ModelContextProtocol::Server::ServerLogger do
 
       output.rewind
       log_output = output.read
-      expect(log_output).to match(/INFO.*MCP-Server.*Test message/)
+      expect(log_output).to match(/\[MCP-Server\] INFO: Test message/)
+    end
+
+    it "logs messages with request ID when context is present" do
+      output = StringIO.new
+      logger = logger_class.new(logdev: output)
+
+      # Set up thread-local context
+      Thread.current[:mcp_context] = {
+        jsonrpc_request_id: "test-request-123",
+        request_store: nil,
+        session_id: nil,
+        progress_token: nil,
+        transport: nil
+      }
+
+      begin
+        logger.info("Test message with context")
+
+        output.rewind
+        log_output = output.read
+        expect(log_output).to match(/\[MCP-Server\] \[test-request-123\] INFO: Test message with context/)
+      ensure
+        Thread.current[:mcp_context] = nil
+      end
+    end
+
+    it "handles missing mcp_context gracefully" do
+      output = StringIO.new
+      logger = logger_class.new(logdev: output)
+
+      Thread.current[:mcp_context] = nil
+
+      logger.info("Test message no context")
+
+      output.rewind
+      log_output = output.read
+      expect(log_output).to match(/\[MCP-Server\] INFO: Test message no context/)
+    end
+
+    it "handles mcp_context without jsonrpc_request_id" do
+      output = StringIO.new
+      logger = logger_class.new(logdev: output)
+
+      Thread.current[:mcp_context] = {
+        request_store: nil,
+        session_id: "session-123"
+      }
+
+      begin
+        logger.info("Test message incomplete context")
+
+        output.rewind
+        log_output = output.read
+        expect(log_output).to match(/\[MCP-Server\] INFO: Test message incomplete context/)
+      ensure
+        Thread.current[:mcp_context] = nil
+      end
     end
 
     it "logs messages with custom formatter" do

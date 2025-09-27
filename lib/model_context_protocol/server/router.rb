@@ -26,17 +26,17 @@ module ModelContextProtocol
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
 
-      request_id = message["id"]
+      jsonrpc_request_id = message["id"]
       progress_token = message.dig("params", "_meta", "progressToken")
 
-      if request_id && request_store
-        request_store.register_request(request_id, session_id)
+      if jsonrpc_request_id && request_store
+        request_store.register_request(jsonrpc_request_id, session_id)
       end
 
       result = nil
       begin
         with_environment(@configuration&.environment_variables) do
-          context = {request_id:, request_store:, session_id:, progress_token:, transport:}
+          context = {jsonrpc_request_id:, request_store:, session_id:, progress_token:, transport:}
 
           Thread.current[:mcp_context] = context
 
@@ -45,8 +45,8 @@ module ModelContextProtocol
       rescue Server::Cancellable::CancellationError
         return nil
       ensure
-        if request_id && request_store
-          request_store.unregister_request(request_id)
+        if jsonrpc_request_id && request_store
+          request_store.unregister_request(jsonrpc_request_id)
         end
 
         Thread.current[:mcp_context] = nil
