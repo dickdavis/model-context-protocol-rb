@@ -248,13 +248,17 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           end
         end
 
-        it "routes to stream when session has active stream" do
+        it "returns JSON response even when session has active stream (honors Accept header)" do
           mock_redis.hset("session:#{session_id}", "active_stream", true.to_json)
 
           result = transport.handle
 
           aggregate_failures do
-            expect(result[:json]).to eq({accepted: true})
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: "ping-1",
+              result: {}
+            })
             expect(result[:status]).to eq(200)
           end
         end
@@ -653,7 +657,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   describe "cross-server message routing" do
-    it "queues messages for sessions across server instances" do
+    it "returns JSON response regardless of cross-server sessions (honors Accept header)" do
       configuration.transport[:require_sessions] = true
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
@@ -698,15 +702,14 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       )
 
       result = second_transport.handle
-      expect(result[:json]).to eq({accepted: true})
+      expect(result[:json]).to eq({
+        jsonrpc: "2.0",
+        id: "ping-1",
+        result: {}
+      })
 
-      second_session_store = second_transport.instance_variable_get(:@session_store)
-      messages = second_session_store.poll_messages_for_session(session_id)
-
-      aggregate_failures do
-        expect(messages).not_to be_empty
-        expect(messages.first).to include("id" => "ping-1")
-      end
+      # The response should be returned as JSON regardless of cross-server session state
+      # We no longer queue messages when Accept header explicitly requests JSON
     end
   end
 
@@ -1220,7 +1223,74 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         )
       end
 
-      it "automatically streams responses for requests with progress tokens" do
+      it "respects Accept header preference for JSON over streaming with progress tokens" do
+        result = transport.handle
+
+        aggregate_failures do
+          expect(result[:stream]).to be_nil
+          expect(result[:json]).not_to be_nil
+          expect(result[:headers]["Content-Type"]).to eq("application/json")
+          expect(result[:json][:id]).to eq("progressive-1")
+          expect(result[:json][:result]).not_to be_nil
+        end
+      end
+
+      it "does not send progress notifications when using JSON response format" do
+        # Since Accept: application/json is set, no progress notifications should be sent
+        # and we should get a regular JSON response
+        result = transport.handle
+
+        aggregate_failures do
+          expect(result[:stream]).to be_nil
+          expect(result[:json]).not_to be_nil
+          expect(result[:json][:id]).to eq("progressive-1")
+        end
+      end
+    end
+
+    describe "progressive streaming when client accepts SSE" do
+      let(:mock_stream) { StringIO.new }
+      let(:progress_request) do
+        {
+          "jsonrpc" => "2.0",
+          "method" => "tools/call",
+          "params" => {
+            "_meta" => {"progressToken" => 123},
+            "name" => "test_tool",
+            "arguments" => {}
+          },
+          "id" => "progressive-1"
+        }
+      end
+
+      before do
+        allow(router).to receive(:route) do |message, **kwargs|
+          transport = kwargs[:transport]
+
+          transport.send_notification("notifications/progress", {
+            progressToken: 123,
+            progress: 50.0,
+            total: 100,
+            message: "Processing..."
+          })
+
+          transport.send_notification("notifications/progress", {
+            progressToken: 123,
+            progress: 100.0,
+            total: 100,
+            message: "Completed"
+          })
+
+          double("result", serialized: {content: [{type: "text", text: "Tool completed"}], isError: false})
+        end
+
+        set_request_env(
+          body: progress_request.to_json,
+          headers: {"Accept" => "text/event-stream"}
+        )
+      end
+
+      it "streams responses for requests with progress tokens when client accepts SSE" do
         result = transport.handle
 
         aggregate_failures do
@@ -1320,6 +1390,97 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           aggregate_failures do
             expect(result[:stream]).to be true
             expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+          end
+        end
+
+        context "intelligent streaming decisions with both Accept headers" do
+          let(:progress_request_both) do
+            {
+              "jsonrpc" => "2.0",
+              "method" => "tools/call",
+              "params" => {
+                "_meta" => {"progressToken" => 123},
+                "name" => "test_tool",
+                "arguments" => {}
+              },
+              "id" => "both-accept-1"
+            }
+          end
+
+          before do
+            allow(router).to receive(:route) do |message, **kwargs|
+              double("result", serialized: {content: [{type: "text", text: "Tool completed"}], isError: false})
+            end
+          end
+
+          it "streams by default when client accepts both (regardless of progress token)" do
+            set_request_env(
+              body: progress_request_both.to_json,
+              headers: {"Accept" => "application/json, text/event-stream"}
+            )
+
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:stream]).to be true
+              expect(result[:json]).to be_nil
+              expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+            end
+          end
+
+          it "streams by default when client accepts both (regardless of progress token)" do
+            request_without_token = progress_request_both.dup
+            request_without_token["params"].delete("_meta")
+
+            set_request_env(
+              body: request_without_token.to_json,
+              headers: {"Accept" => "application/json, text/event-stream"}
+            )
+
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:stream]).to be true
+              expect(result[:json]).to be_nil
+              expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+            end
+          end
+
+          it "returns JSON when client explicitly requests JSON only" do
+            set_request_env(
+              body: progress_request_both.to_json,
+              headers: {"Accept" => "application/json"}
+            )
+
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:stream]).to be_nil
+              expect(result[:json]).not_to be_nil
+              expect(result[:headers]["Content-Type"]).to eq("application/json")
+            end
+          end
+
+          it "streams when client accepts both and response is large" do
+            # Create a large response (>100KB)
+            large_content = "x" * 150_000  # 150KB of content
+
+            allow(router).to receive(:route) do |message, **kwargs|
+              double("result", serialized: {content: [{type: "text", text: large_content}], isError: false})
+            end
+
+            set_request_env(
+              body: progress_request_both.to_json,
+              headers: {"Accept" => "application/json, text/event-stream"}
+            )
+
+            result = transport.handle
+
+            aggregate_failures do
+              expect(result[:stream]).to be true
+              expect(result[:headers]["Content-Type"]).to eq("text/event-stream")
+              expect(result[:stream_proc]).to be_a(Proc)
+            end
           end
         end
       end
