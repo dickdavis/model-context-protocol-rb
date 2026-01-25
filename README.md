@@ -246,11 +246,11 @@ server = ModelContextProtocol::Server.new do |config|
 
   # Register prompts, resources, resource templates, and tools
   config.registry = ModelContextProtocol::Server::Registry.new do
-    prompts list_changed: true do
+    prompts do
       register TestPrompt
     end
 
-    resources list_changed: true, subscribe: true do
+    resources do
       register TestResource
     end
 
@@ -258,7 +258,7 @@ server = ModelContextProtocol::Server.new do |config|
       register TestResourceTemplate
     end
 
-    tools list_changed: true do
+    tools do
       register TestTool
     end
   end
@@ -380,15 +380,17 @@ The registry is configured using `ModelContextProtocol::Server::Registry.new` an
 
 Within each block, use `register ClassName` to register your handlers.
 
+**Note:** The `list_changed` and `subscribe` options are accepted for capability advertisement but the  list changed notification functionality is not yet implemented (see [Feature Support](#feature-support-server)).
+
 **Example:**
 ```ruby
 config.registry = ModelContextProtocol::Server::Registry.new do
-  prompts list_changed: true do
+  prompts do
     register MyPrompt
     register AnotherPrompt
   end
 
-  resources list_changed: true, subscribe: true do
+  resources do
     register MyResource
   end
 

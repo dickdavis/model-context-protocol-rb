@@ -259,20 +259,20 @@ module ModelContextProtocol
 
         registry = configuration.registry
 
-        if registry.prompts_options.any? && !registry.instance_variable_get(:@prompts).empty?
+        if !registry.instance_variable_get(:@prompts).empty?
           capabilities[:prompts] = {
             listChanged: registry.prompts_options[:list_changed]
           }.except(:completions).compact
         end
 
-        if registry.resources_options.any? && !registry.instance_variable_get(:@resources).empty?
+        if !registry.instance_variable_get(:@resources).empty?
           capabilities[:resources] = {
             subscribe: registry.resources_options[:subscribe],
             listChanged: registry.resources_options[:list_changed]
           }.compact
         end
 
-        if registry.tools_options.any? && !registry.instance_variable_get(:@tools).empty?
+        if !registry.instance_variable_get(:@tools).empty?
           capabilities[:tools] = {
             listChanged: registry.tools_options[:list_changed]
           }.compact
