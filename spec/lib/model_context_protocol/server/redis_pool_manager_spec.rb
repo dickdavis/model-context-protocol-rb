@@ -200,13 +200,13 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
       end
 
       it "calls reap on the pool with default timeout" do
-        expect(manager.pool).to receive(:reap).with(300)
+        expect(manager.pool).to receive(:reap).with(idle_seconds: 300)
         manager.reap_now
       end
 
       it "uses configured idle timeout" do
         manager.configure_reaper(enabled: false, idle_timeout: 600)
-        expect(manager.pool).to receive(:reap).with(600)
+        expect(manager.pool).to receive(:reap).with(idle_seconds: 600)
         manager.reap_now
       end
 
@@ -214,7 +214,7 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
         conn = double("connection")
         expect(conn).to receive(:close)
 
-        expect(manager.pool).to receive(:reap).with(300).and_yield(conn)
+        expect(manager.pool).to receive(:reap).with(idle_seconds: 300).and_yield(conn)
         manager.reap_now
       end
     end
