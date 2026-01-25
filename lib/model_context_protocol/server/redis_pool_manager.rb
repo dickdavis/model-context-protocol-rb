@@ -48,7 +48,7 @@ module ModelContextProtocol
     def reap_now
       return unless @pool
 
-      @pool.reap(@reaper_config[:idle_timeout]) do |conn|
+      @pool.reap(idle_seconds: @reaper_config[:idle_timeout]) do |conn|
         conn.close
       end
     end
