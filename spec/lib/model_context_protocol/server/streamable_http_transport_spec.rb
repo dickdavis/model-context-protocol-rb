@@ -623,14 +623,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         allow(mock_stream).to receive(:write)
         allow(mock_stream).to receive(:flush)
         allow(mock_stream).to receive(:respond_to?).with(:flush).and_return(true)
+        allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(false)
       end
 
-      it "sends ping messages to detect connection status" do
-        aggregate_failures do
-          expect(mock_stream).to receive(:write).with(": ping\n\n")
-          expect(mock_stream).to receive(:flush)
-        end
-
+      it "checks connection status without sending pings" do
+        # stream_connected? now only checks stream status, actual pings are sent via monitor_streams
         result = transport.send(:stream_connected?, mock_stream)
         expect(result).to be true
       end
@@ -1505,15 +1502,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           stream_registry.register_stream(session_id, mock_stream)
         end
 
-        it "sends completion event and closes stream" do
-          expect(mock_stream).to receive(:write).with("data: {\"type\":\"stream_complete\",\"reason\":\"completed\"}\n\n")
+        it "closes stream" do
           expect(mock_stream).to receive(:close)
 
           transport.send(:close_stream, session_id)
         end
 
         it "unregisters stream from registry" do
-          allow(mock_stream).to receive(:write)
           allow(mock_stream).to receive(:close)
 
           expect(stream_registry.has_local_stream?(session_id)).to be true
@@ -1525,7 +1520,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           allow(transport.instance_variable_get(:@require_sessions)).to receive(:nil?).and_return(false)
           transport.instance_variable_set(:@require_sessions, true)
 
-          allow(mock_stream).to receive(:write)
           allow(mock_stream).to receive(:close)
           expect(session_store).to receive(:mark_stream_inactive).with(session_id)
 
@@ -1533,15 +1527,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         end
 
         it "handles already closed streams gracefully" do
-          allow(mock_stream).to receive(:write).and_raise(IOError)
-          allow(mock_stream).to receive(:close)
+          allow(mock_stream).to receive(:close).and_raise(IOError)
 
           expect { transport.send(:close_stream, session_id) }.not_to raise_error
           expect(stream_registry.has_local_stream?(session_id)).to be false
         end
 
-        it "accepts custom reason" do
-          expect(mock_stream).to receive(:write).with("data: {\"type\":\"stream_complete\",\"reason\":\"custom_reason\"}\n\n")
+        it "accepts custom reason for logging" do
           allow(mock_stream).to receive(:close)
 
           transport.send(:close_stream, session_id, reason: "custom_reason")
@@ -1582,10 +1574,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       it "automatically closes stream after completing request" do
         allow(mock_stream).to receive(:write)
-        allow(mock_stream).to receive(:close)
-
-        # Expect completion event to be sent
-        expect(mock_stream).to receive(:write).with(include("stream_complete"))
+        expect(mock_stream).to receive(:close)
 
         result = transport.handle
         result[:stream_proc].call(mock_stream)
@@ -1621,41 +1610,24 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       describe "#stream_connected?" do
-        it "returns true for connected streams" do
-          allow(mock_stream).to receive(:write)
-          allow(mock_stream).to receive(:flush)
+        it "returns true for open streams" do
+          allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(true)
+          allow(mock_stream).to receive(:closed?).and_return(false)
 
           expect(transport.send(:stream_connected?, mock_stream)).to be true
         end
 
-        it "returns false for disconnected streams (IOError)" do
-          allow(mock_stream).to receive(:write).and_raise(IOError)
+        it "returns false for closed streams" do
+          allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(true)
+          allow(mock_stream).to receive(:closed?).and_return(true)
 
           expect(transport.send(:stream_connected?, mock_stream)).to be false
         end
 
-        it "returns false for disconnected streams (EPIPE)" do
-          allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
+        it "returns true for streams without closed? method" do
+          allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(false)
 
-          expect(transport.send(:stream_connected?, mock_stream)).to be false
-        end
-
-        it "returns false for disconnected streams (ECONNRESET)" do
-          allow(mock_stream).to receive(:write).and_raise(Errno::ECONNRESET)
-
-          expect(transport.send(:stream_connected?, mock_stream)).to be false
-        end
-
-        it "returns false for disconnected streams (ENOTCONN)" do
-          allow(mock_stream).to receive(:write).and_raise(Errno::ENOTCONN)
-
-          expect(transport.send(:stream_connected?, mock_stream)).to be false
-        end
-
-        it "returns false for disconnected streams (EBADF)" do
-          allow(mock_stream).to receive(:write).and_raise(Errno::EBADF)
-
-          expect(transport.send(:stream_connected?, mock_stream)).to be false
+          expect(transport.send(:stream_connected?, mock_stream)).to be true
         end
 
         it "returns false for nil streams" do
@@ -1667,9 +1639,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         it "closes disconnected streams" do
           allow(mock_stream).to receive(:write).and_raise(IOError)
           allow(mock_stream).to receive(:close)
-
-          # Expect completion event to be sent during close_stream
-          expect(mock_stream).to receive(:write).with(include("stream_complete"))
 
           transport.send(:monitor_streams)
 
@@ -1707,9 +1676,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           allow(mock_stream).to receive(:write).and_raise(IOError)
           allow(mock_stream).to receive(:close)
 
-          # Expect completion event during close_stream
-          expect(mock_stream).to receive(:write).with(include("stream_complete"))
-
           transport.send(:deliver_to_session_stream, session_id, {test: "data"})
 
           expect(stream_registry.has_local_stream?(session_id)).to be false
@@ -1721,13 +1687,295 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
           allow(mock_stream).to receive(:close)
 
-          # Expect completion event during close_stream
-          expect(mock_stream).to receive(:write).with(include("stream_complete"))
-
           transport.send(:deliver_to_active_streams, {test: "notification"})
 
           expect(stream_registry.has_local_stream?(session_id)).to be false
         end
+      end
+    end
+
+    describe "#deliver_to_session_stream return value" do
+      before do
+        allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(true)
+        allow(mock_stream).to receive(:respond_to?).with(:flush).and_return(true)
+        allow(mock_stream).to receive(:closed?).and_return(false)
+      end
+
+      it "returns true when message is delivered successfully" do
+        stream_registry.register_stream(session_id, mock_stream)
+        allow(mock_stream).to receive(:write)
+        allow(mock_stream).to receive(:flush)
+
+        result = transport.send(:deliver_to_session_stream, session_id, {test: "data"})
+
+        expect(result).to be true
+      end
+
+      it "returns false when stream is not found locally" do
+        result = transport.send(:deliver_to_session_stream, "nonexistent-session", {test: "data"})
+
+        expect(result).to be false
+      end
+
+      it "returns false when stream fails connection validation" do
+        stream_registry.register_stream(session_id, mock_stream)
+        allow(mock_stream).to receive(:closed?).and_return(true)
+        allow(mock_stream).to receive(:close)
+
+        result = transport.send(:deliver_to_session_stream, session_id, {test: "data"})
+
+        expect(result).to be false
+      end
+
+      it "returns false when delivery raises network error" do
+        stream_registry.register_stream(session_id, mock_stream)
+        allow(mock_stream).to receive(:write).and_raise(Errno::EPIPE)
+        allow(mock_stream).to receive(:close)
+
+        result = transport.send(:deliver_to_session_stream, session_id, {test: "data"})
+
+        expect(result).to be false
+      end
+    end
+  end
+
+  describe "#send_notification with session_id targeting" do
+    let(:mock_stream) { StringIO.new }
+    let(:target_session_id) { "target-session-456" }
+    let(:other_session_id) { "other-session-789" }
+    let(:other_stream) { StringIO.new }
+
+    before do
+      client_logger.connect_transport(transport)
+    end
+
+    context "when session_id is provided" do
+      before do
+        transport.instance_variable_get(:@stream_registry).register_stream(target_session_id, mock_stream)
+        transport.instance_variable_get(:@stream_registry).register_stream(other_session_id, other_stream)
+      end
+
+      it "delivers notification only to the targeted stream" do
+        transport.send_notification("notifications/progress", {progress: 50}, session_id: target_session_id)
+
+        mock_stream.rewind
+        other_stream.rewind
+
+        target_output = mock_stream.read
+        other_output = other_stream.read
+
+        aggregate_failures do
+          expect(target_output).to include("notifications/progress")
+          expect(other_output).to be_empty
+        end
+      end
+
+      it "queues notification if targeted stream delivery fails" do
+        allow(mock_stream).to receive(:write).and_raise(IOError)
+        allow(mock_stream).to receive(:close)
+
+        transport.send_notification("notifications/progress", {progress: 50}, session_id: target_session_id)
+
+        notification_queue = transport.instance_variable_get(:@notification_queue)
+        expect(notification_queue.size).to eq(1)
+      end
+
+      it "queues notification if targeted stream does not exist" do
+        transport.send_notification("notifications/progress", {progress: 50}, session_id: "nonexistent-session")
+
+        notification_queue = transport.instance_variable_get(:@notification_queue)
+        expect(notification_queue.size).to eq(1)
+      end
+    end
+
+    context "when session_id is nil" do
+      before do
+        transport.instance_variable_get(:@stream_registry).register_stream(target_session_id, mock_stream)
+        transport.instance_variable_get(:@stream_registry).register_stream(other_session_id, other_stream)
+      end
+
+      it "broadcasts to all active streams when no persistent notification stream exists" do
+        transport.send_notification("notifications/message", {data: "broadcast"})
+
+        mock_stream.rewind
+        other_stream.rewind
+
+        aggregate_failures do
+          expect(mock_stream.read).to include("notifications/message")
+          expect(other_stream.read).to include("notifications/message")
+        end
+      end
+    end
+  end
+
+  describe "#handle_ping_response" do
+    let(:server_request_store) { transport.instance_variable_get(:@server_request_store) }
+    let(:ping_id) { "ping-abc123" }
+
+    it "returns true and marks ping as completed for valid ping response" do
+      server_request_store.register_request(ping_id, session_id, type: :ping)
+
+      result = transport.send(:handle_ping_response, {"id" => ping_id, "result" => {}})
+
+      aggregate_failures do
+        expect(result).to be true
+        expect(server_request_store.pending?(ping_id)).to be false
+      end
+    end
+
+    it "returns false for response with no id" do
+      result = transport.send(:handle_ping_response, {"result" => {}})
+
+      expect(result).to be false
+    end
+
+    it "returns false for response id that is not a pending ping" do
+      result = transport.send(:handle_ping_response, {"id" => "unknown-id", "result" => {}})
+
+      expect(result).to be false
+    end
+
+    it "returns false for pending request that is not a ping type" do
+      server_request_store.register_request("other-request", session_id, type: :other)
+
+      result = transport.send(:handle_ping_response, {"id" => "other-request", "result" => {}})
+
+      expect(result).to be false
+    end
+
+    it "handles errors gracefully and returns false" do
+      allow(server_request_store).to receive(:pending?).and_raise(StandardError, "Redis error")
+
+      result = transport.send(:handle_ping_response, {"id" => ping_id, "result" => {}})
+
+      expect(result).to be false
+    end
+  end
+
+  describe "#send_ping_to_stream" do
+    let(:mock_stream) { double("stream") }
+    let(:server_request_store) { transport.instance_variable_get(:@server_request_store) }
+    let(:written_data) { [] }
+
+    before do
+      allow(mock_stream).to receive(:write) { |data| written_data << data }
+      allow(mock_stream).to receive(:flush)
+      allow(mock_stream).to receive(:respond_to?).with(:flush).and_return(true)
+    end
+
+    it "sends MCP-compliant ping request to stream" do
+      transport.send(:send_ping_to_stream, mock_stream, session_id)
+
+      # SSE format: first write is event ID, second is data
+      data_line = written_data.find { |d| d.start_with?("data:") }
+
+      aggregate_failures do
+        expect(data_line).to include('"method":"ping"')
+        expect(data_line).to include('"jsonrpc":"2.0"')
+        expect(data_line).to match(/"id":"ping-[a-f0-9]+"/)
+      end
+    end
+
+    it "registers ping request in server request store" do
+      transport.send(:send_ping_to_stream, mock_stream, session_id)
+
+      pending_requests = server_request_store.get_all_pending_requests
+      expect(pending_requests.size).to eq(1)
+      expect(pending_requests.first).to start_with("ping-")
+    end
+
+    it "associates ping with session_id" do
+      transport.send(:send_ping_to_stream, mock_stream, session_id)
+
+      pending_requests = server_request_store.get_all_pending_requests
+      request_info = server_request_store.get_request(pending_requests.first)
+
+      aggregate_failures do
+        expect(request_info["session_id"]).to eq(session_id)
+        expect(request_info["type"]).to eq("ping")
+      end
+    end
+  end
+
+  describe "ping timeout detection in monitor_streams" do
+    let(:mock_stream) { double("stream") }
+    let(:stream_registry) { transport.instance_variable_get(:@stream_registry) }
+    let(:server_request_store) { transport.instance_variable_get(:@server_request_store) }
+
+    before do
+      allow(mock_stream).to receive(:write)
+      allow(mock_stream).to receive(:flush)
+      allow(mock_stream).to receive(:close)
+      allow(mock_stream).to receive(:respond_to?).with(:flush).and_return(true)
+      allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(true)
+      allow(mock_stream).to receive(:closed?).and_return(false)
+
+      stream_registry.register_stream(session_id, mock_stream)
+    end
+
+    it "closes streams with expired ping requests" do
+      # Register an expired ping (created in the past)
+      ping_id = "ping-expired"
+      server_request_store.register_request(ping_id, session_id, type: :ping)
+
+      # Simulate time passing by manipulating the request data
+      request_key = "server_request:pending:#{ping_id}"
+      request_data = JSON.parse(mock_redis.get(request_key))
+      request_data["created_at"] = Time.now.to_f - 60 # 60 seconds ago
+      mock_redis.set(request_key, request_data.to_json)
+
+      transport.send(:monitor_streams)
+
+      aggregate_failures do
+        expect(stream_registry.has_local_stream?(session_id)).to be false
+        expect(server_request_store.pending?(ping_id)).to be false
+      end
+    end
+
+    it "keeps streams open when ping responses are received in time" do
+      stream_registry.register_stream(session_id, mock_stream)
+
+      # First monitor call sends ping
+      transport.send(:monitor_streams)
+
+      # Simulate receiving ping response
+      pending_requests = server_request_store.get_all_pending_requests
+      pending_requests.each do |request_id|
+        server_request_store.mark_completed(request_id)
+      end
+
+      # Second monitor call should not close the stream
+      transport.send(:monitor_streams)
+
+      expect(stream_registry.has_local_stream?(session_id)).to be true
+    end
+  end
+
+  describe "ping_timeout configuration" do
+    it "uses default ping timeout of 10 seconds" do
+      ping_timeout = transport.instance_variable_get(:@ping_timeout)
+      expect(ping_timeout).to eq(10)
+    end
+
+    context "with custom ping_timeout" do
+      let(:server) do
+        ModelContextProtocol::Server.new do |config|
+          config.name = "test-server"
+          config.version = "1.0.0"
+          config.registry = ModelContextProtocol::Server::Registry.new
+          config.transport = {
+            type: :streamable_http,
+            require_sessions: false,
+            validate_origin: false,
+            ping_timeout: 30,
+            env: rack_env
+          }
+        end
+      end
+
+      it "respects custom ping_timeout setting" do
+        ping_timeout = transport.instance_variable_get(:@ping_timeout)
+        expect(ping_timeout).to eq(30)
       end
     end
   end
