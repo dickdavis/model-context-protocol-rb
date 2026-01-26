@@ -96,7 +96,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
               progress: 100,
               total: 100,
               message: "Completed"
-            )
+            ),
+            hash_including(session_id: nil)
           )
         end
       end
@@ -118,7 +119,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
               progress: 100,
               total: 100,
               message: "Completed"
-            )
+            ),
+            hash_including(session_id: nil)
           )
         end
       end
@@ -155,8 +157,57 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
             progress: 100,
             total: 100,
             message: "Completed"
-          )
+          ),
+          hash_including(session_id: nil)
         )
+      end
+    end
+
+    context "when stream_id is present in MCP context" do
+      let(:stream_id) { "test-stream-abc123" }
+
+      before do
+        Thread.current[:mcp_context] = {
+          jsonrpc_request_id: "123",
+          progress_token: progress_token,
+          transport: transport,
+          stream_id: stream_id
+        }
+      end
+
+      after do
+        Thread.current[:mcp_context] = nil
+      end
+
+      it "sends progress notifications targeted to the specific stream" do
+        test_instance.progressable(max_duration: 0.5) do
+          sleep 0.1
+          "result"
+        end
+
+        expect(transport).to have_received(:send_notification).with(
+          "notifications/progress",
+          hash_including(
+            progressToken: progress_token,
+            progress: 100,
+            total: 100,
+            message: "Completed"
+          ),
+          session_id: stream_id
+        )
+      end
+
+      it "includes stream_id in intermediate progress notifications" do
+        test_instance.progressable(max_duration: 0.3) do
+          sleep 0.2
+          "result"
+        end
+
+        expect(transport).to have_received(:send_notification).with(
+          "notifications/progress",
+          hash_including(progressToken: progress_token),
+          session_id: stream_id
+        ).at_least(:once)
       end
     end
 
@@ -182,7 +233,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
 
         expect(transport).to have_received(:send_notification).with(
           "notifications/progress",
-          hash_including(progress: 100, message: "Completed")
+          hash_including(progress: 100, message: "Completed"),
+          hash_including(session_id: nil)
         )
       end
     end
@@ -222,7 +274,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
             progressToken: progress_token,
             progress: 100,
             message: "Completed"
-          )
+          ),
+          hash_including(session_id: nil)
         )
       end
     end
@@ -317,7 +370,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
           expect(end_time - start_time).to be < 5
           expect(transport).to have_received(:send_notification).with(
             "notifications/progress",
-            hash_including(progress: 100, message: "Completed")
+            hash_including(progress: 100, message: "Completed"),
+            hash_including(session_id: nil)
           )
         end
       end
@@ -334,7 +388,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
           expect(result).to eq("completed despite cancellation")
           expect(transport).to have_received(:send_notification).with(
             "notifications/progress",
-            hash_including(progress: 100, message: "Completed")
+            hash_including(progress: 100, message: "Completed"),
+            hash_including(session_id: nil)
           )
         end
       end
@@ -360,7 +415,8 @@ RSpec.describe ModelContextProtocol::Server::Progressable do
           expect(result).to eq("completed")
           expect(transport).to have_received(:send_notification).with(
             "notifications/progress",
-            hash_including(progress: 100, message: "Completed")
+            hash_including(progress: 100, message: "Completed"),
+            hash_including(session_id: nil)
           )
         end
       end
