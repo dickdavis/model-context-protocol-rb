@@ -22,6 +22,8 @@ module ModelContextProtocol
       transport = context[:transport]
       jsonrpc_request_id = context[:jsonrpc_request_id]
       request_store = context[:request_store]
+      stream_id = context[:stream_id]
+
       start_time = Time.now
       update_interval = [1.0, max_duration * 0.05].max
 
@@ -48,7 +50,7 @@ module ModelContextProtocol
               progress: progress_pct.round(1),
               total: 100,
               message: progress_message
-            })
+            }, session_id: stream_id)
           rescue
             break
           end
@@ -73,7 +75,7 @@ module ModelContextProtocol
             progress: 100,
             total: 100,
             message: "Completed"
-          })
+          }, session_id: stream_id)
         rescue
           nil
         ensure
