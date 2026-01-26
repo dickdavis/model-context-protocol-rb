@@ -2043,5 +2043,47 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       transport.shutdown
     end
+
+    it "sets stream_monitor_running to false" do
+      transport.instance_variable_set(:@stream_monitor_running, true)
+
+      transport.shutdown
+
+      expect(transport.instance_variable_get(:@stream_monitor_running)).to be false
+    end
+
+    it "stops the message poller" do
+      message_poller = transport.instance_variable_get(:@message_poller)
+      expect(message_poller).to receive(:stop)
+
+      transport.shutdown
+    end
+  end
+
+  describe "#start_stream_monitor" do
+    it "sets stream_monitor_running to true" do
+      # Reset and restart the monitor
+      transport.instance_variable_set(:@stream_monitor_running, false)
+      transport.send(:start_stream_monitor)
+
+      expect(transport.instance_variable_get(:@stream_monitor_running)).to be true
+
+      # Clean up
+      transport.instance_variable_set(:@stream_monitor_running, false)
+      transport.instance_variable_get(:@stream_monitor_thread)&.kill
+    end
+
+    it "creates a stream monitor thread" do
+      transport.instance_variable_set(:@stream_monitor_thread, nil)
+      transport.send(:start_stream_monitor)
+
+      # The thread may be a double in test setup, just verify it's set
+      expect(transport.instance_variable_get(:@stream_monitor_thread)).not_to be_nil
+
+      # Clean up
+      transport.instance_variable_set(:@stream_monitor_running, false)
+      thread = transport.instance_variable_get(:@stream_monitor_thread)
+      thread.kill if thread.respond_to?(:kill) && thread.respond_to?(:alive?) && thread.alive?
+    end
   end
 end

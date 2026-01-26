@@ -49,6 +49,7 @@ module ModelContextProtocol
       end
       @message_poller.start
 
+      @stream_monitor_running = false
       @stream_monitor_thread = nil
       start_stream_monitor
     end
@@ -60,6 +61,7 @@ module ModelContextProtocol
 
       @message_poller&.stop
 
+      @stream_monitor_running = false
       if @stream_monitor_thread&.alive?
         @stream_monitor_thread.kill
         @stream_monitor_thread.join(5)
@@ -556,9 +558,16 @@ module ModelContextProtocol
     # Start background thread to monitor stream health and clean up disconnected streams
     # Runs every 30 seconds to detect client disconnections and prevent resource leaks
     def start_stream_monitor
+      @stream_monitor_running = true
       @stream_monitor_thread = Thread.new do
-        loop do
-          sleep 30
+        while @stream_monitor_running
+          # Sleep in 1-second intervals to allow quick shutdown response
+          30.times do
+            break unless @stream_monitor_running
+            sleep 1
+          end
+
+          next unless @stream_monitor_running
 
           begin
             monitor_streams
@@ -566,10 +575,6 @@ module ModelContextProtocol
             @server_logger.error("Stream monitor error: #{e.message}")
           end
         end
-      rescue => e
-        @server_logger.error("Stream monitor thread error: #{e.message}")
-        sleep 5
-        retry
       end
     end
 
