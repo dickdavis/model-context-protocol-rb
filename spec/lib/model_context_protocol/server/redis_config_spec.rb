@@ -39,7 +39,8 @@ RSpec.describe ModelContextProtocol::Server::RedisConfig do
       expect(ModelContextProtocol::Server::RedisPoolManager).to receive(:new).with(
         redis_url: redis_url,
         pool_size: 20,
-        pool_timeout: 5
+        pool_timeout: 5,
+        ssl_params: nil
       ).and_return(manager_mock)
       expect(manager_mock).to receive(:start)
 
@@ -48,6 +49,21 @@ RSpec.describe ModelContextProtocol::Server::RedisConfig do
       end
 
       expect(described_class.configured?).to be true
+    end
+
+    it "passes ssl_params to pool manager" do
+      ssl_params = {verify_mode: OpenSSL::SSL::VERIFY_NONE}
+      expect(ModelContextProtocol::Server::RedisPoolManager).to receive(:new).with(
+        redis_url: redis_url,
+        pool_size: 20,
+        pool_timeout: 5,
+        ssl_params: ssl_params
+      ).and_return(manager_mock)
+
+      described_class.configure do |c|
+        c.redis_url = redis_url
+        c.ssl_params = ssl_params
+      end
     end
 
     it "configures reaper when enabled" do
@@ -153,6 +169,7 @@ RSpec.describe ModelContextProtocol::Server::RedisConfig do
           expect(configuration.enable_reaper).to be true
           expect(configuration.reaper_interval).to eq(60)
           expect(configuration.idle_timeout).to eq(300)
+          expect(configuration.ssl_params).to be_nil
         end
       end
     end
@@ -186,6 +203,12 @@ RSpec.describe ModelContextProtocol::Server::RedisConfig do
       it "allows setting idle_timeout" do
         configuration.idle_timeout = 600
         expect(configuration.idle_timeout).to eq(600)
+      end
+
+      it "allows setting ssl_params" do
+        ssl_params = {verify_mode: OpenSSL::SSL::VERIFY_NONE}
+        configuration.ssl_params = ssl_params
+        expect(configuration.ssl_params).to eq(ssl_params)
       end
     end
   end

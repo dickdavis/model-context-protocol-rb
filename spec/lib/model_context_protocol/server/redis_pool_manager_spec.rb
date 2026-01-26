@@ -13,7 +13,19 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
         expect(manager.instance_variable_get(:@redis_url)).to eq(redis_url)
         expect(manager.instance_variable_get(:@pool_size)).to eq(5)
         expect(manager.instance_variable_get(:@pool_timeout)).to eq(2)
+        expect(manager.instance_variable_get(:@ssl_params)).to be_nil
       end
+    end
+
+    it "stores ssl_params when provided" do
+      ssl_params = {verify_mode: OpenSSL::SSL::VERIFY_NONE}
+      manager_with_ssl = described_class.new(
+        redis_url: redis_url,
+        pool_size: pool_size,
+        pool_timeout: pool_timeout,
+        ssl_params: ssl_params
+      )
+      expect(manager_with_ssl.instance_variable_get(:@ssl_params)).to eq(ssl_params)
     end
 
     it "does not create pool immediately" do
@@ -110,6 +122,54 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
         expect(manager.reaper_thread.name).to eq("MCP-Redis-Reaper")
 
         manager.shutdown
+      end
+    end
+
+    context "with ssl_params" do
+      let(:ssl_params) { {verify_mode: OpenSSL::SSL::VERIFY_NONE} }
+      let(:redis_double) { double("redis", close: nil, ping: "PONG") }
+
+      context "when URL uses rediss://" do
+        let(:redis_url) { "rediss://localhost:6379/15" }
+        subject(:manager) do
+          described_class.new(
+            redis_url: redis_url,
+            pool_size: pool_size,
+            pool_timeout: pool_timeout,
+            ssl_params: ssl_params
+          )
+        end
+
+        it "passes ssl_params to Redis.new" do
+          expect(Redis).to receive(:new).with(
+            url: redis_url,
+            ssl_params: ssl_params
+          ).and_return(redis_double)
+
+          manager.start
+          # Force pool to create a connection
+          manager.pool.with { |_| }
+        end
+      end
+
+      context "when URL uses redis://" do
+        let(:redis_url) { "redis://localhost:6379/15" }
+        subject(:manager) do
+          described_class.new(
+            redis_url: redis_url,
+            pool_size: pool_size,
+            pool_timeout: pool_timeout,
+            ssl_params: ssl_params
+          )
+        end
+
+        it "does not pass ssl_params to Redis.new" do
+          expect(Redis).to receive(:new).with(url: redis_url).and_return(redis_double)
+
+          manager.start
+          # Force pool to create a connection
+          manager.pool.with { |_| }
+        end
       end
     end
   end

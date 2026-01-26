@@ -53,7 +53,8 @@ module ModelContextProtocol
       @manager = Server::RedisPoolManager.new(
         redis_url: config.redis_url,
         pool_size: config.pool_size,
-        pool_timeout: config.pool_timeout
+        pool_timeout: config.pool_timeout,
+        ssl_params: config.ssl_params
       )
 
       if config.enable_reaper
@@ -93,7 +94,7 @@ module ModelContextProtocol
 
     class Configuration
       attr_accessor :redis_url, :pool_size, :pool_timeout,
-        :enable_reaper, :reaper_interval, :idle_timeout
+        :enable_reaper, :reaper_interval, :idle_timeout, :ssl_params
 
       def initialize
         @redis_url = nil
@@ -102,6 +103,7 @@ module ModelContextProtocol
         @enable_reaper = true
         @reaper_interval = 60
         @idle_timeout = 300
+        @ssl_params = nil
       end
     end
   end

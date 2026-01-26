@@ -2,10 +2,11 @@ module ModelContextProtocol
   class Server::RedisPoolManager
     attr_reader :pool, :reaper_thread
 
-    def initialize(redis_url:, pool_size: 20, pool_timeout: 5)
+    def initialize(redis_url:, pool_size: 20, pool_timeout: 5, ssl_params: nil)
       @redis_url = redis_url
       @pool_size = pool_size
       @pool_timeout = pool_timeout
+      @ssl_params = ssl_params
       @pool = nil
       @reaper_thread = nil
       @reaper_config = {
@@ -72,8 +73,14 @@ module ModelContextProtocol
     end
 
     def create_pool
+      redis_options = {url: @redis_url}
+      # Only apply ssl_params for SSL connections (rediss://)
+      if @ssl_params && @redis_url&.start_with?("rediss://")
+        redis_options[:ssl_params] = @ssl_params
+      end
+
       @pool = ConnectionPool.new(size: @pool_size, timeout: @pool_timeout) do
-        Redis.new(url: @redis_url)
+        Redis.new(**redis_options)
       end
     end
 
