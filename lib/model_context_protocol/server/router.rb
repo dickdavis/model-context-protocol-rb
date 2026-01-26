@@ -20,8 +20,9 @@ module ModelContextProtocol
     # @param request_store [Object] the request store for tracking cancellation
     # @param session_id [String, nil] the session ID for HTTP transport
     # @param transport [Object, nil] the transport for sending notifications
+    # @param stream_id [String, nil] the specific stream ID for targeted notifications
     # @return [Object] the handler result, or nil if cancelled
-    def route(message, request_store: nil, session_id: nil, transport: nil)
+    def route(message, request_store: nil, session_id: nil, transport: nil, stream_id: nil)
       method = message["method"]
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
@@ -36,7 +37,7 @@ module ModelContextProtocol
       result = nil
       begin
         with_environment(@configuration&.environment_variables) do
-          context = {jsonrpc_request_id:, request_store:, session_id:, progress_token:, transport:}
+          context = {jsonrpc_request_id:, request_store:, session_id:, progress_token:, transport:, stream_id:}
 
           Thread.current[:mcp_context] = context
 

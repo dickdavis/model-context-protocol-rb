@@ -425,4 +425,72 @@ RSpec.describe ModelContextProtocol::Server::Router do
       end
     end
   end
+
+  describe "stream_id handling" do
+    let(:stream_id) { "test-stream-abc123" }
+    let(:request_id) { "test-request-789" }
+
+    before do
+      router.map("stream_test") do |_|
+        context = Thread.current[:mcp_context]
+        {
+          stream_id: context&.dig(:stream_id),
+          session_id: context&.dig(:session_id),
+          jsonrpc_request_id: context&.dig(:jsonrpc_request_id)
+        }
+      end
+    end
+
+    context "when stream_id is provided" do
+      let(:message) { {"method" => "stream_test", "id" => request_id} }
+
+      it "makes stream_id available in thread context" do
+        result = router.route(message, stream_id: stream_id)
+
+        aggregate_failures do
+          expect(result[:stream_id]).to eq(stream_id)
+          expect(result[:jsonrpc_request_id]).to eq(request_id)
+        end
+      end
+
+      it "keeps stream_id separate from session_id" do
+        result = router.route(message, session_id: "session-456", stream_id: stream_id)
+
+        aggregate_failures do
+          expect(result[:stream_id]).to eq(stream_id)
+          expect(result[:session_id]).to eq("session-456")
+        end
+      end
+    end
+
+    context "when stream_id is not provided" do
+      let(:message) { {"method" => "stream_test", "id" => request_id} }
+
+      it "sets stream_id to nil in thread context" do
+        result = router.route(message)
+
+        expect(result[:stream_id]).to be_nil
+      end
+    end
+
+    context "context cleanup" do
+      let(:message) { {"method" => "stream_test", "id" => request_id} }
+
+      it "cleans up stream_id from thread context after execution" do
+        router.route(message, stream_id: stream_id)
+
+        expect(Thread.current[:mcp_context]).to be_nil
+      end
+
+      it "cleans up stream_id even when handler raises an error" do
+        router.map("error_stream_test") { |_| raise "Handler error" }
+
+        expect {
+          router.route({"method" => "error_stream_test", "id" => request_id}, stream_id: stream_id)
+        }.to raise_error(RuntimeError, "Handler error")
+
+        expect(Thread.current[:mcp_context]).to be_nil
+      end
+    end
+  end
 end
