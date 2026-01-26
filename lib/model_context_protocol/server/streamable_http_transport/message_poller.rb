@@ -37,7 +37,7 @@ module ModelContextProtocol
 
         if @poll_thread&.alive?
           @poll_thread.kill
-          @poll_thread.join(timeout: 5)
+          @poll_thread.join(5)
         end
 
         @poll_thread = nil

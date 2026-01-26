@@ -62,7 +62,7 @@ module ModelContextProtocol
 
       if @stream_monitor_thread&.alive?
         @stream_monitor_thread.kill
-        @stream_monitor_thread.join(timeout: 5)
+        @stream_monitor_thread.join(5)
       end
 
       @stream_registry.get_all_local_streams.each do |session_id, stream|

@@ -131,7 +131,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
     it "stops the polling thread" do
       aggregate_failures do
         expect(mock_thread).to receive(:kill)
-        expect(mock_thread).to receive(:join).with(timeout: 5)
+        expect(mock_thread).to receive(:join).with(5)
       end
 
       poller.stop
