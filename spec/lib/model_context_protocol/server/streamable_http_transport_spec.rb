@@ -1979,4 +1979,69 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
     end
   end
+
+  describe "#shutdown" do
+    let(:mock_stream) { double("stream") }
+    let(:stream_registry) { transport.instance_variable_get(:@stream_registry) }
+
+    before do
+      allow(mock_stream).to receive(:close)
+      allow(mock_stream).to receive(:write)
+      allow(mock_stream).to receive(:flush)
+      allow(mock_stream).to receive(:respond_to?).with(:flush).and_return(true)
+      allow(mock_stream).to receive(:respond_to?).with(:closed?).and_return(true)
+      allow(mock_stream).to receive(:closed?).and_return(false)
+    end
+
+    it "closes all active streams" do
+      stream_registry.register_stream(session_id, mock_stream)
+
+      expect(mock_stream).to receive(:close)
+
+      transport.shutdown
+    end
+
+    it "unregisters streams from the registry" do
+      stream_registry.register_stream(session_id, mock_stream)
+
+      expect(stream_registry.has_local_stream?(session_id)).to be true
+
+      transport.shutdown
+
+      expect(stream_registry.has_local_stream?(session_id)).to be false
+    end
+
+    it "closes multiple streams" do
+      mock_stream2 = double("stream2")
+      allow(mock_stream2).to receive(:close)
+
+      stream_registry.register_stream(session_id, mock_stream)
+      stream_registry.register_stream("other-session", mock_stream2)
+
+      expect(mock_stream).to receive(:close)
+      expect(mock_stream2).to receive(:close)
+
+      transport.shutdown
+    end
+
+    it "handles stream close errors gracefully" do
+      stream_registry.register_stream(session_id, mock_stream)
+      allow(mock_stream).to receive(:close).and_raise(IOError, "already closed")
+
+      expect { transport.shutdown }.not_to raise_error
+    end
+
+    it "continues closing other streams if one fails" do
+      mock_stream2 = double("stream2")
+      allow(mock_stream).to receive(:close).and_raise(IOError)
+      allow(mock_stream2).to receive(:close)
+
+      stream_registry.register_stream(session_id, mock_stream)
+      stream_registry.register_stream("other-session", mock_stream2)
+
+      expect(mock_stream2).to receive(:close)
+
+      transport.shutdown
+    end
+  end
 end

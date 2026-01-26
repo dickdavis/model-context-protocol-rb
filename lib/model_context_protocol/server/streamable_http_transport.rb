@@ -65,9 +65,8 @@ module ModelContextProtocol
         @stream_monitor_thread.join(5)
       end
 
-      @stream_registry.get_all_local_streams.each do |session_id, stream|
-        @stream_registry.unregister_stream(session_id)
-        @session_store.mark_stream_inactive(session_id)
+      @stream_registry.get_all_local_streams.each do |session_id, _stream|
+        close_stream(session_id, reason: "shutdown")
       rescue => e
         @server_logger.error("Error during stream cleanup for session #{session_id}: #{e.message}")
       end
