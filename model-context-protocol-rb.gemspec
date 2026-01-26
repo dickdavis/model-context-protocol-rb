@@ -6,7 +6,7 @@ Gem::Specification.new do |spec|
   spec.name = "model-context-protocol-rb"
   spec.version = ModelContextProtocol::VERSION
   spec.authors = ["Dick Davis"]
-  spec.email = ["dick@hey.com"]
+  spec.email = ["webmaster@dick.codes"]
 
   spec.summary = "An implementation of the Model Context Protocol (MCP) in Ruby."
   spec.homepage = "https://github.com/dickdavis/model-context-protocol-rb"

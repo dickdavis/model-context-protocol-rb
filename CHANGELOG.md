@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.6.0] - 2025-01-26
+
+- Implement server logging capability for internal server diagnostics.
+- Add informational and debug logging in streamable HTTP transport.
+- (Fix) Ensure stream monitor thread shuts down quickly.
+- (Fix) Ensure streams are closed when the server shuts down.
+- (Fix) Fix stream handling in streamable HTTP transport.
+- (Fix) Ensure empty options don't break the registry.
+- (Fix) Ensure progressable timer tasks do not run indefinitely.
+- (Breaking) Update connection pool dependency; requires updating other gems that depend on connection_pool.
+
 ## [0.5.1] - 2025-09-23
 
 - (Fix) Ensure streams are properly closed when clients disconnect.
@@ -78,7 +89,8 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.3.4...v0.4.0
