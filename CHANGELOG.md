@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Add `ssl_params` configuration option for Redis connections to support hosted Redis providers with self-signed certificates.
+
 ## [0.6.0] - 2025-01-26
 
 - Implement server logging capability for internal server diagnostics.

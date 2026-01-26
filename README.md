@@ -342,6 +342,21 @@ end
 | `enable_reaper` | Boolean | No | `true` | Enable connection reaping |
 | `reaper_interval` | Integer | No | `60` | Reaper check interval in seconds |
 | `idle_timeout` | Integer | No | `300` | Idle connection timeout in seconds |
+| `ssl_params` | Hash | No | `nil` | SSL parameters passed to the Redis client (only applied for `rediss://` URLs) |
+
+#### SSL Configuration for Hosted Redis
+
+Some hosted Redis providers (such as Heroku Redis) use self-signed certificates for SSL connections. If you encounter certificate verification errors like `SSL_connect returned=1 errno=0 ... certificate verify failed (self-signed certificate in certificate chain)`, you can configure SSL parameters to allow these connections:
+
+```ruby
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = ENV.fetch('REDIS_URL')
+  config.ssl_params = { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+  # ... other options
+end
+```
+
+**Note:** The `ssl_params` option is only applied when the Redis URL uses the `rediss://` scheme (Redis over SSL). For standard `redis://` connections, this option is ignored.
 
 ### Server Logging Configuration
 
