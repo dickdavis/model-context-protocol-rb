@@ -832,7 +832,6 @@ module ModelContextProtocol
       return if changed_types.empty?
 
       changed_types.each do |type|
-        next unless list_changed_enabled?(type)
         send_notification("notifications/#{type}/list_changed", {}, session_id: session_id)
       end
 
@@ -841,16 +840,6 @@ module ModelContextProtocol
       @server_logger.error("Error checking handler changes: #{e.class.name}: #{e.message}")
       @server_logger.debug("Backtrace: #{e.backtrace.first(5).join("\n")}")
       # Don't re-raise - handler change detection is optional, allow request to proceed
-    end
-
-    # Check if list_changed capability is enabled for a handler type
-    def list_changed_enabled?(type)
-      opts = case type
-      when :prompts then @configuration.registry.prompts_options
-      when :resources then @configuration.registry.resources_options
-      when :tools then @configuration.registry.tools_options
-      end
-      opts[:list_changed] == true
     end
   end
 end

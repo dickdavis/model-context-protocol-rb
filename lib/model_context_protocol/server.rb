@@ -262,26 +262,20 @@ module ModelContextProtocol
 
         if !registry.instance_variable_get(:@prompts).empty?
           prompts_caps = {}
-          if supports_list_changed && registry.prompts_options[:list_changed]
-            prompts_caps[:listChanged] = true
-          end
+          prompts_caps[:listChanged] = true if supports_list_changed
           capabilities[:prompts] = prompts_caps
         end
 
         if !registry.instance_variable_get(:@resources).empty?
           resources_caps = {}
           resources_caps[:subscribe] = true if registry.resources_options[:subscribe]
-          if supports_list_changed && registry.resources_options[:list_changed]
-            resources_caps[:listChanged] = true
-          end
+          resources_caps[:listChanged] = true if supports_list_changed
           capabilities[:resources] = resources_caps
         end
 
         if !registry.instance_variable_get(:@tools).empty?
           tools_caps = {}
-          if supports_list_changed && registry.tools_options[:list_changed]
-            tools_caps[:listChanged] = true
-          end
+          tools_caps[:listChanged] = true if supports_list_changed
           capabilities[:tools] = tools_caps
         end
       end

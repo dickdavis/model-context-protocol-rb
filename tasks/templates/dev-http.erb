@@ -233,13 +233,13 @@ class MCPHttpApp
       config.transport = transport_config
 
       config.registry = ModelContextProtocol::Server::Registry.new do
-        prompts list_changed: true do
+        prompts do
           register TestPrompt
           # Extra prompt controlled by flag file: tmp/flags/extra_prompts
           register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
         end
 
-        resources list_changed: true, subscribe: true do
+        resources subscribe: true do
           register TestResource
           register TestAnnotatedResource
           register TestProgressiveResource
@@ -251,7 +251,7 @@ class MCPHttpApp
           register TestResourceTemplate
         end
 
-        tools list_changed: true do
+        tools do
           register TestToolWithStructuredContentResponse
           register TestToolWithTextResponse
           register TestToolWithImageResponse

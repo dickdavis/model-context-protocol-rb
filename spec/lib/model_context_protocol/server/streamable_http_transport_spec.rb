@@ -2177,6 +2177,159 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
   end
 
+  describe "#check_and_notify_handler_changes" do
+    let(:registry_with_tool) do
+      ModelContextProtocol::Server::Registry.new do
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    let(:server_with_tool) do
+      reg = registry_with_tool
+      ModelContextProtocol::Server.new do |config|
+        config.name = "test-server"
+        config.version = "1.0.0"
+        config.registry = reg
+        config.transport = {
+          type: :streamable_http,
+          require_sessions: true,
+          validate_origin: false,
+          env: build_rack_env
+        }
+      end
+    end
+
+    let(:transport_with_tool) do
+      server_with_tool.start
+      server_with_tool.transport
+    end
+
+    let(:session_store_with_tool) { transport_with_tool.instance_variable_get(:@session_store) }
+
+    it "returns early when session_id is nil" do
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, nil)
+    end
+
+    it "returns early when session does not exist" do
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, "nonexistent-session")
+    end
+
+    it "returns early when no previous handlers stored (first request after init)" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "does not send notification when handlers have not changed" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["double"]
+      )
+
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "sends notification when tools have changed" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      expect(transport_with_tool).to receive(:send_notification).with(
+        "notifications/tools/list_changed",
+        {},
+        session_id: session_id
+      )
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "updates stored handlers after detecting change" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      allow(transport_with_tool).to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+
+      updated = session_store_with_tool.get_registered_handlers(session_id)
+      expect(updated[:tools]).to eq(["double"])
+    end
+
+    it "handles errors gracefully without raising" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      allow(transport_with_tool).to receive(:send_notification).and_raise(StandardError, "Test error")
+
+      expect { transport_with_tool.send(:check_and_notify_handler_changes, session_id) }.not_to raise_error
+    end
+  end
+
+  describe "initialization stores handlers" do
+    let(:registry_with_tool) do
+      ModelContextProtocol::Server::Registry.new do
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    it "stores initial handlers when session is created during initialization" do
+      init_request = {"method" => "initialize", "id" => "init-1", "params" => {}}
+
+      init_server = ModelContextProtocol::Server.new do |config|
+        config.name = "test-server"
+        config.version = "1.0.0"
+        config.registry = registry_with_tool
+        config.transport = {
+          type: :streamable_http,
+          require_sessions: true,
+          validate_origin: false,
+          env: build_rack_env(body: init_request.to_json, headers: {"Accept" => "application/json"})
+        }
+      end
+
+      result = init_server.start
+      init_transport = init_server.transport
+
+      # Extract session_id from response headers
+      new_session_id = result[:headers]["Mcp-Session-Id"]
+      expect(new_session_id).not_to be_nil
+
+      # Verify handlers were stored
+      session_store = init_transport.instance_variable_get(:@session_store)
+      handlers = session_store.get_registered_handlers(new_session_id)
+
+      aggregate_failures do
+        expect(handlers).not_to be_nil
+        expect(handlers[:tools]).to eq(["double"])
+        expect(handlers[:prompts]).to eq([])
+        expect(handlers[:resources]).to eq([])
+      end
+    end
+  end
+
   describe "cross-server notification delivery integration" do
     let(:session_store) { transport.instance_variable_get(:@session_store) }
 
