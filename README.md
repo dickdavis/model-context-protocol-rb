@@ -21,6 +21,7 @@ Provides simple abstractions that allow you to serve prompts, resources, resourc
 - [Resource Templates](#resource-templates)
 - [Tools](#tools)
 - [Completions](#completions)
+- [Testing with RSpec](#testing-with-rspec)
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
@@ -1237,6 +1238,293 @@ class TestCompletion < ModelContextProtocol::Server::Completion
     values = hints[argument_name].grep(/#{argument_value}/)
 
     respond_with values:
+  end
+end
+```
+
+---
+
+## Testing with RSpec
+
+This gem provides custom RSpec matchers and helpers for testing your MCP handlers. These matchers validate response structures and content, making it easy to write comprehensive tests for your tools, prompts, and resources.
+
+### Configuration
+
+Add the RSpec configuration to your `spec/spec_helper.rb` or `spec/rails_helper.rb`:
+
+```ruby
+require "model_context_protocol/rspec"
+
+# Configure RSpec to include MCP matchers globally
+ModelContextProtocol::RSpec.configure!
+```
+
+This will make all MCP matchers available in your specs. Additionally, helper methods (`call_mcp_tool`, `call_mcp_prompt`, `call_mcp_resource`) are automatically included for specs with `type: :mcp` metadata or located in the `spec/mcp/` directory.
+
+### Helper Methods
+
+The following helper methods simplify calling MCP handlers in tests:
+
+| Helper | Description |
+|--------|-------------|
+| `call_mcp_tool(tool_class, arguments = {}, context = {})` | Call a tool class with arguments and optional context |
+| `call_mcp_prompt(prompt_class, arguments = {}, context = {})` | Call a prompt class with arguments and optional context |
+| `call_mcp_resource(resource_class, context = {})` | Call a resource class with optional context |
+
+### Available Matchers
+
+#### Class Definition Matcher
+
+| Matcher | Description |
+|---------|-------------|
+| `be_valid_mcp_class` | Validates a class is a properly defined MCP handler |
+| `be_valid_mcp_class(:tool)` | Validates a class is a properly defined MCP tool |
+| `be_valid_mcp_class(:prompt)` | Validates a class is a properly defined MCP prompt |
+| `be_valid_mcp_class(:resource)` | Validates a class is a properly defined MCP resource |
+| `be_valid_mcp_class(:resource_template)` | Validates a class is a properly defined MCP resource template |
+
+#### Tool Response Matchers
+
+| Matcher | Description |
+|---------|-------------|
+| `be_valid_mcp_tool_response` | Validates response has correct tool response structure |
+| `have_structured_content(hash)` | Validates response contains matching structured content |
+| `have_text_content(text_or_regex)` | Validates response contains matching text content |
+| `have_image_content` | Validates response contains image content |
+| `have_image_content(mime_type: "image/png")` | Validates response contains image with specific mime type |
+| `have_audio_content` | Validates response contains audio content |
+| `have_audio_content(mime_type: "audio/mpeg")` | Validates response contains audio with specific mime type |
+| `have_embedded_resource_content` | Validates response contains embedded resource |
+| `have_embedded_resource_content(uri: "...", mime_type: "...")` | Validates embedded resource with constraints |
+| `have_resource_link_content` | Validates response contains resource link |
+| `have_resource_link_content(uri: "...", name: "...")` | Validates resource link with constraints |
+| `be_mcp_error_response` | Validates response is an error response |
+| `be_mcp_error_response(text_or_regex)` | Validates error response with matching message |
+
+#### Prompt Response Matchers
+
+| Matcher | Description |
+|---------|-------------|
+| `be_valid_mcp_prompt_response` | Validates response has correct prompt response structure |
+| `have_message_with_role(role)` | Validates response has message with specified role |
+| `have_message_with_role(role).containing(text_or_regex)` | Validates message with role contains matching content |
+| `have_message_count(n)` | Validates response has exactly n messages |
+
+#### Resource Response Matchers
+
+| Matcher | Description |
+|---------|-------------|
+| `be_valid_mcp_resource_response` | Validates response has correct resource response structure |
+| `have_resource_text(text_or_regex)` | Validates resource contains matching text content |
+| `have_resource_blob` | Validates resource contains binary blob content |
+| `have_resource_blob(base64_string)` | Validates resource contains specific blob content |
+| `have_resource_mime_type(type_or_regex)` | Validates resource has matching mime type |
+| `have_resource_annotations(hash)` | Validates resource has matching annotations |
+
+### Usage Examples
+
+#### Testing Tool Classes
+
+```ruby
+# spec/mcp/tools/weather_tool_spec.rb
+RSpec.describe WeatherTool, type: :mcp do
+  describe "class definition" do
+    it "is a valid MCP tool" do
+      expect(WeatherTool).to be_valid_mcp_class(:tool)
+    end
+  end
+
+  describe "#call" do
+    context "with valid location" do
+      it "returns a valid tool response" do
+        response = call_mcp_tool(WeatherTool, {location: "New York"})
+
+        expect(response).to be_valid_mcp_tool_response
+      end
+
+      it "returns structured weather data" do
+        response = call_mcp_tool(WeatherTool, {location: "New York"})
+
+        expect(response).to have_structured_content(
+          temperature: 72,
+          conditions: "Sunny"
+        )
+      end
+
+      it "includes a text summary" do
+        response = call_mcp_tool(WeatherTool, {location: "New York"})
+
+        expect(response).to have_text_content("Current weather")
+        expect(response).to have_text_content(/\d+ degrees/)
+      end
+    end
+
+    context "with invalid location" do
+      it "returns an error response" do
+        response = call_mcp_tool(WeatherTool, {location: "InvalidPlace"})
+
+        expect(response).to be_mcp_error_response
+        expect(response).to be_mcp_error_response(/location not found/i)
+      end
+    end
+  end
+end
+```
+
+#### Testing Tools with Different Content Types
+
+```ruby
+RSpec.describe ChartGenerator, type: :mcp do
+  it "generates PNG charts" do
+    response = call_mcp_tool(ChartGenerator, {format: "png"})
+
+    expect(response).to be_valid_mcp_tool_response
+    expect(response).to have_image_content(mime_type: "image/png")
+  end
+
+  it "generates SVG charts" do
+    response = call_mcp_tool(ChartGenerator, {format: "svg"})
+
+    expect(response).to have_image_content(mime_type: "image/svg+xml")
+  end
+end
+
+RSpec.describe TextToSpeech, type: :mcp do
+  it "generates audio content" do
+    response = call_mcp_tool(TextToSpeech, {text: "Hello", format: "mp3"})
+
+    expect(response).to have_audio_content(mime_type: "audio/mpeg")
+  end
+end
+
+RSpec.describe DocumentFinder, type: :mcp do
+  it "returns embedded resources" do
+    response = call_mcp_tool(DocumentFinder, {query: "readme"})
+
+    expect(response).to have_embedded_resource_content(
+      uri: "file:///docs/README.md",
+      mime_type: "text/markdown"
+    )
+  end
+
+  it "returns resource links for large files" do
+    response = call_mcp_tool(DocumentFinder, {query: "dataset"})
+
+    expect(response).to have_resource_link_content(
+      uri: "file:///data/large.csv",
+      name: "large-dataset"
+    )
+  end
+end
+```
+
+#### Testing Prompt Classes
+
+```ruby
+# spec/mcp/prompts/code_review_prompt_spec.rb
+RSpec.describe CodeReviewPrompt, type: :mcp do
+  describe "class definition" do
+    it "is a valid MCP prompt" do
+      expect(CodeReviewPrompt).to be_valid_mcp_class(:prompt)
+    end
+  end
+
+  describe "#call" do
+    it "returns a valid prompt response" do
+      response = call_mcp_prompt(CodeReviewPrompt, {code: "def foo; end"})
+
+      expect(response).to be_valid_mcp_prompt_response
+    end
+
+    it "includes the expected message structure" do
+      response = call_mcp_prompt(CodeReviewPrompt, {code: "def foo; end"})
+
+      expect(response).to have_message_count(3)
+      expect(response).to have_message_with_role("user")
+      expect(response).to have_message_with_role("assistant")
+    end
+
+    it "includes the code in a user message" do
+      response = call_mcp_prompt(CodeReviewPrompt, {code: "def hello; end"})
+
+      expect(response).to have_message_with_role("user").containing("def hello")
+    end
+
+    it "requests a review in the prompt" do
+      response = call_mcp_prompt(CodeReviewPrompt, {code: "x = 1"})
+
+      expect(response).to have_message_with_role("user").containing(/review/i)
+    end
+  end
+end
+```
+
+#### Testing Resource Classes
+
+```ruby
+# spec/mcp/resources/config_resource_spec.rb
+RSpec.describe ConfigResource, type: :mcp do
+  describe "class definition" do
+    it "is a valid MCP resource" do
+      expect(ConfigResource).to be_valid_mcp_class(:resource)
+    end
+  end
+
+  describe "#call" do
+    it "returns a valid resource response" do
+      response = call_mcp_resource(ConfigResource)
+
+      expect(response).to be_valid_mcp_resource_response
+    end
+
+    it "returns JSON content" do
+      response = call_mcp_resource(ConfigResource)
+
+      expect(response).to have_resource_text(/"database_url"/)
+      expect(response).to have_resource_mime_type("application/json")
+    end
+
+    it "includes appropriate annotations" do
+      response = call_mcp_resource(ConfigResource)
+
+      expect(response).to have_resource_annotations(
+        audience: ["user"],
+        priority: 0.8
+      )
+    end
+  end
+end
+
+# spec/mcp/resources/logo_resource_spec.rb
+RSpec.describe LogoResource, type: :mcp do
+  it "returns binary content" do
+    response = call_mcp_resource(LogoResource)
+
+    expect(response).to be_valid_mcp_resource_response
+    expect(response).to have_resource_blob
+    expect(response).to have_resource_mime_type("image/png")
+  end
+end
+```
+
+#### Testing with Context
+
+```ruby
+RSpec.describe UserGreetingTool, type: :mcp do
+  it "uses context for personalization" do
+    response = call_mcp_tool(
+      UserGreetingTool,
+      {message: "Hello"},
+      {user_id: "123", user_name: "Alice"}
+    )
+
+    expect(response).to have_text_content("Hello, Alice")
+  end
+
+  it "handles missing context gracefully" do
+    response = call_mcp_tool(UserGreetingTool, {message: "Hello"})
+
+    expect(response).to have_text_content("Hello, Guest")
   end
 end
 ```
