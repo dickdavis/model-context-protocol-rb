@@ -1,6 +1,7 @@
 #!/usr/bin/env <%= @ruby_path %>
 
 require "bundler/setup"
+require "fileutils"
 require "rack"
 require 'rackup/handler/webrick'
 require "webrick"
@@ -22,13 +23,34 @@ ModelContextProtocol::Server.configure_redis do |config|
   config.idle_timeout = 15
 end
 
-Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
+ModelContextProtocol::Server.configure_server_logging do |config|
+  config.logdev = $stdout
+  config.level = Logger::DEBUG
+  config.progname = "MCP-Dev-Server"
+end
+
+# Only require test handler files (prompts, resources, tools, etc.), not RSpec helpers
+%w[prompts resources resource_templates tools completions].each do |subdir|
+  Dir[File.join(__dir__, "../spec/support/#{subdir}/**/*.rb")].each { |file| require file }
+end
 
 logger = Logger.new(STDOUT)
 logger.level = Logger::INFO
 logger.formatter = proc do |severity, datetime, progname, msg|
   request_id = Thread.current[:request_id] || "----"
   "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} [#{request_id}]: #{msg}\n"
+end
+
+# Flag files for dynamic handler registration (for testing list_changed notifications)
+# Touch these files to add extra handlers, remove them to remove handlers:
+#   tmp/flags/extra_tools    - adds TestToolWithAudioResponse
+#   tmp/flags/extra_resources - adds TestBinaryResource (if not already registered)
+#   tmp/flags/extra_prompts  - adds TestPromptWithCompletionClass (if not already registered)
+FLAGS_DIR = File.join(__dir__, '..', 'tmp', 'flags')
+FileUtils.mkdir_p(FLAGS_DIR) unless Dir.exist?(FLAGS_DIR)
+
+def flag_enabled?(flag_name)
+  File.exist?(File.join(FLAGS_DIR, flag_name))
 end
 
 
@@ -107,7 +129,7 @@ class MCPHttpApp
     transport_config = {
       type: :streamable_http,
       env:,
-      require_sessions: false,
+      require_sessions: true,
       session_ttl: 3600,
       allowed_origins: ["*"]
     }
@@ -213,13 +235,16 @@ class MCPHttpApp
       config.registry = ModelContextProtocol::Server::Registry.new do
         prompts list_changed: true do
           register TestPrompt
-          register TestPromptWithCompletionClass
+          # Extra prompt controlled by flag file: tmp/flags/extra_prompts
+          register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
         end
 
         resources list_changed: true, subscribe: true do
           register TestResource
           register TestAnnotatedResource
-          register TestBinaryResource
+          register TestProgressiveResource
+          # Extra resource controlled by flag file: tmp/flags/extra_resources
+          register TestBinaryResource if flag_enabled?('extra_resources')
         end
 
         resource_templates do
@@ -234,6 +259,9 @@ class MCPHttpApp
           register TestToolWithResourceResponse
           register TestToolWithToolErrorResponse
           register TestToolWithCancellableSleep
+          register TestToolWithProgressableAndCancellable
+          # Extra tool controlled by flag file: tmp/flags/extra_tools
+          register TestToolWithAudioResponse if flag_enabled?('extra_tools')
         end
       end
     end
@@ -245,6 +273,11 @@ port = use_ssl ? 9293 : 9292
 protocol = use_ssl ? 'https' : 'http'
 
 logger.info("Starting MCP #{protocol.upcase} Development Server on #{protocol}://localhost:#{port}/mcp")
+logger.info("List Changed Testing: Toggle handlers with flag files in tmp/flags/")
+logger.info("  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse")
+logger.info("  touch tmp/flags/extra_resources # Add TestBinaryResource")
+logger.info("  touch tmp/flags/extra_prompts   # Add TestPromptWithCompletionClass")
+logger.info("  rm tmp/flags/<flag>             # Remove the handler")
 
 app = Rack::Builder.new do
   map '/mcp' do
