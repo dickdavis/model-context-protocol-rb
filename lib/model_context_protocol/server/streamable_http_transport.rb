@@ -531,8 +531,15 @@ module ModelContextProtocol
           flush_notifications_to_stream(stream)
         end
 
+        # Also flush any messages queued in Redis from other server instances
+        poll_and_deliver_redis_messages(stream, session_id) if session_id
+
         loop do
           break unless stream_connected?(stream)
+
+          # Poll for queued messages from Redis (cross-server delivery)
+          poll_and_deliver_redis_messages(stream, session_id) if session_id
+
           sleep 0.1
         end
       ensure
@@ -727,6 +734,22 @@ module ModelContextProtocol
       end
 
       @server_logger.debug("Delivered notifications to #{delivered_count} streams, cleaned up #{disconnected_streams.size} disconnected streams")
+    end
+
+    # Poll for messages queued in Redis and deliver to the stream
+    # Handles cross-server message delivery when notifications are queued by other server instances
+    def poll_and_deliver_redis_messages(stream, session_id)
+      return unless session_id
+
+      messages = @session_store.poll_messages_for_session(session_id)
+      return if messages.empty?
+
+      @server_logger.debug("Delivering #{messages.size} queued messages from Redis to stream #{session_id}")
+      messages.each do |message|
+        send_to_stream(stream, message)
+      end
+    rescue => e
+      @server_logger.error("Error polling Redis messages: #{e.message}")
     end
 
     # Flush any queued notifications to a newly connected stream

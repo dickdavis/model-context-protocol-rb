@@ -2086,4 +2086,141 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       thread.kill if thread.respond_to?(:kill) && thread.respond_to?(:alive?) && thread.alive?
     end
   end
+
+  describe "#poll_and_deliver_redis_messages" do
+    let(:mock_stream) { StringIO.new }
+    let(:session_store) { transport.instance_variable_get(:@session_store) }
+
+    before do
+      # Create a session in Redis
+      session_store.create_session(session_id, {server_instance: "test-server"})
+    end
+
+    it "delivers queued messages from Redis to the stream" do
+      # Queue a message in Redis (simulating cross-server notification)
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to include("notifications/tools/list_changed")
+    end
+
+    it "delivers multiple queued messages in order" do
+      # Queue multiple messages
+      notification1 = {jsonrpc: "2.0", method: "notifications/resources/list_changed", params: {}}
+      notification2 = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification1)
+      session_store.queue_message_for_session(session_id, notification2)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      aggregate_failures do
+        expect(output).to include("notifications/resources/list_changed")
+        expect(output).to include("notifications/tools/list_changed")
+      end
+    end
+
+    it "does nothing when queue is empty" do
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to be_empty
+    end
+
+    it "does nothing when session_id is nil" do
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, nil)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to be_empty
+    end
+
+    it "handles errors gracefully without raising" do
+      # Queue a message
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      # Make the stream raise an error
+      allow(mock_stream).to receive(:write).and_raise(IOError, "Connection reset")
+
+      expect {
+        transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+      }.not_to raise_error
+    end
+
+    it "clears messages from Redis after polling" do
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      # First poll should get the message
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      # Second poll should get nothing (message was consumed)
+      second_stream = StringIO.new
+      transport.send(:poll_and_deliver_redis_messages, second_stream, session_id)
+
+      second_stream.rewind
+      expect(second_stream.read).to be_empty
+    end
+  end
+
+  describe "cross-server notification delivery integration" do
+    let(:session_store) { transport.instance_variable_get(:@session_store) }
+
+    before do
+      configuration.transport[:require_sessions] = true
+      # Create the session in Redis
+      session_store.create_session(session_id, {server_instance: "test-server"})
+      # Store initial handlers so change detection works
+      session_store.store_registered_handlers(session_id, prompts: [], resources: [], tools: [])
+    end
+
+    it "queues notification to Redis when no local stream exists" do
+      # Simulate a notification being sent when there's no local stream
+      # (mimics POST request on Server B that doesn't have the SSE stream)
+      transport.send_notification(
+        "notifications/tools/list_changed",
+        {},
+        session_id: session_id
+      )
+
+      # Check that the message was queued to Redis
+      messages = session_store.poll_messages_for_session(session_id)
+
+      expect(messages.size).to eq(1)
+      expect(messages.first["method"]).to eq("notifications/tools/list_changed")
+    end
+
+    it "completes full cross-server delivery cycle" do
+      mock_stream = StringIO.new
+
+      # Step 1: Server B sends notification (no local stream) -> queued to Redis
+      transport.send_notification(
+        "notifications/resources/list_changed",
+        {},
+        session_id: session_id
+      )
+
+      # Step 2: Server A polls Redis and delivers to its local stream
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to include("notifications/resources/list_changed")
+    end
+  end
 end
