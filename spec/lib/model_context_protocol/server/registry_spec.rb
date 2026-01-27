@@ -282,6 +282,94 @@ RSpec.describe ModelContextProtocol::Server::Registry do
     end
   end
 
+  describe "#handler_names" do
+    let(:registry) do
+      described_class.new do
+        prompts do
+          register TestPrompt
+        end
+
+        resources do
+          register TestResource
+        end
+
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    it "returns handler names for all types" do
+      result = registry.handler_names
+
+      aggregate_failures do
+        expect(result).to have_key(:prompts)
+        expect(result).to have_key(:resources)
+        expect(result).to have_key(:tools)
+      end
+    end
+
+    it "returns prompt names" do
+      result = registry.handler_names
+
+      expect(result[:prompts]).to eq(["brainstorm_excuses"])
+    end
+
+    it "returns resource names preferring name over uri" do
+      result = registry.handler_names
+
+      expect(result[:resources]).to eq(["top-secret-plans.txt"])
+    end
+
+    it "returns tool names" do
+      result = registry.handler_names
+
+      expect(result[:tools]).to eq(["double"])
+    end
+
+    context "with empty registry" do
+      let(:empty_registry) { described_class.new }
+
+      it "returns empty arrays for all types" do
+        result = empty_registry.handler_names
+
+        aggregate_failures do
+          expect(result[:prompts]).to eq([])
+          expect(result[:resources]).to eq([])
+          expect(result[:tools]).to eq([])
+        end
+      end
+    end
+
+    context "with multiple handlers" do
+      let(:multi_registry) do
+        described_class.new do
+          tools do
+            register TestToolWithTextResponse
+            # Create a second tool class
+            second_tool = Class.new(ModelContextProtocol::Server::Tool) do
+              define_method(:call) { |*| nil }
+            end
+            second_tool.define_singleton_method(:definition) do
+              {
+                name: "second_tool",
+                description: "Another tool",
+                inputSchema: {type: "object"}
+              }
+            end
+            register second_tool
+          end
+        end
+      end
+
+      it "returns all handler names" do
+        result = multi_registry.handler_names
+
+        expect(result[:tools]).to contain_exactly("double", "second_tool")
+      end
+    end
+  end
+
   describe "pagination support" do
     let(:large_registry) do
       described_class.new do

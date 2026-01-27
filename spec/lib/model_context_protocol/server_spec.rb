@@ -824,6 +824,101 @@ RSpec.describe ModelContextProtocol::Server do
     end
   end
 
+  describe "listChanged capability by transport type" do
+    let(:registry_with_list_changed) do
+      ModelContextProtocol::Server::Registry.new do
+        prompts list_changed: true do
+          register TestPrompt
+        end
+
+        resources list_changed: true, subscribe: true do
+          register TestResource
+        end
+
+        tools list_changed: true do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    context "with stdio transport (default)" do
+      let(:server) do
+        reg = registry_with_list_changed
+        described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          # transport_type defaults to :stdio or nil
+        end
+      end
+
+      it "does NOT advertise listChanged capability even when configured" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          # listChanged should be suppressed for stdio
+          expect(response[:capabilities][:prompts]).to eq({})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true})
+          expect(response[:capabilities][:tools]).to eq({})
+        end
+      end
+    end
+
+    context "with streamable_http transport" do
+      let(:server) do
+        reg = registry_with_list_changed
+        described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+      end
+
+      it "advertises listChanged capability when configured" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities][:prompts]).to eq({listChanged: true})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true, listChanged: true})
+          expect(response[:capabilities][:tools]).to eq({listChanged: true})
+        end
+      end
+    end
+
+    context "with streamable_http transport but list_changed not enabled" do
+      let(:server) do
+        reg = ModelContextProtocol::Server::Registry.new do
+          prompts do
+            register TestPrompt
+          end
+
+          tools do
+            register TestToolWithTextResponse
+          end
+        end
+        described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+      end
+
+      it "does NOT advertise listChanged when not configured in registry" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities][:prompts]).to eq({})
+          expect(response[:capabilities][:tools]).to eq({})
+        end
+      end
+    end
+  end
+
   describe ".configure_redis" do
     it "delegates to RedisConfig.configure" do
       expect(ModelContextProtocol::Server::RedisConfig).to receive(:configure)

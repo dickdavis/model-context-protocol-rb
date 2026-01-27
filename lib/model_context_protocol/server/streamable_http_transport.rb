@@ -290,6 +290,9 @@ module ModelContextProtocol
           created_at: Time.now.to_f,
           negotiated_protocol_version: negotiated_protocol_version
         })
+        # Store initial handler names for list_changed detection
+        current_handlers = @configuration.registry.handler_names
+        @session_store.store_registered_handlers(session_id, **current_handlers)
         response_headers["Mcp-Session-Id"] = session_id
         @session_protocol_versions[session_id] = negotiated_protocol_version
         log_to_server_with_context { |logger| logger.info("Session created: #{session_id} (protocol: #{negotiated_protocol_version})") }
@@ -324,6 +327,9 @@ module ModelContextProtocol
             return {json: error_response.serialized, status: 400}
           end
         end
+
+        # Check for handler changes and notify client if needed
+        check_and_notify_handler_changes(session_id)
       end
 
       message_type = determine_message_type(body)
@@ -782,6 +788,46 @@ module ModelContextProtocol
         logger.error("Error processing cancellation: #{e.message}")
       end
       nil
+    end
+
+    # Check if registered handlers have changed for a session and send notifications
+    # Compares current handlers against previously stored handlers in Redis
+    def check_and_notify_handler_changes(session_id)
+      return unless session_id
+      return unless @session_store.session_exists?(session_id)
+
+      current = @configuration.registry.handler_names
+      previous = @session_store.get_registered_handlers(session_id)
+
+      return if previous.nil? # First request after init
+
+      changed_types = []
+      changed_types << :prompts if current[:prompts].sort != previous[:prompts]&.sort
+      changed_types << :resources if current[:resources].sort != previous[:resources]&.sort
+      changed_types << :tools if current[:tools].sort != previous[:tools]&.sort
+
+      return if changed_types.empty?
+
+      changed_types.each do |type|
+        next unless list_changed_enabled?(type)
+        send_notification("notifications/#{type}/list_changed", {}, session_id: session_id)
+      end
+
+      @session_store.store_registered_handlers(session_id, **current)
+    rescue => e
+      @server_logger.error("Error checking handler changes: #{e.class.name}: #{e.message}")
+      @server_logger.debug("Backtrace: #{e.backtrace.first(5).join("\n")}")
+      # Don't re-raise - handler change detection is optional, allow request to proceed
+    end
+
+    # Check if list_changed capability is enabled for a handler type
+    def list_changed_enabled?(type)
+      opts = case type
+      when :prompts then @configuration.registry.prompts_options
+      when :resources then @configuration.registry.resources_options
+      when :tools then @configuration.registry.tools_options
+      end
+      opts[:list_changed] == true
     end
   end
 end

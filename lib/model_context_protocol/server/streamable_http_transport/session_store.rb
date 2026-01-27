@@ -117,6 +117,28 @@ module ModelContextProtocol
 
         active_sessions
       end
+
+      def store_registered_handlers(session_id, prompts:, resources:, tools:)
+        @redis.hset("session:#{session_id}",
+          "registered_prompts", prompts.to_json,
+          "registered_resources", resources.to_json,
+          "registered_tools", tools.to_json)
+        @redis.expire("session:#{session_id}", @ttl)
+      end
+
+      def get_registered_handlers(session_id)
+        data = @redis.hmget("session:#{session_id}",
+          "registered_prompts", "registered_resources", "registered_tools")
+
+        # Return nil if none of the fields have meaningful data
+        return nil if data.all? { |d| d.nil? || d.empty? }
+
+        {
+          prompts: data[0] && !data[0].empty? ? JSON.parse(data[0]) : [],
+          resources: data[1] && !data[1].empty? ? JSON.parse(data[1]) : [],
+          tools: data[2] && !data[2].empty? ? JSON.parse(data[2]) : []
+        }
+      end
     end
   end
 end

@@ -258,24 +258,31 @@ module ModelContextProtocol
         capabilities[:logging] = {}
 
         registry = configuration.registry
+        supports_list_changed = configuration.transport_type == :streamable_http
 
         if !registry.instance_variable_get(:@prompts).empty?
-          capabilities[:prompts] = {
-            listChanged: registry.prompts_options[:list_changed]
-          }.except(:completions).compact
+          prompts_caps = {}
+          if supports_list_changed && registry.prompts_options[:list_changed]
+            prompts_caps[:listChanged] = true
+          end
+          capabilities[:prompts] = prompts_caps
         end
 
         if !registry.instance_variable_get(:@resources).empty?
-          capabilities[:resources] = {
-            subscribe: registry.resources_options[:subscribe],
-            listChanged: registry.resources_options[:list_changed]
-          }.compact
+          resources_caps = {}
+          resources_caps[:subscribe] = true if registry.resources_options[:subscribe]
+          if supports_list_changed && registry.resources_options[:list_changed]
+            resources_caps[:listChanged] = true
+          end
+          capabilities[:resources] = resources_caps
         end
 
         if !registry.instance_variable_get(:@tools).empty?
-          capabilities[:tools] = {
-            listChanged: registry.tools_options[:list_changed]
-          }.compact
+          tools_caps = {}
+          if supports_list_changed && registry.tools_options[:list_changed]
+            tools_caps[:listChanged] = true
+          end
+          capabilities[:tools] = tools_caps
         end
       end
     end
