@@ -25,11 +25,11 @@ server = ModelContextProtocol::Server.new do |config|
   }
 
   config.registry = ModelContextProtocol::Server::Registry.new do
-    prompts list_changed: true do
+    prompts do
       register TestPrompt
     end
 
-    resources list_changed: true, subscribe: true do
+    resources subscribe: true do
       register TestResource
       register TestAnnotatedResource
       register TestBinaryResource
@@ -39,7 +39,7 @@ server = ModelContextProtocol::Server.new do |config|
       register TestResourceTemplate
     end
 
-    tools list_changed: true do
+    tools do
       register TestToolWithTextResponse
       register TestToolWithImageResponse
       register TestToolWithImageResponseDefaultMimeType

@@ -2086,4 +2086,294 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       thread.kill if thread.respond_to?(:kill) && thread.respond_to?(:alive?) && thread.alive?
     end
   end
+
+  describe "#poll_and_deliver_redis_messages" do
+    let(:mock_stream) { StringIO.new }
+    let(:session_store) { transport.instance_variable_get(:@session_store) }
+
+    before do
+      # Create a session in Redis
+      session_store.create_session(session_id, {server_instance: "test-server"})
+    end
+
+    it "delivers queued messages from Redis to the stream" do
+      # Queue a message in Redis (simulating cross-server notification)
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to include("notifications/tools/list_changed")
+    end
+
+    it "delivers multiple queued messages in order" do
+      # Queue multiple messages
+      notification1 = {jsonrpc: "2.0", method: "notifications/resources/list_changed", params: {}}
+      notification2 = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification1)
+      session_store.queue_message_for_session(session_id, notification2)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      aggregate_failures do
+        expect(output).to include("notifications/resources/list_changed")
+        expect(output).to include("notifications/tools/list_changed")
+      end
+    end
+
+    it "does nothing when queue is empty" do
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to be_empty
+    end
+
+    it "does nothing when session_id is nil" do
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, nil)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to be_empty
+    end
+
+    it "handles errors gracefully without raising" do
+      # Queue a message
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      # Make the stream raise an error
+      allow(mock_stream).to receive(:write).and_raise(IOError, "Connection reset")
+
+      expect {
+        transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+      }.not_to raise_error
+    end
+
+    it "clears messages from Redis after polling" do
+      notification = {jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {}}
+      session_store.queue_message_for_session(session_id, notification)
+
+      # First poll should get the message
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      # Second poll should get nothing (message was consumed)
+      second_stream = StringIO.new
+      transport.send(:poll_and_deliver_redis_messages, second_stream, session_id)
+
+      second_stream.rewind
+      expect(second_stream.read).to be_empty
+    end
+  end
+
+  describe "#check_and_notify_handler_changes" do
+    let(:registry_with_tool) do
+      ModelContextProtocol::Server::Registry.new do
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    let(:server_with_tool) do
+      reg = registry_with_tool
+      ModelContextProtocol::Server.new do |config|
+        config.name = "test-server"
+        config.version = "1.0.0"
+        config.registry = reg
+        config.transport = {
+          type: :streamable_http,
+          require_sessions: true,
+          validate_origin: false,
+          env: build_rack_env
+        }
+      end
+    end
+
+    let(:transport_with_tool) do
+      server_with_tool.start
+      server_with_tool.transport
+    end
+
+    let(:session_store_with_tool) { transport_with_tool.instance_variable_get(:@session_store) }
+
+    it "returns early when session_id is nil" do
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, nil)
+    end
+
+    it "returns early when session does not exist" do
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, "nonexistent-session")
+    end
+
+    it "returns early when no previous handlers stored (first request after init)" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "does not send notification when handlers have not changed" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["double"]
+      )
+
+      expect(transport_with_tool).not_to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "sends notification when tools have changed" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      expect(transport_with_tool).to receive(:send_notification).with(
+        "notifications/tools/list_changed",
+        {},
+        session_id: session_id
+      )
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+    end
+
+    it "updates stored handlers after detecting change" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      allow(transport_with_tool).to receive(:send_notification)
+      transport_with_tool.send(:check_and_notify_handler_changes, session_id)
+
+      updated = session_store_with_tool.get_registered_handlers(session_id)
+      expect(updated[:tools]).to eq(["double"])
+    end
+
+    it "handles errors gracefully without raising" do
+      session_store_with_tool.create_session(session_id, {server_instance: "test"})
+      session_store_with_tool.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: ["old_tool"]
+      )
+
+      allow(transport_with_tool).to receive(:send_notification).and_raise(StandardError, "Test error")
+
+      expect { transport_with_tool.send(:check_and_notify_handler_changes, session_id) }.not_to raise_error
+    end
+  end
+
+  describe "initialization stores handlers" do
+    let(:registry_with_tool) do
+      ModelContextProtocol::Server::Registry.new do
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    it "stores initial handlers when session is created during initialization" do
+      init_request = {"method" => "initialize", "id" => "init-1", "params" => {}}
+
+      init_server = ModelContextProtocol::Server.new do |config|
+        config.name = "test-server"
+        config.version = "1.0.0"
+        config.registry = registry_with_tool
+        config.transport = {
+          type: :streamable_http,
+          require_sessions: true,
+          validate_origin: false,
+          env: build_rack_env(body: init_request.to_json, headers: {"Accept" => "application/json"})
+        }
+      end
+
+      result = init_server.start
+      init_transport = init_server.transport
+
+      # Extract session_id from response headers
+      new_session_id = result[:headers]["Mcp-Session-Id"]
+      expect(new_session_id).not_to be_nil
+
+      # Verify handlers were stored
+      session_store = init_transport.instance_variable_get(:@session_store)
+      handlers = session_store.get_registered_handlers(new_session_id)
+
+      aggregate_failures do
+        expect(handlers).not_to be_nil
+        expect(handlers[:tools]).to eq(["double"])
+        expect(handlers[:prompts]).to eq([])
+        expect(handlers[:resources]).to eq([])
+      end
+    end
+  end
+
+  describe "cross-server notification delivery integration" do
+    let(:session_store) { transport.instance_variable_get(:@session_store) }
+
+    before do
+      configuration.transport[:require_sessions] = true
+      # Create the session in Redis
+      session_store.create_session(session_id, {server_instance: "test-server"})
+      # Store initial handlers so change detection works
+      session_store.store_registered_handlers(session_id, prompts: [], resources: [], tools: [])
+    end
+
+    it "queues notification to Redis when no local stream exists" do
+      # Simulate a notification being sent when there's no local stream
+      # (mimics POST request on Server B that doesn't have the SSE stream)
+      transport.send_notification(
+        "notifications/tools/list_changed",
+        {},
+        session_id: session_id
+      )
+
+      # Check that the message was queued to Redis
+      messages = session_store.poll_messages_for_session(session_id)
+
+      expect(messages.size).to eq(1)
+      expect(messages.first["method"]).to eq("notifications/tools/list_changed")
+    end
+
+    it "completes full cross-server delivery cycle" do
+      mock_stream = StringIO.new
+
+      # Step 1: Server B sends notification (no local stream) -> queued to Redis
+      transport.send_notification(
+        "notifications/resources/list_changed",
+        {},
+        session_id: session_id
+      )
+
+      # Step 2: Server A polls Redis and delivers to its local stream
+      transport.send(:poll_and_deliver_redis_messages, mock_stream, session_id)
+
+      mock_stream.rewind
+      output = mock_stream.read
+
+      expect(output).to include("notifications/resources/list_changed")
+    end
+  end
 end

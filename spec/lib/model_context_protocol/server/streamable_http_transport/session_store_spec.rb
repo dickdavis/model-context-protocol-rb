@@ -411,6 +411,115 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
     end
   end
 
+  describe "#store_registered_handlers" do
+    before { session_store.create_session(session_id, session_data) }
+
+    it "stores handler names in Redis" do
+      session_store.store_registered_handlers(
+        session_id,
+        prompts: ["prompt1", "prompt2"],
+        resources: ["resource1"],
+        tools: ["tool1", "tool2", "tool3"]
+      )
+
+      session_hash = redis.hgetall("session:#{session_id}")
+
+      aggregate_failures do
+        expect(JSON.parse(session_hash["registered_prompts"])).to eq(["prompt1", "prompt2"])
+        expect(JSON.parse(session_hash["registered_resources"])).to eq(["resource1"])
+        expect(JSON.parse(session_hash["registered_tools"])).to eq(["tool1", "tool2", "tool3"])
+      end
+    end
+
+    it "refreshes session TTL" do
+      redis.expire("session:#{session_id}", 100)
+
+      session_store.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: []
+      )
+
+      ttl = redis.ttl("session:#{session_id}")
+      expect(ttl).to be > 250
+    end
+
+    it "handles empty arrays" do
+      session_store.store_registered_handlers(
+        session_id,
+        prompts: [],
+        resources: [],
+        tools: []
+      )
+
+      handlers = session_store.get_registered_handlers(session_id)
+
+      aggregate_failures do
+        expect(handlers[:prompts]).to eq([])
+        expect(handlers[:resources]).to eq([])
+        expect(handlers[:tools]).to eq([])
+      end
+    end
+  end
+
+  describe "#get_registered_handlers" do
+    before { session_store.create_session(session_id, session_data) }
+
+    context "when handlers have been stored" do
+      before do
+        session_store.store_registered_handlers(
+          session_id,
+          prompts: ["prompt1"],
+          resources: ["resource1", "resource2"],
+          tools: ["tool1"]
+        )
+      end
+
+      it "returns the stored handlers" do
+        handlers = session_store.get_registered_handlers(session_id)
+
+        aggregate_failures do
+          expect(handlers[:prompts]).to eq(["prompt1"])
+          expect(handlers[:resources]).to eq(["resource1", "resource2"])
+          expect(handlers[:tools]).to eq(["tool1"])
+        end
+      end
+    end
+
+    context "when no handlers have been stored" do
+      it "returns nil" do
+        handlers = session_store.get_registered_handlers(session_id)
+
+        expect(handlers).to be_nil
+      end
+    end
+
+    context "when session does not exist" do
+      it "returns nil" do
+        handlers = session_store.get_registered_handlers("nonexistent")
+
+        expect(handlers).to be_nil
+      end
+    end
+
+    context "when only some handler types have been stored" do
+      before do
+        redis.hset("session:#{session_id}", "registered_prompts", ["prompt1"].to_json)
+      end
+
+      it "returns empty arrays for missing types" do
+        handlers = session_store.get_registered_handlers(session_id)
+
+        aggregate_failures do
+          expect(handlers[:prompts]).to eq(["prompt1"])
+          expect(handlers[:resources]).to eq([])
+          expect(handlers[:tools]).to eq([])
+        end
+      end
+    end
+  end
+
   describe "integration scenarios" do
     let(:session_id_1) { SecureRandom.uuid }
     let(:session_id_2) { SecureRandom.uuid }

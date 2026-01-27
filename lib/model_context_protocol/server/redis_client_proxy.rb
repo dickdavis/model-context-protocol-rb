@@ -43,6 +43,10 @@ module ModelContextProtocol
         with_connection { |redis| redis.hgetall(key) }
       end
 
+      def hmget(key, *fields)
+        with_connection { |redis| redis.hmget(key, *fields) }
+      end
+
       def lpush(key, *values)
         with_connection { |redis| redis.lpush(key, *values) }
       end

@@ -824,6 +824,71 @@ RSpec.describe ModelContextProtocol::Server do
     end
   end
 
+  describe "listChanged capability by transport type" do
+    let(:registry) do
+      ModelContextProtocol::Server::Registry.new do
+        prompts do
+          register TestPrompt
+        end
+
+        resources subscribe: true do
+          register TestResource
+        end
+
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    context "with stdio transport (default)" do
+      let(:server) do
+        reg = registry
+        described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          # transport_type defaults to :stdio or nil
+        end
+      end
+
+      it "does NOT advertise listChanged capability" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          # listChanged should be suppressed for stdio
+          expect(response[:capabilities][:prompts]).to eq({})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true})
+          expect(response[:capabilities][:tools]).to eq({})
+        end
+      end
+    end
+
+    context "with streamable_http transport" do
+      let(:server) do
+        reg = registry
+        described_class.new do |config|
+          config.name = "Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+      end
+
+      it "automatically advertises listChanged capability" do
+        message = {"method" => "initialize", "params" => {}}
+        response = server.router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities][:prompts]).to eq({listChanged: true})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true, listChanged: true})
+          expect(response[:capabilities][:tools]).to eq({listChanged: true})
+        end
+      end
+    end
+  end
+
   describe ".configure_redis" do
     it "delegates to RedisConfig.configure" do
       expect(ModelContextProtocol::Server::RedisConfig).to receive(:configure)

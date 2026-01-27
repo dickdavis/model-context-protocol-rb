@@ -74,6 +74,14 @@ module ModelContextProtocol
       find_by_name(@tools, name)
     end
 
+    def handler_names
+      {
+        prompts: @prompts.map { |p| p[:name] },
+        resources: @resources.map { |r| r[:name] || r[:uri] },
+        tools: @tools.map { |t| t[:name] }
+      }
+    end
+
     def prompts_data(cursor: nil, page_size: nil, cursor_ttl: nil)
       items = @prompts.map { |entry| entry.except(:klass) }
 
