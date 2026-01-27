@@ -134,9 +134,9 @@ module ModelContextProtocol
         return nil if data.all? { |d| d.nil? || d.empty? }
 
         {
-          prompts: data[0] && !data[0].empty? ? JSON.parse(data[0]) : [],
-          resources: data[1] && !data[1].empty? ? JSON.parse(data[1]) : [],
-          tools: data[2] && !data[2].empty? ? JSON.parse(data[2]) : []
+          prompts: (data[0] && !data[0].empty?) ? JSON.parse(data[0]) : [],
+          resources: (data[1] && !data[1].empty?) ? JSON.parse(data[1]) : [],
+          tools: (data[2] && !data[2].empty?) ? JSON.parse(data[2]) : []
         }
       end
     end
