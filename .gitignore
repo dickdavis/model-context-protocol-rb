@@ -16,3 +16,5 @@ bin/dev-http
 
 plans/
 plans/*
+
+model-context-protocol-rb.wiki/
