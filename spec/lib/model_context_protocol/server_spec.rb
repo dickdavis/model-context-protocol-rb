@@ -45,14 +45,10 @@ RSpec.describe ModelContextProtocol::Server do
       expect(transport).to have_received(:handle)
     end
 
-    it "handles StreamableHttpTransport requests" do
+    it "raises error for streamable_http transport (must use Server.setup/serve)" do
       ModelContextProtocol::Server::RedisConfig.configure do |config|
         config.redis_url = "redis://localhost:6379/15"
       end
-
-      transport = instance_double(ModelContextProtocol::Server::StreamableHttpTransport)
-      allow(ModelContextProtocol::Server::StreamableHttpTransport).to receive(:new).and_return(transport)
-      allow(transport).to receive(:handle).and_return({json: {success: true}, status: 200})
 
       server = ModelContextProtocol::Server.new do |config|
         config.name = "MCP Development Server"
@@ -63,12 +59,10 @@ RSpec.describe ModelContextProtocol::Server do
         }
       end
 
-      result = server.start
-
-      aggregate_failures do
-        expect(transport).to have_received(:handle)
-        expect(result).to eq({json: {success: true}, status: 200})
-      end
+      expect { server.start }.to raise_error(
+        ArgumentError,
+        /Use Server.setup and Server.serve for streamable_http transport/
+      )
     end
   end
 
@@ -943,6 +937,233 @@ RSpec.describe ModelContextProtocol::Server do
       end
 
       expect(block_executed).to be true
+    end
+  end
+
+  describe "singleton lifecycle management" do
+    let(:registry) { ModelContextProtocol::Server::Registry.new }
+    let(:mock_redis) { MockRedis.new }
+
+    before(:each) do
+      # Ensure clean state before each test
+      described_class.reset!
+
+      # Configure Redis for streamable_http transport
+      ModelContextProtocol::Server::RedisConfig.configure do |config|
+        config.redis_url = "redis://localhost:6379/15"
+      end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
+      # Suppress background threads in tests
+      allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
+    end
+
+    after(:each) do
+      described_class.reset!
+    end
+
+    describe ".setup" do
+      it "creates singleton transport with block configuration" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Singleton Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        aggregate_failures do
+          expect(described_class.singleton_configured?).to be true
+          expect(described_class.singleton_transport).to be_a(ModelContextProtocol::Server::StreamableHttpTransport)
+          expect(described_class.singleton_configuration.name).to eq("Singleton Test Server")
+          expect(described_class.singleton_router).to be_a(ModelContextProtocol::Server::Router)
+        end
+      end
+
+      it "creates singleton transport with pre-built configuration" do
+        config = ModelContextProtocol::Server::Configuration.new
+        config.name = "Pre-built Server"
+        config.version = "2.0.0"
+        config.registry = registry
+        config.transport = {type: :streamable_http}
+
+        described_class.setup(config)
+
+        aggregate_failures do
+          expect(described_class.singleton_configured?).to be true
+          expect(described_class.singleton_configuration.name).to eq("Pre-built Server")
+        end
+      end
+
+      it "raises error when called twice without shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "First Setup"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        expect {
+          described_class.setup do |config|
+            config.name = "Second Setup"
+            config.version = "1.0.0"
+            config.registry = reg
+            config.transport = {type: :streamable_http}
+          end
+        }.to raise_error(RuntimeError, /already initialized/)
+      end
+
+      it "raises error when neither configuration nor block provided" do
+        expect {
+          described_class.setup
+        }.to raise_error(ArgumentError, /Configuration or block required/)
+      end
+
+      it "validates configuration" do
+        expect {
+          described_class.setup do |config|
+            # Missing required name
+            config.version = "1.0.0"
+            config.registry = registry
+            config.transport = {type: :streamable_http}
+          end
+        }.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
+      end
+    end
+
+    describe ".serve" do
+      let(:rack_env) do
+        {
+          "REQUEST_METHOD" => "POST",
+          "PATH_INFO" => "/mcp",
+          "rack.input" => StringIO.new({"method" => "initialize", "id" => "init-1", "params" => {}}.to_json),
+          "CONTENT_TYPE" => "application/json",
+          "HTTP_ACCEPT" => "application/json"
+        }
+      end
+
+      before do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Serve Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http, validate_origin: false}
+        end
+      end
+
+      it "handles requests through singleton transport" do
+        result = described_class.serve(env: rack_env)
+
+        aggregate_failures do
+          expect(result[:status]).to eq(200)
+          expect(result[:json][:result][:serverInfo][:name]).to eq("Serve Test Server")
+        end
+      end
+
+      it "passes session_context to transport" do
+        result = described_class.serve(
+          env: rack_env,
+          session_context: {user_id: "test-user-123"}
+        )
+
+        expect(result[:status]).to eq(200)
+      end
+
+      it "raises error when server not initialized" do
+        described_class.shutdown
+
+        expect {
+          described_class.serve(env: rack_env)
+        }.to raise_error(RuntimeError, /not initialized/)
+      end
+    end
+
+    describe ".shutdown" do
+      it "cleans up singleton state" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Shutdown Test"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        expect(described_class.singleton_configured?).to be true
+
+        described_class.shutdown
+
+        aggregate_failures do
+          expect(described_class.singleton_configured?).to be false
+          expect(described_class.singleton_transport).to be_nil
+          expect(described_class.singleton_router).to be_nil
+          expect(described_class.singleton_configuration).to be_nil
+        end
+      end
+
+      it "allows setup to be called again after shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "First Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        described_class.shutdown
+
+        expect {
+          described_class.setup do |config|
+            config.name = "Second Server"
+            config.version = "2.0.0"
+            config.registry = reg
+            config.transport = {type: :streamable_http}
+          end
+        }.not_to raise_error
+
+        expect(described_class.singleton_configuration.name).to eq("Second Server")
+      end
+
+      it "is safe to call when not initialized" do
+        expect { described_class.shutdown }.not_to raise_error
+      end
+    end
+
+    describe ".singleton_configured?" do
+      it "returns false when not configured" do
+        expect(described_class.singleton_configured?).to be false
+      end
+
+      it "returns true when configured" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Config Check Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        expect(described_class.singleton_configured?).to be true
+      end
+    end
+
+    describe ".reset!" do
+      it "is an alias for shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Reset Test"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        described_class.reset!
+
+        expect(described_class.singleton_configured?).to be false
+      end
     end
   end
 end

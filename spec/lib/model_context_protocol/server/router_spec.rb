@@ -1,7 +1,15 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server::Router do
-  subject(:router) { described_class.new }
+  let(:configuration) do
+    ModelContextProtocol::Server::Configuration.new.tap do |config|
+      config.name = "TestServer"
+      config.version = "1.0.0"
+      config.registry = ModelContextProtocol::Server::Registry.new
+    end
+  end
+
+  subject(:router) { described_class.new(configuration: configuration) }
 
   describe "#map" do
     it "registers a handler for a method" do
@@ -181,6 +189,51 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
       expect(result).to eq(["test_value", "override_value"])
     end
+
+    context "when transport is streamable_http" do
+      before do
+        configuration.transport = {type: :streamable_http}
+      end
+
+      it "does NOT manipulate ENV variables (thread-safety)" do
+        router.map("env_test") do
+          ENV["EXISTING_VAR"]
+        end
+
+        configuration.set_environment_variable("EXISTING_VAR", "should_not_be_set")
+        result = router.route(message)
+
+        # ENV should NOT be modified for streamable_http
+        expect(result).to eq("original_value")
+      end
+
+      it "does not restore ENV after handler execution" do
+        original_existing = ENV["EXISTING_VAR"]
+
+        router.map("env_test") do
+          ENV["EXISTING_VAR"] = "changed_by_handler"
+          "done"
+        end
+
+        router.route(message)
+
+        # Since ENV manipulation is skipped, the handler's change persists
+        expect(ENV["EXISTING_VAR"]).to eq("changed_by_handler")
+
+        # Restore for other tests
+        ENV["EXISTING_VAR"] = original_existing
+      end
+
+      it "still sets thread-local context correctly" do
+        router.map("env_test") do
+          Thread.current[:mcp_context][:session_context]
+        end
+
+        result = router.route(message, session_context: {user_id: "test-123"})
+
+        expect(result).to eq({user_id: "test-123"})
+      end
+    end
   end
 
   describe "cancellation handling" do
@@ -315,6 +368,98 @@ RSpec.describe ModelContextProtocol::Server::Router do
         router.route(message, request_store: request_store)
 
         expect(Thread.current[:mcp_context]).to be_nil
+      end
+
+      it "includes session_context in thread-local context" do
+        router.map("session_context_test") do |_|
+          context = Thread.current[:mcp_context]
+          {
+            session_context: context[:session_context],
+            user_id: context[:session_context][:user_id]
+          }
+        end
+
+        result = router.route(
+          {"method" => "session_context_test", "id" => "test-123"},
+          session_context: {user_id: "user-456", tenant: "acme"}
+        )
+
+        aggregate_failures do
+          expect(result[:session_context]).to eq({user_id: "user-456", tenant: "acme"})
+          expect(result[:user_id]).to eq("user-456")
+          expect(Thread.current[:mcp_context]).to be_nil
+        end
+      end
+
+      it "defaults session_context to empty hash when not provided" do
+        router.map("no_session_context_test") do |_|
+          Thread.current[:mcp_context][:session_context]
+        end
+
+        result = router.route({"method" => "no_session_context_test", "id" => "test-789"})
+
+        expect(result).to eq({})
+      end
+    end
+
+    context "thread safety" do
+      it "isolates context between concurrent requests" do
+        router.map("thread_test") do |_|
+          context = Thread.current[:mcp_context]
+          # Simulate some work
+          sleep(0.01)
+          {
+            session_context: context[:session_context],
+            thread_id: Thread.current.object_id
+          }
+        end
+
+        threads = []
+        results = Concurrent::Array.new
+
+        5.times do |i|
+          threads << Thread.new do
+            result = router.route(
+              {"method" => "thread_test", "id" => "thread-#{i}"},
+              session_context: {request_number: i}
+            )
+            results << result
+          end
+        end
+
+        threads.each(&:join)
+
+        # Each result should have its own context
+        aggregate_failures do
+          expect(results.size).to eq(5)
+          results.each_with_index do |result, i|
+            # Find the result matching this request number
+            matching = results.find { |r| r[:session_context][:request_number] == i }
+            expect(matching).not_to be_nil
+          end
+        end
+      end
+
+      it "cleans up thread-local context even with concurrent requests" do
+        router.map("cleanup_test") do |_|
+          sleep(0.01)
+          "done"
+        end
+
+        threads = 10.times.map do |i|
+          Thread.new do
+            router.route(
+              {"method" => "cleanup_test", "id" => "cleanup-#{i}"},
+              session_context: {user: "user-#{i}"}
+            )
+            Thread.current[:mcp_context]
+          end
+        end
+
+        results = threads.map(&:value)
+
+        # All thread-local contexts should be cleaned up
+        expect(results).to all(be_nil)
       end
     end
   end

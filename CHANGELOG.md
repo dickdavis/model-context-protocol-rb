@@ -2,6 +2,14 @@
 
 - Implement list changed notifications for prompts, resources, and tools (Streamable HTTP transport only).
 - Add `ssl_params` configuration option for Redis connections to support hosted Redis providers with self-signed certificates.
+- (Breaking) Refactor streamable HTTP transport to singleton pattern for production use.
+  - Use `Server.setup { |config| ... }` to initialize once at application boot.
+  - Use `Server.serve(env:, session_context:)` to handle each HTTP request.
+  - Use `Server.shutdown` for graceful cleanup on application exit.
+  - This ensures only 2 background threads exist regardless of concurrent connections.
+- Add `session_context` parameter to `Server.serve` for per-request context (e.g., user_id from authentication).
+- Skip environment variable manipulation for streamable HTTP transport (thread-unsafe in multi-threaded servers).
+- Use thread-safe data structures for session protocol version tracking.
 
 ## [0.6.0] - 2026-01-26
 

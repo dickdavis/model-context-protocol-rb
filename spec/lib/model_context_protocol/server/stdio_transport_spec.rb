@@ -9,8 +9,8 @@ end
 RSpec.describe ModelContextProtocol::Server::StdioTransport do
   subject(:transport) { described_class.new(router: router, configuration: configuration) }
 
-  let(:router) { ModelContextProtocol::Server::Router.new }
   let(:configuration) { ModelContextProtocol::Server::Configuration.new }
+  let(:router) { ModelContextProtocol::Server::Router.new(configuration: configuration) }
   let(:client_logger) { configuration.client_logger }
 
   before do
