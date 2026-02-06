@@ -2065,14 +2065,18 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       transport.shutdown
     end
 
-    it "unregisters streams from the registry" do
+    it "leaves streams in local registry (Redis entries expire via TTL)" do
+      # Shutdown is signal-safe and skips Redis cleanup.
+      # Local registry entries remain but are harmless since process is exiting.
+      # Redis entries expire naturally via their TTL.
       stream_registry.register_stream(session_id, mock_stream)
 
       expect(stream_registry.has_local_stream?(session_id)).to be true
 
       transport.shutdown
 
-      expect(stream_registry.has_local_stream?(session_id)).to be false
+      # Stream is still in local registry (no Redis cleanup during shutdown)
+      expect(stream_registry.has_local_stream?(session_id)).to be true
     end
 
     it "closes multiple streams" do

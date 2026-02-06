@@ -491,6 +491,16 @@ module ModelContextProtocol
         rescue IOError, Errno::EPIPE, Errno::ECONNRESET => e
           @server_logger.debug("Client disconnected during progressive request processing: #{e.class.name}")
           log_to_server_with_context { |logger| logger.info("← SSE stream [closed] (#{temp_stream_id}) [client_disconnected]") }
+        rescue ModelContextProtocol::Server::ParameterValidationError => e
+          @client_logger.error("Validation error", error: e.message)
+          error_response = ErrorResponse[id: request_body["id"], error: {code: -32602, message: e.message}]
+          send_sse_event(stream, error_response.serialized, next_event_id)
+          close_stream(temp_stream_id, reason: "validation_error")
+        rescue => e
+          @client_logger.error("Internal error", error: e.message, backtrace: e.backtrace)
+          error_response = ErrorResponse[id: request_body["id"], error: {code: -32603, message: e.message}]
+          send_sse_event(stream, error_response.serialized, next_event_id)
+          close_stream(temp_stream_id, reason: "internal_error")
         ensure
           @stream_registry.unregister_stream(temp_stream_id)
         end
