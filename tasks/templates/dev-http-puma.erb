@@ -1,0 +1,275 @@
+#!/usr/bin/env <%= @ruby_path %>
+
+require "bundler/setup"
+require "fileutils"
+require "rack"
+require "puma"
+require "puma/configuration"
+require "puma/launcher"
+require "securerandom"
+require "redis"
+require "logger"
+require "json"
+require "stringio"
+
+require_relative "../lib/model_context_protocol"
+
+# Only require test handler files (prompts, resources, tools, etc.), not RSpec helpers
+%w[prompts resources resource_templates tools completions].each do |subdir|
+  Dir[File.join(__dir__, "../spec/support/#{subdir}/**/*.rb")].each { |file| require file }
+end
+
+# Flag files for dynamic handler registration (checked at startup)
+FLAGS_DIR = File.join(__dir__, '..', 'tmp', 'flags')
+FileUtils.mkdir_p(FLAGS_DIR) unless Dir.exist?(FLAGS_DIR)
+
+def flag_enabled?(flag_name)
+  File.exist?(File.join(FLAGS_DIR, flag_name))
+end
+
+# Configure Redis
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = "redis://localhost:6379/0"
+  config.pool_size = 10
+  config.enable_reaper = true
+  config.reaper_interval = 10
+  config.idle_timeout = 15
+end
+
+# Configure server logging
+ModelContextProtocol::Server.configure_server_logging do |config|
+  config.logdev = $stdout
+  config.level = Logger::DEBUG
+  config.progname = "MCP-Dev-Server"
+end
+
+# Build the registry (checks flag files at startup)
+def build_registry
+  ModelContextProtocol::Server::Registry.new do
+    prompts do
+      register TestPrompt
+      register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
+    end
+
+    resources subscribe: true do
+      register TestResource
+      register TestAnnotatedResource
+      register TestProgressiveResource
+      register TestBinaryResource if flag_enabled?('extra_resources')
+    end
+
+    resource_templates do
+      register TestResourceTemplate
+    end
+
+    tools do
+      register TestToolWithStructuredContentResponse
+      register TestToolWithTextResponse
+      register TestToolWithImageResponse
+      register TestToolWithMixedContentResponse
+      register TestToolWithResourceResponse
+      register TestToolWithToolErrorResponse
+      register TestToolWithCancellableSleep
+      register TestToolWithProgressableAndCancellable
+      register TestToolWithAudioResponse if flag_enabled?('extra_tools')
+    end
+  end
+end
+
+# MCP lifecycle lambdas (called per worker in clustered mode, or once in single mode)
+# Accept and ignore arguments since Puma passes worker index to hooks
+mcp_setup = ->(*) {
+  ModelContextProtocol::Server.setup do |config|
+    config.name = "MCP Development Server (Puma)"
+    config.version = "1.0.0"
+
+    config.pagination = {
+      default_page_size: 2,
+      max_page_size: 3,
+      cursor_ttl: 1800
+    }
+
+    config.transport = {
+      type: :streamable_http,
+      require_sessions: true,
+      session_ttl: 3600,
+      allowed_origins: ["*"]
+    }
+
+    config.registry = build_registry
+  end
+}
+
+mcp_shutdown = ->(*) { ModelContextProtocol::Server.shutdown }
+
+# Rack application
+class MCPHttpApp
+  def initialize
+    @logger = Logger.new(STDOUT)
+    @logger.level = Logger::INFO
+    @logger.formatter = proc do |severity, datetime, progname, msg|
+      request_id = Thread.current[:request_id] || "----"
+      "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} [#{request_id}]: #{msg}\n"
+    end
+  end
+
+  def call(env)
+    request_id = SecureRandom.hex(4)
+    Thread.current[:request_id] = request_id
+
+    request = Rack::Request.new(env)
+    body_content = request.body.read
+
+    log_request(env, body_content)
+
+    env['rack.input'] = StringIO.new(body_content)
+
+    unless request.path == "/mcp"
+      return [404, {"Content-Type" => "application/json"}, ['{"error": "Not found"}']]
+    end
+
+    if request.request_method == "OPTIONS"
+      return [200, cors_headers, [""]]
+    end
+
+    begin
+      result = ModelContextProtocol::Server.serve(
+        env: env,
+        session_context: {
+          user_id: "dev-user-123",
+          request_id: request_id
+        }
+      )
+
+      handle_result(result, body_content)
+    rescue => e
+      @logger.error("Error handling request: #{e.message}")
+      @logger.debug("Full backtrace:\n#{e.backtrace.join("\n")}")
+      [500, {"Content-Type" => "application/json"}, [%Q({"error": "Internal server error: #{e.message}"})]]
+    ensure
+      Thread.current[:request_id] = nil
+    end
+  end
+
+  private
+
+  def log_request(env, body_content)
+    case env['REQUEST_METHOD']
+    when 'POST'
+      begin
+        request_json = JSON.parse(body_content)
+        method = request_json['method']
+        id = request_json['id']
+
+        if method&.start_with?('notifications/') || id.nil?
+          @logger.info("→ #{method} [NOTIFICATION]")
+        else
+          @logger.info("→ #{method} (id: #{id}) [REQUEST]")
+        end
+        @logger.info("  Request: #{body_content}")
+      rescue JSON::ParserError
+        @logger.info("→ POST #{env['PATH_INFO']} [INVALID JSON]")
+      end
+    when 'GET'
+      accept_header = env['HTTP_ACCEPT'] || ''
+      if accept_header.include?('text/event-stream')
+        @logger.info("→ GET #{env['PATH_INFO']} [SSE STREAM REQUEST]")
+      else
+        @logger.info("→ GET #{env['PATH_INFO']}")
+      end
+    when 'DELETE'
+      session_id = env['HTTP_MCP_SESSION_ID']
+      @logger.info("→ DELETE #{env['PATH_INFO']} [SESSION CLEANUP#{session_id ? ": #{session_id}" : ""}]")
+    else
+      @logger.info("→ #{env['REQUEST_METHOD']} #{env['PATH_INFO']}")
+    end
+  end
+
+  def handle_result(result, body_content)
+    case result
+    when Hash
+      if result[:stream]
+        @logger.info("← SSE STREAM OPENED [PERSISTENT CONNECTION]")
+        headers = (result[:headers] || {}).merge(cors_headers)
+        [200, headers, result[:stream_proc]]
+      elsif result[:json]
+        response_body = result[:json].to_json
+        status = result[:status] || 200
+        @logger.info("← RESPONSE (status: #{status})")
+        @logger.info("  Response: #{response_body}") unless status == 202
+        headers = (result[:headers] || {}).merge(cors_headers).merge("Content-Type" => "application/json")
+        [status, headers, [response_body]]
+      else
+        @logger.error("← Invalid transport response")
+        [500, {"Content-Type" => "application/json"}, ['{"error": "Invalid transport response"}']]
+      end
+    else
+      @logger.error("← Unexpected response format")
+      [500, {"Content-Type" => "application/json"}, ['{"error": "Unexpected response format"}']]
+    end
+  end
+
+  def cors_headers
+    {
+      "Access-Control-Allow-Origin" => "*",
+      "Access-Control-Allow-Methods" => "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers" => "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin",
+      "Access-Control-Max-Age" => "86400"
+    }
+  end
+end
+
+# Parse command line options
+workers = ENV.fetch("WEB_CONCURRENCY", "0").to_i
+threads = ENV.fetch("PUMA_THREADS", "5").to_i
+port = ENV.fetch("PORT", "9292").to_i
+
+puts "=" * 60
+puts "MCP Development Server (Puma)"
+puts "=" * 60
+puts "Port:    #{port}"
+puts "Workers: #{workers} (set WEB_CONCURRENCY to change)"
+puts "Threads: #{threads} (set PUMA_THREADS to change)"
+puts "Mode:    #{workers > 0 ? "Clustered (forking)" : "Single (no forking)"}"
+puts "=" * 60
+puts ""
+puts "Flag files (checked at startup only):"
+puts "  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse"
+puts "  touch tmp/flags/extra_resources # Add TestBinaryResource"
+puts "  touch tmp/flags/extra_prompts   # Add TestPromptWithCompletionClass"
+puts ""
+
+# Build the Rack app
+app = Rack::Builder.new do
+  map '/mcp' do
+    run MCPHttpApp.new
+  end
+end
+
+# Configure Puma
+puma_config = Puma::Configuration.new do |config|
+  config.bind "tcp://0.0.0.0:#{port}"
+  config.workers workers
+  config.threads 1, threads
+
+  if workers > 0
+    # Clustered mode: each worker needs its own MCP server after fork
+    config.before_worker_boot(&mcp_setup)
+    config.before_worker_shutdown(&mcp_shutdown)
+  end
+
+  config.app app
+end
+
+# Single mode: set up MCP before launching (no forking)
+if workers.zero?
+  mcp_setup.call
+end
+
+# Launch Puma
+launcher = Puma::Launcher.new(puma_config)
+
+# Puma handles signals itself. Register a shutdown hook for when Puma exits.
+at_exit { mcp_shutdown.call } if workers.zero?
+
+launcher.run

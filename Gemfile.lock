@@ -64,6 +64,7 @@ GEM
     logger (1.6.5)
     mock_redis (0.52.0)
       redis (~> 5)
+    nio4r (2.7.5)
     parallel (1.26.3)
     parser (3.3.6.0)
       ast (~> 2.4.1)
@@ -72,6 +73,8 @@ GEM
       date
       stringio
     public_suffix (6.0.1)
+    puma (7.2.0)
+      nio4r (~> 2.0)
     racc (1.8.1)
     rack (3.2.1)
     rackup (2.2.1)
@@ -150,6 +153,7 @@ DEPENDENCIES
   debug
   mock_redis
   model-context-protocol-rb!
+  puma
   rack
   rackup
   rake
