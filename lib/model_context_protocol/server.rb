@@ -15,22 +15,22 @@ module ModelContextProtocol
       map_handlers
     end
 
+    # Start the server for stdio transport
+    # For HTTP transport, use Server.setup and Server.serve instead
     def start
       configuration.validate!
 
-      @transport = case configuration.transport_type
+      case configuration.transport_type
       when :stdio, nil
-        StdioTransport.new(router: @router, configuration: @configuration)
+        @transport = StdioTransport.new(router: @router, configuration: @configuration)
+        @transport.handle
       when :streamable_http
-        StreamableHttpTransport.new(
-          router: @router,
-          configuration: @configuration
-        )
+        raise ArgumentError,
+          "Use Server.setup and Server.serve for streamable_http transport. " \
+          "Example: Server.setup { |c| ... } then Server.serve(env: request.env)"
       else
         raise ArgumentError, "Unknown transport: #{configuration.transport_type}"
       end
-
-      @transport.handle
     end
 
     private
@@ -158,7 +158,7 @@ module ModelContextProtocol
           raise ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{uri}"
         end
 
-        resource.call(configuration.client_logger, configuration.server_logger, configuration.context)
+        resource.call(configuration.client_logger, configuration.server_logger, effective_context)
       end
 
       router.map("resources/templates/list") do |message|
@@ -215,7 +215,7 @@ module ModelContextProtocol
         configuration
           .registry
           .find_prompt(message["params"]["name"])
-          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, effective_context)
       end
 
       router.map("tools/list") do |message|
@@ -248,8 +248,15 @@ module ModelContextProtocol
         configuration
           .registry
           .find_tool(message["params"]["name"])
-          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, configuration.context)
+          .call(symbolized_arguments, configuration.client_logger, configuration.server_logger, effective_context)
       end
+    end
+
+    # Merge server-level context with per-request session_context
+    # Session context takes precedence over server context
+    def effective_context
+      session_context = Thread.current[:mcp_context]&.dig(:session_context) || {}
+      (configuration.context || {}).merge(session_context)
     end
 
     def build_capabilities
@@ -282,12 +289,85 @@ module ModelContextProtocol
     end
 
     class << self
+      attr_reader :singleton_transport, :singleton_configuration, :singleton_router
+
       def configure_redis(&block)
         ModelContextProtocol::Server::RedisConfig.configure(&block)
       end
 
       def configure_server_logging(&block)
         ModelContextProtocol::Server::GlobalConfig::ServerLogging.configure(&block)
+      end
+
+      # Initialize a singleton transport for handling multiple requests
+      # This is the recommended pattern for production HTTP deployments
+      # where you want only 2 background threads (MessagePoller, StreamMonitor)
+      # regardless of concurrent connections.
+      #
+      # @param configuration [Configuration, nil] Pre-built configuration object
+      # @yield [Configuration] Block to configure the server
+      # @raise [RuntimeError] If server is already initialized
+      # @raise [ArgumentError] If neither configuration nor block provided
+      def setup(configuration = nil)
+        raise "Server already initialized. Call Server.shutdown first." if @singleton_transport
+
+        @singleton_configuration = if configuration
+          configuration
+        elsif block_given?
+          config = Configuration.new
+          yield(config)
+          config
+        else
+          raise ArgumentError, "Configuration or block required"
+        end
+
+        @singleton_configuration.validate!
+        @singleton_router = Router.new(configuration: @singleton_configuration)
+
+        # Map handlers using an instance to access private map_handlers method
+        server_instance = allocate
+        server_instance.instance_variable_set(:@configuration, @singleton_configuration)
+        server_instance.instance_variable_set(:@router, @singleton_router)
+        server_instance.send(:map_handlers)
+
+        @singleton_transport = StreamableHttpTransport.new(
+          router: @singleton_router,
+          configuration: @singleton_configuration
+        )
+      end
+
+      # Handle an incoming HTTP request using the singleton transport
+      #
+      # @param env [Hash] Rack environment hash
+      # @param session_context [Hash] Per-request context (e.g., user_id from auth)
+      # @return [Hash] Response hash with :json, :status, :headers keys
+      # @raise [RuntimeError] If server not initialized
+      def serve(env:, session_context: {})
+        raise "Server not initialized. Call Server.setup first." unless @singleton_transport
+
+        @singleton_transport.handle(env: env, session_context: session_context)
+      end
+
+      # Gracefully shutdown the singleton transport
+      # Stops background threads and cleans up resources
+      def shutdown
+        @singleton_transport&.shutdown
+        @singleton_transport = nil
+        @singleton_router = nil
+        @singleton_configuration = nil
+      end
+
+      # Check if singleton transport is configured and ready
+      #
+      # @return [Boolean] true if setup has been called and transport is ready
+      def singleton_configured?
+        !@singleton_transport.nil?
+      end
+
+      # Reset singleton state (for testing)
+      # This is an alias for shutdown
+      def reset!
+        shutdown
       end
     end
   end

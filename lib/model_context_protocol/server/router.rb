@@ -5,7 +5,7 @@ module ModelContextProtocol
     # Raised when an invalid method is provided.
     class MethodNotFoundError < StandardError; end
 
-    def initialize(configuration: nil)
+    def initialize(configuration:)
       @handlers = {}
       @configuration = configuration
     end
@@ -21,8 +21,9 @@ module ModelContextProtocol
     # @param session_id [String, nil] the session ID for HTTP transport
     # @param transport [Object, nil] the transport for sending notifications
     # @param stream_id [String, nil] the specific stream ID for targeted notifications
+    # @param session_context [Hash] per-request context stored during session initialization
     # @return [Object] the handler result, or nil if cancelled
-    def route(message, request_store: nil, session_id: nil, transport: nil, stream_id: nil)
+    def route(message, request_store: nil, session_id: nil, transport: nil, stream_id: nil, session_context: {})
       method = message["method"]
       handler = @handlers[method]
       raise MethodNotFoundError, "Method not found: #{method}" unless handler
@@ -36,8 +37,16 @@ module ModelContextProtocol
 
       result = nil
       begin
-        with_environment(@configuration&.environment_variables) do
-          context = {jsonrpc_request_id:, request_store:, session_id:, progress_token:, transport:, stream_id:}
+        execute_with_context(handler, message, session_context:) do
+          context = {
+            jsonrpc_request_id:,
+            request_store:,
+            session_id:,
+            progress_token:,
+            transport:,
+            stream_id:,
+            session_context:
+          }
 
           Thread.current[:mcp_context] = context
 
@@ -57,6 +66,18 @@ module ModelContextProtocol
     end
 
     private
+
+    # Execute handler with appropriate context setup
+    def execute_with_context(handler, message, session_context:, &block)
+      # Skip ENV manipulation for streamable_http transport because ENV is
+      # global state and modifying it is thread-unsafe in multi-threaded servers.
+      # For stdio transport, apply ENV variables as before (single-threaded).
+      if @configuration.transport_type == :streamable_http
+        yield
+      else
+        with_environment(@configuration.environment_variables, &block)
+      end
+    end
 
     def with_environment(vars)
       original = ENV.to_h

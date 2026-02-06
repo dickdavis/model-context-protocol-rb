@@ -1,5 +1,6 @@
 require "json"
 require "securerandom"
+require "concurrent"
 
 module ModelContextProtocol
   class Server::StreamableHttpTransport
@@ -31,7 +32,8 @@ module ModelContextProtocol
       transport_options = @configuration.transport_options
       @require_sessions = transport_options.fetch(:require_sessions, false)
       @default_protocol_version = transport_options.fetch(:default_protocol_version, "2025-03-26")
-      @session_protocol_versions = {}
+      # Use Concurrent::Map for thread-safe access from multiple request threads
+      @session_protocol_versions = Concurrent::Map.new
       @validate_origin = transport_options.fetch(:validate_origin, true)
       @allowed_origins = transport_options.fetch(:allowed_origins, ["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"])
 
@@ -55,7 +57,8 @@ module ModelContextProtocol
     end
 
     # Gracefully shut down the transport by stopping background threads and cleaning up resources
-    # Closes all active streams and returns Redis connections to the pool
+    # Closes all active streams. Redis entries are left to expire naturally (they have TTLs).
+    # This method is signal-safe and avoids mutex operations.
     def shutdown
       @server_logger.info("Shutting down StreamableHttpTransport")
 
@@ -67,32 +70,31 @@ module ModelContextProtocol
         @stream_monitor_thread.join(5)
       end
 
-      @stream_registry.get_all_local_streams.each do |session_id, _stream|
-        close_stream(session_id, reason: "shutdown")
-      rescue => e
-        @server_logger.error("Error during stream cleanup for session #{session_id}: #{e.message}")
+      # Close streams directly without Redis cleanup (signal-safe).
+      # Redis entries will expire naturally via TTL.
+      @stream_registry.get_all_local_streams.each do |session_id, stream|
+        begin
+          stream.close
+        rescue IOError, Errno::EPIPE, Errno::ECONNRESET, Errno::ENOTCONN, Errno::EBADF
+          # Stream already closed, ignore
+        end
+        @server_logger.info("← SSE stream [closed] (#{session_id}) [shutdown]")
       end
-
-      @redis_pool.checkin(@redis) if @redis_pool && @redis
 
       @server_logger.info("StreamableHttpTransport shutdown complete")
     end
 
     # Main entry point for handling HTTP requests (POST, GET, DELETE)
     # Routes requests to appropriate handlers and manages the request/response lifecycle
-    def handle
+    # @param env [Hash] Rack environment hash (required)
+    # @param session_context [Hash] Per-request context that will be merged with server context
+    def handle(env:, session_context: {})
       @server_logger.debug("Handling streamable HTTP transport request")
-
-      env = @configuration.transport_options[:env]
-
-      unless env
-        raise ArgumentError, "StreamableHTTP transport requires Rack env hash in transport_options"
-      end
 
       case env["REQUEST_METHOD"]
       when "POST"
         @server_logger.debug("Handling POST request")
-        handle_post_request(env)
+        handle_post_request(env, session_context: session_context)
       when "GET"
         @server_logger.debug("Handling GET request")
         handle_get_request(env)
@@ -212,7 +214,9 @@ module ModelContextProtocol
 
     # Handle HTTP POST requests containing JSON-RPC messages
     # Parses request body and routes to initialization or regular request handlers
-    def handle_post_request(env)
+    # @param env [Hash] Rack environment hash
+    # @param session_context [Hash] Per-request context for initialization
+    def handle_post_request(env, session_context: {})
       validation_error = validate_headers(env)
       return validation_error if validation_error
 
@@ -237,7 +241,7 @@ module ModelContextProtocol
       end
 
       if body["method"] == "initialize"
-        handle_initialization(body, accept_header)
+        handle_initialization(body, accept_header, session_context: session_context)
       else
         handle_regular_request(body, session_id, accept_header)
       end
@@ -276,7 +280,10 @@ module ModelContextProtocol
 
     # Handle MCP initialization requests to establish protocol version and optional sessions
     # Always returns JSON response regardless of Accept header to keep initialization simple
-    def handle_initialization(body, accept_header)
+    # @param body [Hash] Parsed JSON-RPC request body
+    # @param accept_header [String] HTTP Accept header value
+    # @param session_context [Hash] Per-request context to merge with server context
+    def handle_initialization(body, accept_header, session_context: {})
       result = @router.route(body, transport: self)
       response = Response[id: body["id"], result: result.serialized]
       response_headers = {}
@@ -284,9 +291,11 @@ module ModelContextProtocol
 
       if @require_sessions
         session_id = SecureRandom.uuid
+        # Merge server-level defaults with request-level context
+        merged_context = (@configuration.context || {}).merge(session_context)
         @session_store.create_session(session_id, {
           server_instance: @server_instance,
-          context: @configuration.context || {},
+          context: merged_context,
           created_at: Time.now.to_f,
           negotiated_protocol_version: negotiated_protocol_version
         })
@@ -317,6 +326,9 @@ module ModelContextProtocol
     # Handle regular MCP requests (tools, resources, prompts) with streaming/JSON decision logic
     # Defaults to SSE streaming but returns JSON when client explicitly requests JSON only
     def handle_regular_request(body, session_id, accept_header)
+      # Retrieve session context for passing to router
+      session_context = {}
+
       if @require_sessions
         unless session_id && @session_store.session_exists?(session_id)
           if session_id && !@session_store.session_exists?(session_id)
@@ -327,6 +339,9 @@ module ModelContextProtocol
             return {json: error_response.serialized, status: 400}
           end
         end
+
+        # Retrieve stored session context
+        session_context = @session_store.get_session_context(session_id)
 
         # Check for handler changes and notify client if needed
         check_and_notify_handler_changes(session_id)
@@ -365,9 +380,9 @@ module ModelContextProtocol
               "Cache-Control" => "no-cache",
               "Connection" => "keep-alive"
             },
-            stream_proc: create_request_response_sse_stream_proc(body, session_id)
+            stream_proc: create_request_response_sse_stream_proc(body, session_id, session_context: session_context)
           }
-        elsif (result = @router.route(body, request_store: @request_store, session_id: session_id, transport: self))
+        elsif (result = @router.route(body, request_store: @request_store, session_id: session_id, transport: self, session_context: session_context))
           response = Response[id: body["id"], result: result.serialized]
 
           log_to_server_with_context(request_id: response.id) do |logger|
@@ -447,7 +462,10 @@ module ModelContextProtocol
     # Create SSE stream processor for request-response pattern with real-time progress support
     # Opens stream → Executes request → Sends response → Closes stream
     # Enables progress notifications during long-running operations like tool calls
-    def create_request_response_sse_stream_proc(request_body, session_id)
+    # @param request_body [Hash] Parsed JSON-RPC request
+    # @param session_id [String, nil] Session ID for this request
+    # @param session_context [Hash] Context to pass to handlers
+    def create_request_response_sse_stream_proc(request_body, session_id, session_context: {})
       proc do |stream|
         temp_stream_id = "temp-#{SecureRandom.hex(8)}"
         @stream_registry.register_stream(temp_stream_id, stream)
@@ -458,7 +476,7 @@ module ModelContextProtocol
         end
 
         begin
-          if (result = @router.route(request_body, request_store: @request_store, session_id: session_id, transport: self, stream_id: temp_stream_id))
+          if (result = @router.route(request_body, request_store: @request_store, session_id: session_id, transport: self, stream_id: temp_stream_id, session_context: session_context))
             response = Response[id: request_body["id"], result: result.serialized]
             event_id = next_event_id
             send_sse_event(stream, response.serialized, event_id)
@@ -473,6 +491,16 @@ module ModelContextProtocol
         rescue IOError, Errno::EPIPE, Errno::ECONNRESET => e
           @server_logger.debug("Client disconnected during progressive request processing: #{e.class.name}")
           log_to_server_with_context { |logger| logger.info("← SSE stream [closed] (#{temp_stream_id}) [client_disconnected]") }
+        rescue ModelContextProtocol::Server::ParameterValidationError => e
+          @client_logger.error("Validation error", error: e.message)
+          error_response = ErrorResponse[id: request_body["id"], error: {code: -32602, message: e.message}]
+          send_sse_event(stream, error_response.serialized, next_event_id)
+          close_stream(temp_stream_id, reason: "validation_error")
+        rescue => e
+          @client_logger.error("Internal error", error: e.message, backtrace: e.backtrace)
+          error_response = ErrorResponse[id: request_body["id"], error: {code: -32603, message: e.message}]
+          send_sse_event(stream, error_response.serialized, next_event_id)
+          close_stream(temp_stream_id, reason: "internal_error")
         ensure
           @stream_registry.unregister_stream(temp_stream_id)
         end

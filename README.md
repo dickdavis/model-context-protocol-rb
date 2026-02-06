@@ -50,92 +50,110 @@ For detailed installation instructions, see the [Installation wiki page](https:/
 
 ## Building an MCP Server
 
-> **Quick Start:** For a complete Rails integration example, see the [Quick Start with Rails](https://github.com/dickdavis/model-context-protocol-rb/wiki/Quick-Start-with-Rails) guide.
+Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Messages from the MCP client will be routed to the appropriate custom handler.
 
-Build a simple MCP server by registering your prompts, resources, resource templates, and tools. Then, configure and run the server. Messages from the MCP client will be routed to the appropriate custom handler. This SDK provides several classes that should be used to build your handlers.
+### STDIO Transport (Default)
+
+For command-line MCP servers that communicate via standard input/output:
 
 ```ruby
 server = ModelContextProtocol::Server.new do |config|
-  # Name of the MCP server (intended for programmatic use)
-  config.name = "MCPDevelopmentServer"
-
-  # Version of the MCP server
+  config.name = "MyMCPServer"
   config.version = "1.0.0"
 
-  # Optional: human-readable display name for the MCP server
-  config.title = "My Awesome Server"
-
-  # Optional: instuctions for how the MCP server should be used by LLMs
-  config.instructions = <<~INSTRUCTIONS
-    This server provides file system access and development tools.
-
-    Key capabilities:
-    - Read and write files in the project directory
-    - Execute shell commands for development tasks
-    - Analyze code structure and dependencies
-
-    Use this server when you need to interact with the local development environment.
-  INSTRUCTIONS
-
-  # Configure pagination options for the following methods:
-  # prompts/list, resources/list, resource_template/list, tools/list
-  config.pagination = {
-    default_page_size: 50,   # Default items per page
-    max_page_size: 500,      # Maximum allowed page size
-    cursor_ttl: 1800         # Cursor expiry in seconds (30 minutes)
-  }
-
-  # Disable pagination support (enabled by default)
-  # config.pagination = false
-
-  # Optional: require specific environment variables to be set
-  config.require_environment_variable("API_KEY")
-
-  # Optional: set environment variables programmatically
-  config.set_environment_variable("DEBUG_MODE", "true")
-
-  # Optional: provide prompts, resources, and tools with contextual variables
-  config.context = {
-    user_id: "123456",
-    request_id: SecureRandom.uuid
-  }
-
-  # Optional: explicitly specify STDIO as the transport
-  # This is not necessary as STDIO is the default transport
-  # config.transport = { type: :stdio }
-
-  # Optional: configure streamable HTTP transport if required
-  # config.transport = {
-  #   type: :streamable_http,
-  #   env: request.env,
-  #   session_ttl: 3600 # Optional: session timeout in seconds (default: 3600)
-  # }
-
-  # Register prompts, resources, resource templates, and tools
   config.registry = ModelContextProtocol::Server::Registry.new do
     prompts do
-      register TestPrompt
+      register MyPrompt
     end
 
     resources do
-      register TestResource
-    end
-
-    resource_templates do
-      register TestResourceTemplate
+      register MyResource
     end
 
     tools do
-      register TestTool
+      register MyTool
     end
   end
 end
 
-# Start the MCP server
 server.start
 ```
 
-For complete configuration details including server options, transport setup, Redis configuration, and logging options, see the [Building an MCP Server](https://github.com/dickdavis/model-context-protocol-rb/wiki/Building-an-MCP-Server) wiki page.
+### Streamable HTTP Transport
+
+For HTTP-based MCP servers (e.g., Rails applications), use the singleton API. This ensures only 2 background threads exist regardless of concurrent connections.
+
+**Configure Redis (required for HTTP transport):**
+
+```ruby
+# config/initializers/model_context_protocol.rb
+
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = ENV.fetch("REDIS_URL")
+  config.pool_size = 20
+end
+```
+
+**Configure Puma to manage the MCP server lifecycle:**
+
+```ruby
+# config/puma.rb
+
+workers ENV.fetch("WEB_CONCURRENCY", 0).to_i
+
+# Use ->(*) to accept worker index argument passed by Puma hooks
+mcp_setup = ->(*) {
+  ModelContextProtocol::Server.setup do |config|
+    config.name = "MyMCPServer"
+    config.version = "1.0.0"
+    config.transport = { type: :streamable_http }
+
+    config.registry = ModelContextProtocol::Server::Registry.new do
+      tools { register MyTool }
+    end
+  end
+}
+
+mcp_shutdown = ->(*) { ModelContextProtocol::Server.shutdown }
+
+# Clustered mode: workers fork, so each needs its own MCP server
+on_worker_boot(&mcp_setup)
+on_worker_shutdown(&mcp_shutdown)
+
+# Single mode: on_worker_boot isn't called, so set up directly
+if ENV.fetch("WEB_CONCURRENCY", 0).to_i.zero?
+  mcp_setup.call
+  at_exit(&mcp_shutdown)
+end
+```
+
+**Handle each request:**
+
+```ruby
+class ModelContextProtocolController < ActionController::API
+  include ActionController::Live
+
+  def handle
+    result = ModelContextProtocol::Server.serve(
+      env: request.env,
+      session_context: { user_id: current_user.id }
+    )
+
+    if result[:stream]
+      response.headers.merge!(result[:headers])
+      result[:stream_proc]&.call(response.stream)
+    else
+      render json: result[:json], status: result[:status] || 200
+    end
+  ensure
+    response.stream.close rescue nil
+  end
+end
+```
+
+For a complete Rails integration example, see the [Quick Start with Rails](https://github.com/dickdavis/model-context-protocol-rb/wiki/Quick-Start-with-Rails) guide.
+
+For complete configuration details including all server options, Redis configuration, and logging options, see the [Building an MCP Server](https://github.com/dickdavis/model-context-protocol-rb/wiki/Building-an-MCP-Server) wiki page.
 
 ## Prompts
 

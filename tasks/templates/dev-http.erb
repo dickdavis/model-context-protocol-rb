@@ -15,20 +15,6 @@ require 'stringio'
 
 require_relative "../lib/model_context_protocol"
 
-ModelContextProtocol::Server.configure_redis do |config|
-  config.redis_url = "redis://localhost:6379/0"
-  config.pool_size = 10
-  config.enable_reaper = true
-  config.reaper_interval = 10
-  config.idle_timeout = 15
-end
-
-ModelContextProtocol::Server.configure_server_logging do |config|
-  config.logdev = $stdout
-  config.level = Logger::DEBUG
-  config.progname = "MCP-Dev-Server"
-end
-
 # Only require test handler files (prompts, resources, tools, etc.), not RSpec helpers
 %w[prompts resources resource_templates tools completions].each do |subdir|
   Dir[File.join(__dir__, "../spec/support/#{subdir}/**/*.rb")].each { |file| require file }
@@ -41,11 +27,11 @@ logger.formatter = proc do |severity, datetime, progname, msg|
   "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} [#{request_id}]: #{msg}\n"
 end
 
-# Flag files for dynamic handler registration (for testing list_changed notifications)
-# Touch these files to add extra handlers, remove them to remove handlers:
+# Flag files for dynamic handler registration (checked at startup)
+# Touch these files BEFORE starting the server to add extra handlers:
 #   tmp/flags/extra_tools    - adds TestToolWithAudioResponse
-#   tmp/flags/extra_resources - adds TestBinaryResource (if not already registered)
-#   tmp/flags/extra_prompts  - adds TestPromptWithCompletionClass (if not already registered)
+#   tmp/flags/extra_resources - adds TestBinaryResource
+#   tmp/flags/extra_prompts  - adds TestPromptWithCompletionClass
 FLAGS_DIR = File.join(__dir__, '..', 'tmp', 'flags')
 FileUtils.mkdir_p(FLAGS_DIR) unless Dir.exist?(FLAGS_DIR)
 
@@ -53,6 +39,76 @@ def flag_enabled?(flag_name)
   File.exist?(File.join(FLAGS_DIR, flag_name))
 end
 
+# Configure Redis
+ModelContextProtocol::Server.configure_redis do |config|
+  config.redis_url = "redis://localhost:6379/0"
+  config.pool_size = 10
+  config.enable_reaper = true
+  config.reaper_interval = 10
+  config.idle_timeout = 15
+end
+
+# Configure server logging
+ModelContextProtocol::Server.configure_server_logging do |config|
+  config.logdev = $stdout
+  config.level = Logger::DEBUG
+  config.progname = "MCP-Dev-Server"
+end
+
+# Build the registry (checks flag files at startup)
+def build_registry
+  ModelContextProtocol::Server::Registry.new do
+    prompts do
+      register TestPrompt
+      register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
+    end
+
+    resources subscribe: true do
+      register TestResource
+      register TestAnnotatedResource
+      register TestProgressiveResource
+      register TestBinaryResource if flag_enabled?('extra_resources')
+    end
+
+    resource_templates do
+      register TestResourceTemplate
+    end
+
+    tools do
+      register TestToolWithStructuredContentResponse
+      register TestToolWithTextResponse
+      register TestToolWithImageResponse
+      register TestToolWithMixedContentResponse
+      register TestToolWithResourceResponse
+      register TestToolWithToolErrorResponse
+      register TestToolWithCancellableSleep
+      register TestToolWithProgressableAndCancellable
+      register TestToolWithAudioResponse if flag_enabled?('extra_tools')
+    end
+  end
+end
+
+# Set up the singleton server (runs once at startup)
+logger.info("Setting up MCP Server singleton...")
+ModelContextProtocol::Server.setup do |config|
+  config.name = "MCP Development Server"
+  config.version = "1.0.0"
+
+  config.pagination = {
+    default_page_size: 2,
+    max_page_size: 3,
+    cursor_ttl: 1800
+  }
+
+  config.transport = {
+    type: :streamable_http,
+    require_sessions: true,
+    session_ttl: 3600,
+    allowed_origins: ["*"]
+  }
+
+  config.registry = build_registry
+end
 
 class MCPHttpApp
   def initialize(logger)
@@ -126,25 +182,17 @@ class MCPHttpApp
       }, [""]]
     end
 
-    transport_config = {
-      type: :streamable_http,
-      env:,
-      require_sessions: true,
-      session_ttl: 3600,
-      allowed_origins: ["*"]
-    }
-
-    @logger.debug("Creating MCP server with transport config")
-    server = create_mcp_server(transport_config)
-    transport = nil
-
     begin
-      @logger.debug("Starting MCP server")
-      result = server.start
+      @logger.debug("Handling request via Server.serve")
 
-      if server.respond_to?(:transport)
-        transport = server.transport
-      end
+      # Use the singleton server to handle the request
+      result = ModelContextProtocol::Server.serve(
+        env: env,
+        session_context: {
+          user_id: "dev-user-123",
+          request_id: request_id
+        }
+      )
 
       case result
       when Hash
@@ -186,7 +234,7 @@ class MCPHttpApp
           headers = result[:headers] || {}
           headers["Content-Type"] = "application/json"
           headers["Access-Control-Allow-Origin"] = "*"
-          headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS" 
+          headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
           headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin"
 
           [result[:status] || 200, headers, [response_body]]
@@ -204,66 +252,7 @@ class MCPHttpApp
       @logger.debug("Full backtrace:\n#{e.backtrace.join("\n")}")
       [500, {"Content-Type" => "application/json"}, [%Q({"error": "Internal server error: #{e.message}"})]]
     ensure
-      transport&.cleanup if transport&.respond_to?(:cleanup)
       Thread.current[:request_id] = nil
-    end
-  end
-
-  private
-
-  def create_mcp_server(transport_config)
-    ModelContextProtocol::Server.new do |config|
-      config.name = "MCP Development Server"
-      config.version = "1.0.0"
-      config.logging_enabled = true
-
-      config.pagination = {
-        default_page_size: 2,
-        max_page_size: 3,
-        cursor_ttl: 1800
-      }
-
-      config.set_environment_variable("MCP_ENV", "development")
-
-      config.context = {
-        user_id: "123456",
-        request_id: Thread.current[:request_id]
-      }
-
-      config.transport = transport_config
-
-      config.registry = ModelContextProtocol::Server::Registry.new do
-        prompts do
-          register TestPrompt
-          # Extra prompt controlled by flag file: tmp/flags/extra_prompts
-          register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
-        end
-
-        resources subscribe: true do
-          register TestResource
-          register TestAnnotatedResource
-          register TestProgressiveResource
-          # Extra resource controlled by flag file: tmp/flags/extra_resources
-          register TestBinaryResource if flag_enabled?('extra_resources')
-        end
-
-        resource_templates do
-          register TestResourceTemplate
-        end
-
-        tools do
-          register TestToolWithStructuredContentResponse
-          register TestToolWithTextResponse
-          register TestToolWithImageResponse
-          register TestToolWithMixedContentResponse
-          register TestToolWithResourceResponse
-          register TestToolWithToolErrorResponse
-          register TestToolWithCancellableSleep
-          register TestToolWithProgressableAndCancellable
-          # Extra tool controlled by flag file: tmp/flags/extra_tools
-          register TestToolWithAudioResponse if flag_enabled?('extra_tools')
-        end
-      end
     end
   end
 end
@@ -273,7 +262,9 @@ port = use_ssl ? 9293 : 9292
 protocol = use_ssl ? 'https' : 'http'
 
 logger.info("Starting MCP #{protocol.upcase} Development Server on #{protocol}://localhost:#{port}/mcp")
-logger.info("List Changed Testing: Toggle handlers with flag files in tmp/flags/")
+logger.info("Using singleton transport pattern (2 background threads max)")
+logger.info("")
+logger.info("Flag files (checked at startup only - restart server to apply changes):")
 logger.info("  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse")
 logger.info("  touch tmp/flags/extra_resources # Add TestBinaryResource")
 logger.info("  touch tmp/flags/extra_prompts   # Add TestPromptWithCompletionClass")
@@ -308,14 +299,14 @@ if use_ssl
   )
 end
 
-server = WEBrick::HTTPServer.new(server_options)
-server.mount '/', Rackup::Handler::WEBrick, app
+webrick_server = WEBrick::HTTPServer.new(server_options)
+webrick_server.mount '/', Rackup::Handler::WEBrick, app
 
 ['INT', 'TERM'].each do |signal|
   Signal.trap(signal) do
-    server.shutdown
-    exit(0)
+    ModelContextProtocol::Server.shutdown
+    webrick_server.shutdown
   end
 end
 
-server.start
+webrick_server.start
