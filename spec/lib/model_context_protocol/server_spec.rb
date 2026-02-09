@@ -965,7 +965,7 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     describe ".setup" do
-      it "creates singleton transport with block configuration" do
+      it "configures singleton with block configuration (does not create transport)" do
         reg = registry
         described_class.setup do |config|
           config.name = "Singleton Test Server"
@@ -975,14 +975,15 @@ RSpec.describe ModelContextProtocol::Server do
         end
 
         aggregate_failures do
-          expect(described_class.singleton_configured?).to be true
-          expect(described_class.singleton_transport).to be_a(ModelContextProtocol::Server::StreamableHttpTransport)
+          expect(described_class.configured?).to be true
+          expect(described_class.running?).to be false
+          expect(described_class.singleton_transport).to be_nil
           expect(described_class.singleton_configuration.name).to eq("Singleton Test Server")
           expect(described_class.singleton_router).to be_a(ModelContextProtocol::Server::Router)
         end
       end
 
-      it "creates singleton transport with pre-built configuration" do
+      it "configures singleton with pre-built configuration" do
         config = ModelContextProtocol::Server::Configuration.new
         config.name = "Pre-built Server"
         config.version = "2.0.0"
@@ -992,7 +993,8 @@ RSpec.describe ModelContextProtocol::Server do
         described_class.setup(config)
 
         aggregate_failures do
-          expect(described_class.singleton_configured?).to be true
+          expect(described_class.configured?).to be true
+          expect(described_class.running?).to be false
           expect(described_class.singleton_configuration.name).to eq("Pre-built Server")
         end
       end
@@ -1013,7 +1015,7 @@ RSpec.describe ModelContextProtocol::Server do
             config.registry = reg
             config.transport = {type: :streamable_http}
           end
-        }.to raise_error(RuntimeError, /already initialized/)
+        }.to raise_error(RuntimeError, /already configured/)
       end
 
       it "raises error when neither configuration nor block provided" do
@@ -1031,6 +1033,48 @@ RSpec.describe ModelContextProtocol::Server do
             config.transport = {type: :streamable_http}
           end
         }.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
+      end
+    end
+
+    describe ".start" do
+      it "creates singleton transport after setup" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Start Test Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        described_class.start
+
+        aggregate_failures do
+          expect(described_class.configured?).to be true
+          expect(described_class.running?).to be true
+          expect(described_class.singleton_transport).to be_a(ModelContextProtocol::Server::StreamableHttpTransport)
+        end
+      end
+
+      it "raises error when called without setup" do
+        expect {
+          described_class.start
+        }.to raise_error(RuntimeError, /not configured.*Call Server\.setup first/)
+      end
+
+      it "raises error when called twice without shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Double Start Test"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        described_class.start
+
+        expect {
+          described_class.start
+        }.to raise_error(RuntimeError, /already running/)
       end
     end
 
@@ -1053,6 +1097,7 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = reg
           config.transport = {type: :streamable_http, validate_origin: false}
         end
+        described_class.start
       end
 
       it "handles requests through singleton transport" do
@@ -1073,17 +1118,33 @@ RSpec.describe ModelContextProtocol::Server do
         expect(result[:status]).to eq(200)
       end
 
-      it "raises error when server not initialized" do
+      it "raises error when server not running" do
         described_class.shutdown
 
         expect {
           described_class.serve(env: rack_env)
-        }.to raise_error(RuntimeError, /not initialized/)
+        }.to raise_error(RuntimeError, /not running.*Call Server\.start first/)
+      end
+
+      it "raises error when only configured but not started" do
+        described_class.shutdown
+
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Setup Only Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http, validate_origin: false}
+        end
+
+        expect {
+          described_class.serve(env: rack_env)
+        }.to raise_error(RuntimeError, /not running.*Call Server\.start first/)
       end
     end
 
     describe ".shutdown" do
-      it "cleans up singleton state" do
+      it "cleans up singleton state after setup and start" do
         reg = registry
         described_class.setup do |config|
           config.name = "Shutdown Test"
@@ -1091,16 +1152,41 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = reg
           config.transport = {type: :streamable_http}
         end
+        described_class.start
 
-        expect(described_class.singleton_configured?).to be true
+        aggregate_failures do
+          expect(described_class.configured?).to be true
+          expect(described_class.running?).to be true
+        end
 
         described_class.shutdown
 
         aggregate_failures do
-          expect(described_class.singleton_configured?).to be false
+          expect(described_class.configured?).to be false
+          expect(described_class.running?).to be false
           expect(described_class.singleton_transport).to be_nil
           expect(described_class.singleton_router).to be_nil
           expect(described_class.singleton_configuration).to be_nil
+        end
+      end
+
+      it "cleans up singleton state after setup only (no start)" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Shutdown After Setup Only"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        expect(described_class.configured?).to be true
+        expect(described_class.running?).to be false
+
+        described_class.shutdown
+
+        aggregate_failures do
+          expect(described_class.configured?).to be false
+          expect(described_class.running?).to be false
         end
       end
 
@@ -1112,6 +1198,7 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = reg
           config.transport = {type: :streamable_http}
         end
+        described_class.start
 
         described_class.shutdown
 
@@ -1132,12 +1219,12 @@ RSpec.describe ModelContextProtocol::Server do
       end
     end
 
-    describe ".singleton_configured?" do
+    describe ".configured?" do
       it "returns false when not configured" do
-        expect(described_class.singleton_configured?).to be false
+        expect(described_class.configured?).to be false
       end
 
-      it "returns true when configured" do
+      it "returns true after setup" do
         reg = registry
         described_class.setup do |config|
           config.name = "Config Check Server"
@@ -1146,7 +1233,66 @@ RSpec.describe ModelContextProtocol::Server do
           config.transport = {type: :streamable_http}
         end
 
-        expect(described_class.singleton_configured?).to be true
+        expect(described_class.configured?).to be true
+      end
+
+      it "returns false after shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Config Check Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+        described_class.start
+        described_class.shutdown
+
+        expect(described_class.configured?).to be false
+      end
+    end
+
+    describe ".running?" do
+      it "returns false when not configured" do
+        expect(described_class.running?).to be false
+      end
+
+      it "returns false after setup but before start" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Running Check Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+
+        expect(described_class.running?).to be false
+      end
+
+      it "returns true after start" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Running Check Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+        described_class.start
+
+        expect(described_class.running?).to be true
+      end
+
+      it "returns false after shutdown" do
+        reg = registry
+        described_class.setup do |config|
+          config.name = "Running Check Server"
+          config.version = "1.0.0"
+          config.registry = reg
+          config.transport = {type: :streamable_http}
+        end
+        described_class.start
+        described_class.shutdown
+
+        expect(described_class.running?).to be false
       end
     end
 
@@ -1159,10 +1305,14 @@ RSpec.describe ModelContextProtocol::Server do
           config.registry = reg
           config.transport = {type: :streamable_http}
         end
+        described_class.start
 
         described_class.reset!
 
-        expect(described_class.singleton_configured?).to be false
+        aggregate_failures do
+          expect(described_class.configured?).to be false
+          expect(described_class.running?).to be false
+        end
       end
     end
   end
