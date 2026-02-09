@@ -13,6 +13,7 @@ require "json"
 require "stringio"
 
 require_relative "../lib/model_context_protocol"
+require_relative "../lib/puma/plugin/mcp"
 
 # Only require test handler files (prompts, resources, tools, etc.), not RSpec helpers
 %w[prompts resources resource_templates tools completions].each do |subdir|
@@ -76,31 +77,26 @@ def build_registry
   end
 end
 
-# MCP lifecycle lambdas (called per worker in clustered mode, or once in single mode)
-# Accept and ignore arguments since Puma passes worker index to hooks
-mcp_setup = ->(*) {
-  ModelContextProtocol::Server.setup do |config|
-    config.name = "MCP Development Server (Puma)"
-    config.version = "1.0.0"
+# Configure MCP server (safe before fork - the Puma plugin handles starting after fork)
+ModelContextProtocol::Server.setup do |config|
+  config.name = "MCP Development Server (Puma)"
+  config.version = "1.0.0"
 
-    config.pagination = {
-      default_page_size: 2,
-      max_page_size: 3,
-      cursor_ttl: 1800
-    }
+  config.pagination = {
+    default_page_size: 2,
+    max_page_size: 3,
+    cursor_ttl: 1800
+  }
 
-    config.transport = {
-      type: :streamable_http,
-      require_sessions: true,
-      session_ttl: 3600,
-      allowed_origins: ["*"]
-    }
+  config.transport = {
+    type: :streamable_http,
+    require_sessions: true,
+    session_ttl: 3600,
+    allowed_origins: ["*"]
+  }
 
-    config.registry = build_registry
-  end
-}
-
-mcp_shutdown = ->(*) { ModelContextProtocol::Server.shutdown }
+  config.registry = build_registry
+end
 
 # Rack application
 class MCPHttpApp
@@ -252,24 +248,12 @@ puma_config = Puma::Configuration.new do |config|
   config.workers workers
   config.threads 1, threads
 
-  if workers > 0
-    # Clustered mode: each worker needs its own MCP server after fork
-    config.before_worker_boot(&mcp_setup)
-    config.before_worker_shutdown(&mcp_shutdown)
-  end
+  # Use the MCP plugin to handle server lifecycle (start after fork, shutdown on exit)
+  config.plugin :mcp
 
   config.app app
 end
 
-# Single mode: set up MCP before launching (no forking)
-if workers.zero?
-  mcp_setup.call
-end
-
 # Launch Puma
 launcher = Puma::Launcher.new(puma_config)
-
-# Puma handles signals itself. Register a shutdown hook for when Puma exits.
-at_exit { mcp_shutdown.call } if workers.zero?
-
 launcher.run
