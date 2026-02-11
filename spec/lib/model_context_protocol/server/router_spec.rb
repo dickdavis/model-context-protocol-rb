@@ -571,6 +571,842 @@ RSpec.describe ModelContextProtocol::Server::Router do
     end
   end
 
+  describe "protocol version negotiation" do
+    let(:router) do
+      config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+        c.name = "Test Server"
+        c.version = "1.0.0"
+        c.registry = ModelContextProtocol::Server::Registry.new
+      end
+      described_class.new(configuration: config)
+    end
+
+    it "returns client's protocol version when supported" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {
+          "protocolVersion" => "2025-06-18"
+        }
+      }
+
+      result = router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+
+    it "returns server's latest version when client sends unsupported version" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {
+          "protocolVersion" => "2020-01-01"
+        }
+      }
+
+      result = router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+
+    it "returns server's latest version when no protocol version provided" do
+      message = {
+        "method" => "initialize",
+        "id" => "init-1",
+        "params" => {}
+      }
+
+      result = router.route(message)
+
+      expect(result.serialized[:protocolVersion]).to eq("2025-06-18")
+    end
+  end
+
+  describe "handler mapping" do
+    context "logging/setLevel" do
+      it "sets the log level when valid" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = ModelContextProtocol::Server::Registry.new
+        end
+        router = described_class.new(configuration: config)
+
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "debug"}
+        }
+
+        expect(config.client_logger).to receive(:set_mcp_level).with("debug")
+        response = router.route(message)
+        expect(response.serialized).to eq({})
+      end
+
+      it "raises error for invalid log level" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = ModelContextProtocol::Server::Registry.new
+        end
+        router = described_class.new(configuration: config)
+
+        message = {
+          "method" => "logging/setLevel",
+          "params" => {"level" => "invalid"}
+        }
+
+        expect {
+          router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid log level: invalid/)
+      end
+    end
+
+    context "completion/complete" do
+      it "raises an error when an invalid ref/type is provided" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          prompts do
+            register TestPrompt
+          end
+
+          resource_templates do
+            register TestResourceTemplate
+          end
+        end
+
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {
+          "method" => "completion/complete",
+          "params" => {
+            "ref" => {
+              "type" => "ref/invalid_type",
+              "name" => "foo"
+            },
+            "argument" => {
+              "name" => "bar",
+              "value" => "baz"
+            }
+          }
+        }
+
+        expect {
+          router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "ref/type invalid")
+      end
+
+      context "for prompts" do
+        it "returns a completion for the given prompt" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            prompts do
+              register TestPrompt
+            end
+          end
+
+          config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+            c.name = "Test Server"
+            c.version = "1.0.0"
+            c.registry = registry
+          end
+          router = described_class.new(configuration: config)
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/prompt",
+                "name" => "brainstorm_excuses"
+              },
+              "argument" => {
+                "name" => "tone",
+                "value" => "w"
+              }
+            }
+          }
+
+          response = router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: ["whiny"],
+              total: 1,
+              hasMore: false
+            }
+          )
+        end
+
+        it "returns a null completion when no matching prompt is found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            prompts do
+              register TestPrompt
+            end
+          end
+
+          config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+            c.name = "Test Server"
+            c.version = "1.0.0"
+            c.registry = registry
+          end
+          router = described_class.new(configuration: config)
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/prompt",
+                "name" => "foo"
+              },
+              "argument" => {
+                "name" => "bar",
+                "value" => "baz"
+              }
+            }
+          }
+
+          response = router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: [],
+              total: 0,
+              hasMore: false
+            }
+          )
+        end
+      end
+
+      context "for resource templates" do
+        it "looks up resource templates when direct resource is not found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            resource_templates do
+              register TestResourceTemplate
+            end
+          end
+
+          config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+            c.name = "Test Server"
+            c.version = "1.0.0"
+            c.registry = registry
+          end
+          router = described_class.new(configuration: config)
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/resource",
+                "uri" => "file:///{name}"
+              },
+              "argument" => {
+                "name" => "name",
+                "value" => "to"
+              }
+            }
+          }
+
+          response = router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: ["top-secret-plans.txt"],
+              total: 1,
+              hasMore: false
+            }
+          )
+        end
+
+        it "returns a null completion when no matching resource template is found" do
+          registry = ModelContextProtocol::Server::Registry.new do
+            resource_templates do
+              register TestResourceTemplate
+            end
+          end
+
+          config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+            c.name = "Test Server"
+            c.version = "1.0.0"
+            c.registry = registry
+          end
+          router = described_class.new(configuration: config)
+
+          message = {
+            "method" => "completion/complete",
+            "params" => {
+              "ref" => {
+                "type" => "ref/resource",
+                "uri" => "not-valid"
+              },
+              "argument" => {
+                "name" => "bar",
+                "value" => "baz"
+              }
+            }
+          }
+
+          response = router.route(message)
+
+          expect(response.serialized).to eq(
+            completion: {
+              values: [],
+              total: 0,
+              hasMore: false
+            }
+          )
+        end
+      end
+    end
+
+    context "resources/read" do
+      it "raises an error when resource is not found" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          resources do
+            register TestResource
+          end
+        end
+
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        test_uri = "resource:///invalid"
+        message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
+
+        expect {
+          router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, "resource not found for #{test_uri}")
+      end
+
+      it "returns the serialized resource data when the resource is found" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          resources do
+            register TestResource
+          end
+        end
+
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        test_uri = "file:///top-secret-plans.txt"
+        message = {"method" => "resources/read", "params" => {"uri" => test_uri}}
+
+        response = router.route(message)
+
+        expect(response.serialized).to eq(
+          contents: [
+            {
+              mimeType: "text/plain",
+              text: "I'm finna eat all my wife's leftovers.",
+              title: "Top Secret Plans",
+              uri: "file:///top-secret-plans.txt"
+            }
+          ]
+        )
+      end
+    end
+
+    context "resources/templates/list" do
+      it "returns a list of registered resource templates" do
+        registry = ModelContextProtocol::Server::Registry.new do
+          resource_templates do
+            register TestResourceTemplate
+          end
+        end
+
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {"method" => "resources/templates/list"}
+        response = router.route(message)
+        expect(response.serialized).to eq(
+          resourceTemplates: [
+            {
+              name: "project-document-resource-template",
+              description: "A resource template for retrieving project documents",
+              mimeType: "text/plain",
+              uriTemplate: "file:///{name}"
+            }
+          ]
+        )
+      end
+    end
+  end
+
+  describe "pagination integration tests" do
+    let(:registry) do
+      ModelContextProtocol::Server::Registry.new do
+        resources do
+          25.times do |i|
+            resource_class = Class.new(ModelContextProtocol::Server::Resource) do
+              define_method(:call) do |logger, context|
+                ModelContextProtocol::Server::ReadResourceResponse[
+                  contents: [
+                    {
+                      uri: "file:///resource_#{i}.txt",
+                      mimeType: "text/plain",
+                      text: "Content #{i}"
+                    }
+                  ]
+                ]
+              end
+            end
+            resource_class.define_singleton_method(:definition) do
+              {
+                name: "resource_#{i}",
+                description: "Test resource #{i}",
+                uri: "file:///resource_#{i}.txt",
+                mimeType: "text/plain"
+              }
+            end
+            register resource_class
+          end
+        end
+
+        tools do
+          15.times do |i|
+            tool_class = Class.new(ModelContextProtocol::Server::Tool) do
+              define_method(:call) do |args, client_logger, context|
+                ModelContextProtocol::Server::CallToolResponse[
+                  content: [
+                    {
+                      type: "text",
+                      text: "Tool #{i} executed with args: #{args}"
+                    }
+                  ]
+                ]
+              end
+            end
+            tool_class.define_singleton_method(:definition) do
+              {
+                name: "tool_#{i}",
+                description: "Test tool #{i}",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    input: {type: "string"}
+                  }
+                }
+              }
+            end
+            register tool_class
+          end
+        end
+
+        prompts do
+          30.times do |i|
+            prompt_class = Class.new(ModelContextProtocol::Server::Prompt) do
+              define_method(:call) do |args, client_logger, context|
+                ModelContextProtocol::Server::GetPromptResponse[
+                  description: "Test prompt #{i}",
+                  messages: [
+                    {
+                      role: "user",
+                      content: {
+                        type: "text",
+                        text: "Test prompt #{i} with args: #{args}"
+                      }
+                    }
+                  ]
+                ]
+              end
+            end
+            prompt_class.define_singleton_method(:definition) do
+              {
+                name: "prompt_#{i}",
+                description: "Test prompt #{i}",
+                arguments: [{name: "input", description: "Input parameter"}]
+              }
+            end
+            register prompt_class
+          end
+        end
+      end
+    end
+
+    let(:router) do
+      config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+        c.name = "Pagination Test Server"
+        c.version = "1.0.0"
+        c.registry = registry
+        c.pagination = {
+          enabled: true,
+          default_page_size: 10,
+          max_page_size: 50
+        }
+      end
+      described_class.new(configuration: config)
+    end
+
+    describe "resources/list with pagination" do
+      it "returns first page when pageSize is specified" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }
+
+        response = router.route(message)
+        result = response.serialized
+
+        aggregate_failures do
+          expect(result[:resources].length).to eq(10)
+          expect(result[:nextCursor]).not_to be_nil
+          expect(result[:resources].first[:name]).to eq("resource_0")
+          expect(result[:resources].last[:name]).to eq("resource_9")
+        end
+      end
+
+      it "returns subsequent page using cursor" do
+        first_message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }
+        first_response = router.route(first_message).serialized
+
+        second_message = {
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => first_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }
+        second_response = router.route(second_message).serialized
+
+        aggregate_failures do
+          expect(second_response[:resources].length).to eq(10)
+          expect(second_response[:resources].first[:name]).to eq("resource_10")
+          expect(second_response[:resources].last[:name]).to eq("resource_19")
+          expect(second_response[:nextCursor]).not_to be_nil
+        end
+      end
+
+      it "returns last page with no nextCursor" do
+        first_response = router.route({
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }).serialized
+
+        second_response = router.route({
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => first_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }).serialized
+
+        third_response = router.route({
+          "method" => "resources/list",
+          "params" => {
+            "cursor" => second_response[:nextCursor],
+            "pageSize" => 10
+          }
+        }).serialized
+
+        aggregate_failures do
+          expect(third_response[:resources].length).to eq(5)
+          expect(third_response[:nextCursor]).to be_nil
+          expect(third_response[:resources].first[:name]).to eq("resource_20")
+          expect(third_response[:resources].last[:name]).to eq("resource_24")
+        end
+      end
+
+      it "returns all resources when no pagination params provided" do
+        message = {"method" => "resources/list", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:resources].length).to eq(25)
+          expect(response).not_to have_key(:nextCursor)
+        end
+      end
+
+      it "respects max page size" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"pageSize" => 100}
+        }
+
+        response = router.route(message).serialized
+
+        expect(response[:resources].length).to eq(25)
+      end
+
+      it "raises error for invalid cursor" do
+        message = {
+          "method" => "resources/list",
+          "params" => {"cursor" => "invalid_cursor"}
+        }
+
+        expect {
+          router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /Invalid cursor format/)
+      end
+    end
+
+    describe "tools/list with pagination" do
+      it "paginates tools correctly" do
+        message = {
+          "method" => "tools/list",
+          "params" => {"pageSize" => 5}
+        }
+
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:tools].length).to eq(5)
+          expect(response[:nextCursor]).not_to be_nil
+          expect(response[:tools].first[:name]).to eq("tool_0")
+          expect(response[:tools].last[:name]).to eq("tool_4")
+        end
+      end
+    end
+
+    describe "prompts/list with pagination" do
+      it "paginates prompts correctly" do
+        message = {
+          "method" => "prompts/list",
+          "params" => {"pageSize" => 8}
+        }
+
+        response = router.route(message).serialized
+
+        expect(response[:prompts].length).to eq(8)
+        expect(response[:nextCursor]).not_to be_nil
+        expect(response[:prompts].first[:name]).to eq("prompt_0")
+        expect(response[:prompts].last[:name]).to eq("prompt_7")
+      end
+    end
+
+    describe "capabilities" do
+      it "does not include pagination capability (per MCP spec)" do
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        expect(response[:capabilities]).not_to have_key(:pagination)
+      end
+
+      it "includes standard capabilities" do
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities]).to have_key(:completions)
+          expect(response[:capabilities]).to have_key(:logging)
+        end
+      end
+    end
+
+    describe "initialization response" do
+      let(:registry) do
+        ModelContextProtocol::Server::Registry.new do
+          prompts do
+            register TestPrompt
+          end
+        end
+      end
+
+      it "includes only required fields when title and instructions are not configured" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo]).not_to have_key(:title)
+          expect(response).not_to have_key(:instructions)
+          expect(response[:protocolVersion]).to eq("2025-06-18")
+          expect(response[:capabilities]).to be_a(Hash)
+        end
+      end
+
+      it "includes title in serverInfo when configured" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.title = "My Awesome Test Server"
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo][:title]).to eq("My Awesome Test Server")
+          expect(response).not_to have_key(:instructions)
+        end
+      end
+
+      it "includes instructions when configured" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.instructions = "This server provides test prompts and resources for development."
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo]).not_to have_key(:title)
+          expect(response[:instructions]).to eq("This server provides test prompts and resources for development.")
+        end
+      end
+
+      it "includes both title and instructions when both are configured" do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.title = "Development Test Server"
+          c.instructions = "Use this server for testing MCP functionality. Available tools include prompt completion and resource access."
+          c.registry = registry
+        end
+        router = described_class.new(configuration: config)
+
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:serverInfo][:name]).to eq("Test Server")
+          expect(response[:serverInfo][:version]).to eq("1.0.0")
+          expect(response[:serverInfo][:title]).to eq("Development Test Server")
+          expect(response[:instructions]).to eq("Use this server for testing MCP functionality. Available tools include prompt completion and resource access.")
+          expect(response[:protocolVersion]).to eq("2025-06-18")
+          expect(response[:capabilities]).to be_a(Hash)
+        end
+      end
+    end
+
+    describe "cursor TTL functionality" do
+      let(:short_ttl_router) do
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Short TTL Server"
+          c.version = "1.0.0"
+          c.registry = registry
+          c.pagination = {
+            enabled: true,
+            default_page_size: 10,
+            cursor_ttl: 1
+          }
+        end
+        described_class.new(configuration: config)
+      end
+
+      it "handles expired cursors gracefully" do
+        first_response = short_ttl_router.route({
+          "method" => "resources/list",
+          "params" => {"pageSize" => 10}
+        }).serialized
+
+        cursor = first_response[:nextCursor]
+
+        sleep(2)
+
+        message = {
+          "method" => "resources/list",
+          "params" => {"cursor" => cursor}
+        }
+
+        expect {
+          short_ttl_router.route(message)
+        }.to raise_error(ModelContextProtocol::Server::ParameterValidationError, /expired/)
+      end
+    end
+  end
+
+  describe "listChanged capability by transport type" do
+    let(:registry) do
+      ModelContextProtocol::Server::Registry.new do
+        prompts do
+          register TestPrompt
+        end
+
+        resources subscribe: true do
+          register TestResource
+        end
+
+        tools do
+          register TestToolWithTextResponse
+        end
+      end
+    end
+
+    context "with stdio transport (default)" do
+      let(:router) do
+        reg = registry
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = reg
+          # transport_type defaults to :stdio or nil
+        end
+        described_class.new(configuration: config)
+      end
+
+      it "does NOT advertise listChanged capability" do
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          # listChanged should be suppressed for stdio
+          expect(response[:capabilities][:prompts]).to eq({})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true})
+          expect(response[:capabilities][:tools]).to eq({})
+        end
+      end
+    end
+
+    context "with streamable_http transport" do
+      let(:router) do
+        reg = registry
+        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+          c.name = "Test Server"
+          c.version = "1.0.0"
+          c.registry = reg
+          c.transport = {type: :streamable_http}
+        end
+        described_class.new(configuration: config)
+      end
+
+      it "automatically advertises listChanged capability" do
+        message = {"method" => "initialize", "params" => {}}
+        response = router.route(message).serialized
+
+        aggregate_failures do
+          expect(response[:capabilities][:prompts]).to eq({listChanged: true})
+          expect(response[:capabilities][:resources]).to eq({subscribe: true, listChanged: true})
+          expect(response[:capabilities][:tools]).to eq({listChanged: true})
+        end
+      end
+    end
+  end
+
   describe "stream_id handling" do
     let(:stream_id) { "test-stream-abc123" }
     let(:request_id) { "test-request-789" }
