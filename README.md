@@ -81,9 +81,7 @@ server.start
 
 ### Streamable HTTP Transport
 
-For HTTP-based MCP servers (e.g., Rails applications), use the singleton API. This ensures only 2 background threads exist regardless of concurrent connections.
-
-**Configure Redis (required for HTTP transport):**
+For HTTP-based MCP servers (e.g., Rails applications), you'll need to configure redis and setup your MCP server in an initializer.
 
 ```ruby
 # config/initializers/model_context_protocol.rb
@@ -92,42 +90,47 @@ ModelContextProtocol::Server.configure_redis do |config|
   config.redis_url = ENV.fetch("REDIS_URL")
   config.pool_size = 20
 end
+
+ModelContextProtocol::Server.setup do |config|
+  config.name = "MyMCPServer"
+  config.version = "1.0.0"
+  config.transport = { type: :streamable_http }
+
+  config.registry = ModelContextProtocol::Server::Registry.new do
+    tools { register MyTool }
+  end
+end
 ```
 
-**Configure Puma to manage the MCP server lifecycle:**
+If your app uses Puma as the web server, use the provided plugin to start the MCP server.
+
+```ruby
+# config/puma.rb
+plugin :mcp
+```
+
+Otherwise, you'll need to manually implement logic for starting and shutting the MCP server appropriately. This example shows how to do so for Puma; you can adapt it for your server of choice:
 
 ```ruby
 # config/puma.rb
 
 workers ENV.fetch("WEB_CONCURRENCY", 0).to_i
 
-# Use ->(*) to accept worker index argument passed by Puma hooks
-mcp_setup = ->(*) {
-  ModelContextProtocol::Server.setup do |config|
-    config.name = "MyMCPServer"
-    config.version = "1.0.0"
-    config.transport = { type: :streamable_http }
-
-    config.registry = ModelContextProtocol::Server::Registry.new do
-      tools { register MyTool }
-    end
-  end
-}
-
+mcp_start = ->(*) { ModelContextProtocol::Server.start unless ModelContextProtocol::Server.running? }
 mcp_shutdown = ->(*) { ModelContextProtocol::Server.shutdown }
 
-# Clustered mode: workers fork, so each needs its own MCP server
-on_worker_boot(&mcp_setup)
+# Clustered mode: workers fork, so start threads after fork
+on_worker_boot(&mcp_start)
 on_worker_shutdown(&mcp_shutdown)
 
-# Single mode: on_worker_boot isn't called, so set up directly
+# Single mode: start directly (no forking)
 if ENV.fetch("WEB_CONCURRENCY", 0).to_i.zero?
-  mcp_setup.call
+  mcp_start.call
   at_exit(&mcp_shutdown)
 end
 ```
 
-**Handle each request:**
+Then, implement a controller action to handle the requests to the MCP server.
 
 ```ruby
 class ModelContextProtocolController < ActionController::API
