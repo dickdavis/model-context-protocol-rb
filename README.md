@@ -57,7 +57,7 @@ Build a simple MCP server by registering your prompts, resources, resource templ
 For command-line MCP servers that communicate via standard input/output:
 
 ```ruby
-server = ModelContextProtocol::Server.new do |config|
+server = ModelContextProtocol::Server.with_stdio_transport do |config|
   config.name = "MyMCPServer"
   config.version = "1.0.0"
 
@@ -91,10 +91,9 @@ ModelContextProtocol::Server.configure_redis do |config|
   config.pool_size = 20
 end
 
-ModelContextProtocol::Server.setup do |config|
+ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MyMCPServer"
   config.version = "1.0.0"
-  config.transport = { type: :streamable_http }
 
   config.registry = ModelContextProtocol::Server::Registry.new do
     tools { register MyTool }
