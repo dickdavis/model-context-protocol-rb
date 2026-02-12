@@ -88,9 +88,9 @@ def build_registry
   end
 end
 
-# Set up the singleton server (runs once at startup)
-logger.info("Setting up MCP Server singleton...")
-ModelContextProtocol::Server.setup do |config|
+# Set up the server (runs once at startup)
+logger.info("Setting up MCP Server...")
+server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
 
@@ -100,15 +100,13 @@ ModelContextProtocol::Server.setup do |config|
     cursor_ttl: 1800
   }
 
-  config.transport = {
-    type: :streamable_http,
-    require_sessions: true,
-    session_ttl: 3600,
-    allowed_origins: ["*"]
-  }
+  config.require_sessions = true
+  config.session_ttl = 3600
+  config.allowed_origins = ["*"]
 
   config.registry = build_registry
 end
+server.start
 
 class MCPHttpApp
   def initialize(logger)
@@ -185,7 +183,7 @@ class MCPHttpApp
     begin
       @logger.debug("Handling request via Server.serve")
 
-      # Use the singleton server to handle the request
+      # Use the server instance to handle the request
       result = ModelContextProtocol::Server.serve(
         env: env,
         session_context: {
@@ -262,7 +260,7 @@ port = use_ssl ? 9293 : 9292
 protocol = use_ssl ? 'https' : 'http'
 
 logger.info("Starting MCP #{protocol.upcase} Development Server on #{protocol}://localhost:#{port}/mcp")
-logger.info("Using singleton transport pattern (2 background threads max)")
+logger.info("Using streamable HTTP transport (2 background threads max)")
 logger.info("")
 logger.info("Flag files (checked at startup only - restart server to apply changes):")
 logger.info("  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse")
