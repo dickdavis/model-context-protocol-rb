@@ -6,14 +6,25 @@ require_relative "../lib/model_context_protocol"
 
 Dir[File.join(__dir__, "../spec/support/**/*.rb")].each { |file| require file }
 
-server = ModelContextProtocol::Server.new do |config|
+# Configure server logging globally (once per application)
+ModelContextProtocol::Server.configure_server_logging do |logger|
+  logger.level = Logger::DEBUG
+  logger.progname = "MCP-Dev-Server"
+  # logger.logdev = $stderr                              # Default for stdio transport
+  # logger.logdev = File.open("/tmp/mcp_server.log", "a") # Alternative: log to file
+  logger.formatter = proc do |severity, datetime, progname, msg|
+    timestamp = datetime.strftime("%Y-%m-%d %H:%M:%S.%3N")
+    "[#{timestamp}] #{severity} [#{progname}] #{msg}\n"
+  end
+end
+
+server = ModelContextProtocol::Server.with_stdio_transport do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
-  config.logging_enabled = true
 
   config.pagination = {
-    default_page_size: 10,
-    max_page_size: 20,
+    default_page_size: 2,
+    max_page_size: 3,
     cursor_ttl: 1800
   }
 
@@ -25,26 +36,31 @@ server = ModelContextProtocol::Server.new do |config|
   }
 
   config.registry = ModelContextProtocol::Server::Registry.new do
-    prompts do
+    prompts list_changed: true do
       register TestPrompt
+      register TestPromptWithCompletionClass
     end
 
-    resources subscribe: true do
+    resources list_changed: true, subscribe: true do
       register TestResource
       register TestAnnotatedResource
       register TestBinaryResource
+      register TestProgressiveResource
     end
 
     resource_templates do
       register TestResourceTemplate
     end
 
-    tools do
+    tools list_changed: true do
+      register TestToolWithStructuredContentResponse
       register TestToolWithTextResponse
       register TestToolWithImageResponse
-      register TestToolWithImageResponseDefaultMimeType
+      register TestToolWithMixedContentResponse
       register TestToolWithResourceResponse
       register TestToolWithToolErrorResponse
+      register TestToolWithCancellableSleep
+      register TestToolWithProgressableAndCancellable
     end
   end
 end

@@ -1,27 +1,9 @@
 require "spec_helper"
-require "tempfile"
 
 RSpec.describe ModelContextProtocol::Server::Configuration do
   subject(:configuration) { described_class.new }
 
   let(:registry) { ModelContextProtocol::Server::Registry.new }
-
-  describe "block initialization" do
-    it "allows configuration via block" do
-      server = ModelContextProtocol::Server.new do |config|
-        config.name = "test-server"
-        config.registry = registry
-        config.version = "1.0.0"
-      end
-
-      config = server.configuration
-      aggregate_failures do
-        expect(config.name).to eq("test-server")
-        expect(config.registry).to eq(registry)
-        expect(config.version).to eq("1.0.0")
-      end
-    end
-  end
 
   describe "#client_logger" do
     it "always provides a logger instance" do
@@ -44,6 +26,20 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
 
     it "sets default log level to INFO" do
       expect(configuration.server_logger.level).to eq(Logger::INFO)
+    end
+  end
+
+  describe "polymorphic query methods" do
+    it "returns nil for transport_type on base class" do
+      expect(configuration.transport_type).to be_nil
+    end
+
+    it "returns false for supports_list_changed? on base class" do
+      expect(configuration.supports_list_changed?).to be false
+    end
+
+    it "returns false for apply_environment_variables? on base class" do
+      expect(configuration.apply_environment_variables?).to be false
     end
   end
 
@@ -129,73 +125,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
 
       it "raises InvalidServerVersionError" do
         expect { configuration.validate! }.to raise_error(described_class::InvalidServerVersionError)
-      end
-    end
-
-    context "when invalid transport provided" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = registry
-        configuration.version = "1.0.0"
-        configuration.transport = {type: :unknown_transport}
-      end
-
-      it "raises InvalidTransportError" do
-        expect { configuration.validate! }.to raise_error(
-          described_class::InvalidTransportError,
-          "Unknown transport type: unknown_transport"
-        )
-      end
-    end
-
-    context "when stdio transport provided" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = registry
-        configuration.version = "1.0.0"
-      end
-
-      it "validates successfully with symbol" do
-        configuration.transport = :stdio
-        expect { configuration.validate! }.not_to raise_error
-      end
-
-      it "validates successfully with hash format" do
-        configuration.transport = {type: :stdio}
-        expect { configuration.validate! }.not_to raise_error
-      end
-    end
-
-    context "when streamable_http transport provided" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = registry
-        configuration.version = "1.0.0"
-      end
-
-      context "with invalid transport options specified" do
-        it "raises error when Redis is not configured globally" do
-          configuration.transport = {type: :streamable_http}
-
-          expect { configuration.validate! }.to raise_error(
-            described_class::InvalidTransportError,
-            /streamable_http transport requires Redis configuration/
-          )
-        end
-      end
-
-      context "with valid transport options specified" do
-        it "validates successfully" do
-          ModelContextProtocol::Server::RedisConfig.configure do |config|
-            config.redis_url = "redis://localhost:6379/15"
-          end
-
-          configuration.transport = {
-            type: :streamable_http
-          }
-
-          expect { configuration.validate! }.not_to raise_error
-        end
       end
     end
 
@@ -376,7 +305,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       it "validates successfully when instructions is a multi-line string" do
         configuration.instructions = <<~INSTRUCTIONS
           This server provides test capabilities.
-          
+
           Key features:
           - Feature one
           - Feature two
@@ -410,73 +339,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
           described_class::InvalidServerInstructionsError,
           "Server instructions must be a string"
         )
-      end
-    end
-  end
-
-  describe "environment variables" do
-    context "when requiring environment variables" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = registry
-        configuration.version = "1.0.0"
-        configuration.require_environment_variable("TEST_VAR")
-      end
-
-      context "when the environment variable is set" do
-        before { ENV["TEST_VAR"] = "test-value" }
-
-        it "does not raise an error" do
-          expect { configuration.validate! }.not_to raise_error
-        end
-
-        it "returns the environment variable value" do
-          expect(configuration.environment_variable("TEST_VAR")).to eq("test-value")
-        end
-      end
-
-      context "when the environment variable is not set" do
-        before { ENV.delete("TEST_VAR") }
-
-        it "raises MissingRequiredEnvironmentVariable" do
-          expect { configuration.validate! }.to raise_error(described_class::MissingRequiredEnvironmentVariable)
-        end
-
-        it "returns nil" do
-          expect(configuration.environment_variable("TEST_VAR")).to be_nil
-        end
-      end
-
-      context "when setting environment variable programmatically" do
-        before do
-          configuration.set_environment_variable("TEST_VAR", "programmatic-value")
-          ENV.delete("TEST_VAR")
-        end
-
-        it "does not raise an error" do
-          expect { configuration.validate! }.not_to raise_error
-        end
-
-        it "returns the programmatically set value" do
-          expect(configuration.environment_variable("TEST_VAR")).to eq("programmatic-value")
-        end
-      end
-    end
-
-    context "when not requiring environment variables" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = registry
-        configuration.version = "1.0.0"
-      end
-
-      it "does not raise an error when environment variable is not set" do
-        ENV.delete("TEST_VAR")
-        expect { configuration.validate! }.not_to raise_error
-      end
-
-      it "returns nil for unset environment variable" do
-        expect(configuration.environment_variable("TEST_VAR")).to be_nil
       end
     end
   end
@@ -525,70 +387,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     it "accepts nil and converts to empty hash when accessed" do
       configuration.context = nil
       expect(configuration.context).to eq({})
-    end
-  end
-
-  describe "#transport_type" do
-    context "when transport is a hash" do
-      it "returns the type from symbol key" do
-        configuration.transport = {type: :streamable_http}
-        expect(configuration.transport_type).to eq(:streamable_http)
-      end
-
-      it "returns the type from string key" do
-        configuration.transport = {"type" => :streamable_http}
-        expect(configuration.transport_type).to eq(:streamable_http)
-      end
-    end
-
-    context "when transport is a symbol" do
-      it "returns the symbol" do
-        configuration.transport = :stdio
-        expect(configuration.transport_type).to eq(:stdio)
-      end
-    end
-
-    context "when transport is a string" do
-      it "returns the symbol" do
-        configuration.transport = "stdio"
-        expect(configuration.transport_type).to eq(:stdio)
-      end
-    end
-
-    context "when transport is nil" do
-      it "returns nil" do
-        configuration.transport = nil
-        expect(configuration.transport_type).to be_nil
-      end
-    end
-  end
-
-  describe "#transport_options" do
-    context "when transport is a hash" do
-      it "returns options excluding type" do
-        configuration.transport = {
-          type: :streamable_http,
-          session_ttl: 1800,
-          string_key: "value"
-        }
-
-        expect(configuration.transport_options).to eq({
-          session_ttl: 1800,
-          string_key: "value"
-        })
-      end
-    end
-
-    context "when transport is not a hash" do
-      it "returns empty hash for symbol transport" do
-        configuration.transport = :stdio
-        expect(configuration.transport_options).to eq({})
-      end
-
-      it "returns empty hash for nil transport" do
-        configuration.transport = nil
-        expect(configuration.transport_options).to eq({})
-      end
     end
   end
 
@@ -736,40 +534,6 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
             expect(logger.level).to eq(Logger::ERROR)
             expect(logger.progname).to eq("GloballyConfigured")
           end
-        end
-      end
-
-      context "transport validation constraints in validate!" do
-        it "validates constraints during validate! when stdio transport with stdout logger" do
-          ModelContextProtocol::Server.configure_server_logging do |config|
-            config.logdev = $stdout
-          end
-
-          config_with_stdout = described_class.new
-          config_with_stdout.name = "test-server"
-          config_with_stdout.version = "1.0.0"
-          config_with_stdout.registry = registry
-          config_with_stdout.transport = :stdio
-
-          expect { config_with_stdout.validate! }.to raise_error(/StdioTransport cannot log to stdout/)
-        end
-
-        it "allows stdout logger for streamable_http transport" do
-          ModelContextProtocol::Server.configure_redis do |config|
-            config.redis_url = "redis://localhost:6379"
-          end
-
-          ModelContextProtocol::Server.configure_server_logging do |config|
-            config.logdev = $stdout
-          end
-
-          config_with_stdout = described_class.new
-          config_with_stdout.name = "test-server"
-          config_with_stdout.version = "1.0.0"
-          config_with_stdout.registry = registry
-          config_with_stdout.transport = :streamable_http
-
-          expect { config_with_stdout.validate! }.not_to raise_error
         end
       end
     end

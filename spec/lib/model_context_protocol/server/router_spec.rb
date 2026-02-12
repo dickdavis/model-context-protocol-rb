@@ -119,7 +119,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
   describe "environment variable management" do
     subject(:router) { described_class.new(configuration: configuration) }
     let(:message) { {"method" => "env_test"} }
-    let(:configuration) { ModelContextProtocol::Server::Configuration.new }
+    let(:configuration) { ModelContextProtocol::Server::StdioConfiguration.new }
 
     before do
       ENV["EXISTING_VAR"] = "original_value"
@@ -191,16 +191,13 @@ RSpec.describe ModelContextProtocol::Server::Router do
     end
 
     context "when transport is streamable_http" do
-      before do
-        configuration.transport = {type: :streamable_http}
-      end
+      let(:configuration) { ModelContextProtocol::Server::StreamableHttpConfiguration.new }
 
       it "does NOT manipulate ENV variables (thread-safety)" do
         router.map("env_test") do
           ENV["EXISTING_VAR"]
         end
 
-        configuration.set_environment_variable("EXISTING_VAR", "should_not_be_set")
         result = router.route(message)
 
         # ENV should NOT be modified for streamable_http
@@ -1385,11 +1382,10 @@ RSpec.describe ModelContextProtocol::Server::Router do
     context "with streamable_http transport" do
       let(:router) do
         reg = registry
-        config = ModelContextProtocol::Server::Configuration.new.tap do |c|
+        config = ModelContextProtocol::Server::StreamableHttpConfiguration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
           c.registry = reg
-          c.transport = {type: :streamable_http}
         end
         described_class.new(configuration: config)
       end

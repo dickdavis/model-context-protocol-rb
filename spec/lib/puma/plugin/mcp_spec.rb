@@ -38,11 +38,10 @@ RSpec.describe "Puma::Plugin::MCP" do
   describe "#start_mcp_server" do
     it "starts the server when configured but not running" do
       reg = registry
-      ModelContextProtocol::Server.setup do |config|
+      ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Plugin Test Server"
         config.version = "1.0.0"
         config.registry = reg
-        config.transport = {type: :streamable_http}
       end
 
       expect(ModelContextProtocol::Server.configured?).to be true
@@ -66,11 +65,10 @@ RSpec.describe "Puma::Plugin::MCP" do
 
     it "does nothing when already running" do
       reg = registry
-      ModelContextProtocol::Server.setup do |config|
+      ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Already Running Server"
         config.version = "1.0.0"
         config.registry = reg
-        config.transport = {type: :streamable_http}
       end
       ModelContextProtocol::Server.start
 
@@ -86,11 +84,10 @@ RSpec.describe "Puma::Plugin::MCP" do
   describe "#shutdown_mcp_server" do
     it "shuts down the server when running" do
       reg = registry
-      ModelContextProtocol::Server.setup do |config|
+      ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Shutdown Test Server"
         config.version = "1.0.0"
         config.registry = reg
-        config.transport = {type: :streamable_http}
       end
       ModelContextProtocol::Server.start
 
@@ -99,7 +96,6 @@ RSpec.describe "Puma::Plugin::MCP" do
       plugin_instance.send(:shutdown_mcp_server)
 
       expect(ModelContextProtocol::Server.running?).to be false
-      expect(ModelContextProtocol::Server.configured?).to be false
     end
 
     it "does nothing when not running" do
@@ -112,11 +108,10 @@ RSpec.describe "Puma::Plugin::MCP" do
 
     it "does nothing when configured but not started" do
       reg = registry
-      ModelContextProtocol::Server.setup do |config|
+      ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Configured Only Server"
         config.version = "1.0.0"
         config.registry = reg
-        config.transport = {type: :streamable_http}
       end
 
       expect(ModelContextProtocol::Server.configured?).to be true
@@ -126,7 +121,7 @@ RSpec.describe "Puma::Plugin::MCP" do
         plugin_instance.send(:shutdown_mcp_server)
       }.not_to raise_error
 
-      # Should still be configured since we didn't call shutdown
+      # Should still be configured since shutdown only clears transport
       expect(ModelContextProtocol::Server.configured?).to be true
     end
   end

@@ -6,124 +6,240 @@ module ModelContextProtocol
     # Raised when invalid parameters are provided.
     class ParameterValidationError < StandardError; end
 
+    # Raised by class-level start and serve when no server instance has been configured
+    # via with_stdio_transport or with_streamable_http_transport.
+    class NotConfiguredError < StandardError; end
+
+    # @return [Configuration] the transport-specific configuration (StdioConfiguration or StreamableHttpConfiguration)
+    # @return [Router] the message router that dispatches JSON-RPC methods to handlers
+    # @return [Transport, nil] the active transport (StdioTransport or StreamableHttpTransport), or nil if not started
     attr_reader :configuration, :router, :transport
 
-    def initialize
-      @configuration = Configuration.new
-      yield(@configuration) if block_given?
-      @router = Router.new(configuration:)
-    end
-
-    # Start the server for stdio transport
-    # For HTTP transport, use Server.setup and Server.serve instead
+    # Activate the transport layer to begin processing MCP protocol messages.
+    # For stdio: blocks the calling thread while handling stdin/stdout communication.
+    # For HTTP: spawns background threads for Redis polling and stream monitoring, then returns immediately.
+    #
+    # @raise [RuntimeError] if transport is already running (prevents double-initialization)
+    # @return [void]
     def start
-      configuration.validate!
+      raise "Server already running. Call shutdown first." if @transport
 
       case configuration.transport_type
-      when :stdio, nil
+      when :stdio
         @transport = StdioTransport.new(router: @router, configuration: @configuration)
         @transport.handle
       when :streamable_http
-        raise ArgumentError,
-          "Use Server.setup and Server.serve for streamable_http transport. " \
-          "Example: Server.setup { |c| ... } then Server.serve(env: request.env)"
-      else
-        raise ArgumentError, "Unknown transport: #{configuration.transport_type}"
+        @transport = StreamableHttpTransport.new(router: @router, configuration: @configuration)
       end
     end
 
+    # Handle a single HTTP request through the streamable HTTP transport.
+    # Rack applications delegate each incoming request to this method.
+    #
+    # @param env [Hash] the Rack environment hash containing request details
+    # @param session_context [Hash] per-session data (e.g., user_id) stored during initialization
+    # @raise [RuntimeError] if transport hasn't been started via start
+    # @raise [RuntimeError] if called on stdio transport (HTTP-only method)
+    # @return [Hash] Rack response with :status, :headers, and either :json or :stream/:stream_proc
+    def serve(env:, session_context: {})
+      raise "Server not running. Call start first." unless @transport
+      raise "serve is only available for streamable_http transport" unless configuration.transport_type == :streamable_http
+
+      @transport.handle(env: env, session_context: session_context)
+    end
+
+    # Tear down the transport and release resources.
+    # For stdio: no-ops (StdioTransport doesn't implement shutdown).
+    # For HTTP: stops background threads and closes active SSE streams.
+    #
+    # @return [void]
+    def shutdown
+      @transport.shutdown if @transport.respond_to?(:shutdown)
+      @transport = nil
+    end
+
+    # Query whether the server has been configured with a transport type.
+    # The Puma plugin checks this before attempting to start the server.
+    #
+    # @return [Boolean] true if with_stdio_transport or with_streamable_http_transport has been called
+    def configured?
+      !@configuration.nil?
+    end
+
+    # Query whether the server's transport layer is actively processing messages.
+    # The Puma plugin checks this to avoid redundant start calls and to guard shutdown.
+    #
+    # @return [Boolean] true if start has been called and transport is initialized
+    def running?
+      !@transport.nil?
+    end
+
     class << self
-      attr_reader :singleton_transport, :singleton_configuration, :singleton_router
+      # @return [Server, nil] the singleton server instance created by with_stdio_transport or with_streamable_http_transport
+      attr_accessor :instance
 
+      # Factory method for creating a server with standard input/output transport.
+      # For standalone scripts that communicate over stdin/stdout (e.g., Claude Desktop integration).
+      # Yields a StdioConfiguration for setting name, version, registry, and environment variables.
+      #
+      # @yieldparam config [StdioConfiguration] the configuration to populate
+      # @return [Server] the configured server instance (also stored in Server.instance)
+      # @example
+      #   server = ModelContextProtocol::Server.with_stdio_transport do |config|
+      #     config.name = "My MCP Server"
+      #     config.registry = Registry.new { tools { register MyTool } }
+      #   end
+      #   server.start  # blocks while handling stdio
+      def with_stdio_transport(&block)
+        build_server(StdioConfiguration.new, &block)
+      end
+
+      # Factory method for creating a server with streamable HTTP transport.
+      # For Rack applications that serve multiple clients over HTTP with Redis-backed session coordination.
+      # Yields a StreamableHttpConfiguration for setting name, version, registry, session requirements, and CORS.
+      #
+      # @yieldparam config [StreamableHttpConfiguration] the configuration to populate
+      # @return [Server] the configured server instance (also stored in Server.instance)
+      # @raise [InvalidTransportError] if Redis hasn't been configured via configure_redis
+      # @example
+      #   server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
+      #     config.name = "My HTTP MCP Server"
+      #     config.require_sessions = true
+      #     config.allowed_origins = ["*"]
+      #   end
+      #   server.start  # spawns background threads, returns immediately
+      def with_streamable_http_transport(&block)
+        build_server(StreamableHttpConfiguration.new, &block)
+      end
+
+      # Configure the Redis connection pool used by StreamableHttpTransport.
+      # Must be called before with_streamable_http_transport.
+      #
+      # @yieldparam config [RedisConfig] the Redis configuration
+      # @return [void]
+      # @example
+      #   ModelContextProtocol::Server.configure_redis do |config|
+      #     config.redis_url = "redis://localhost:6379/0"
+      #     config.pool_size = 10
+      #   end
       def configure_redis(&block)
-        ModelContextProtocol::Server::RedisConfig.configure(&block)
+        Server::RedisConfig.configure(&block)
       end
 
+      # Configure global server-side logging (distinct from client-facing logs sent via JSON-RPC).
+      # Applies to all server instances; typically called once per application.
+      # For stdio transport, logdev must not be $stdout (would corrupt protocol messages).
+      #
+      # @yieldparam config [GlobalConfig::ServerLogging] the logging configuration
+      # @return [void]
+      # @example
+      #   ModelContextProtocol::Server.configure_server_logging do |logger|
+      #     logger.level = Logger::DEBUG
+      #     logger.logdev = $stderr  # or a file for stdio transport
+      #   end
       def configure_server_logging(&block)
-        ModelContextProtocol::Server::GlobalConfig::ServerLogging.configure(&block)
+        Server::GlobalConfig::ServerLogging.configure(&block)
       end
 
-      # Configure the singleton server without starting background threads.
-      # This is safe to call before forking (e.g., in Rails initializers or Puma master process).
-      # Call Server.start after forking to create the transport and start background threads.
+      # Class-level delegations that forward to the singleton instance.
+      # Provided as a convenience for web server integrations (e.g., the Puma plugin in
+      # lib/puma/plugin/mcp.rb) that manage the server lifecycle through hooks rather
+      # than holding a direct reference to the server instance.
+
+      # Query whether any server instance has been configured.
+      # Returns false when no instance exists — the server genuinely isn't configured yet,
+      # so callers can use this as a guard before calling start.
       #
-      # @param configuration [Configuration, nil] Pre-built configuration object
-      # @yield [Configuration] Block to configure the server
-      # @raise [RuntimeError] If server is already configured
-      # @raise [ArgumentError] If neither configuration nor block provided
-      def setup(configuration = nil)
-        raise "Server already configured. Call Server.shutdown first." if @singleton_configuration
-
-        @singleton_configuration = if configuration
-          configuration
-        elsif block_given?
-          config = Configuration.new
-          yield(config)
-          config
-        else
-          raise ArgumentError, "Configuration or block required"
-        end
-
-        @singleton_configuration.validate!
-        @singleton_router = Router.new(configuration: @singleton_configuration)
-      end
-
-      # Start the singleton transport and background threads.
-      # Must be called after Server.setup. In Puma clustered mode, call this
-      # after forking (e.g., in on_worker_boot hook).
-      #
-      # @raise [RuntimeError] If server not configured
-      # @raise [RuntimeError] If server already running
-      def start
-        raise "Server not configured. Call Server.setup first." unless @singleton_configuration
-        raise "Server already running. Call Server.shutdown first." if @singleton_transport
-
-        @singleton_transport = StreamableHttpTransport.new(
-          router: @singleton_router,
-          configuration: @singleton_configuration
-        )
-      end
-
-      # Handle an incoming HTTP request using the singleton transport
-      #
-      # @param env [Hash] Rack environment hash
-      # @param session_context [Hash] Per-request context (e.g., user_id from auth)
-      # @return [Hash] Response hash with :json, :status, :headers keys
-      # @raise [RuntimeError] If server not running
-      def serve(env:, session_context: {})
-        raise "Server not running. Call Server.start first." unless @singleton_transport
-
-        @singleton_transport.handle(env: env, session_context: session_context)
-      end
-
-      # Gracefully shutdown the singleton transport
-      # Stops background threads and cleans up resources
-      def shutdown
-        @singleton_transport&.shutdown
-        @singleton_transport = nil
-        @singleton_router = nil
-        @singleton_configuration = nil
-      end
-
-      # Check if singleton server is configured (setup has been called)
-      #
-      # @return [Boolean] true if setup has been called
+      # @return [Boolean] true if with_stdio_transport or with_streamable_http_transport has been called
       def configured?
-        !@singleton_configuration.nil?
+        instance&.configured? || false
       end
 
-      # Check if singleton transport is running (start has been called)
+      # Query whether any server instance is actively processing messages.
+      # Returns false when no instance exists, allowing callers to guard both
+      # start (to avoid redundant starts) and shutdown (to skip if not running).
       #
-      # @return [Boolean] true if start has been called and transport is active
+      # @return [Boolean] true if a server instance exists and its transport is initialized
       def running?
-        !@singleton_transport.nil?
+        instance&.running? || false
       end
 
-      # Reset singleton state (for testing)
-      # This is an alias for shutdown
-      def reset!
-        shutdown
+      # Activate the transport layer to begin processing MCP protocol messages.
+      # Raises when no instance exists because a caller who forgot to invoke a factory method
+      # would otherwise get silent nil. Web server integrations like the Puma plugin guard
+      # with configured? first, but direct callers need the error.
+      #
+      # @raise [NotConfiguredError] if with_stdio_transport or with_streamable_http_transport hasn't been called
+      # @return [void]
+      def start
+        raise NotConfiguredError, "Server not configured. Call with_stdio_transport or with_streamable_http_transport first." unless instance
+        instance.start
       end
+
+      # Handle a single HTTP request by forwarding to the instance's serve method.
+      # Used by Rails/Sinatra/Rack controllers as an alternative to calling Server.instance.serve directly.
+      # Raises when no instance exists for the same reason as start — a controller receiving
+      # requests without a configured server is always a misconfiguration.
+      #
+      # @param env [Hash] the Rack environment hash containing request details
+      # @param session_context [Hash] per-session data (e.g., user_id) stored during initialization
+      # @raise [NotConfiguredError] if with_streamable_http_transport hasn't been called
+      # @return [Hash] Rack response with :status, :headers, and either :json or :stream/:stream_proc
+      def serve(env:, session_context: {})
+        raise NotConfiguredError, "Server not configured. Call with_streamable_http_transport first." unless instance
+        instance.serve(env: env, session_context: session_context)
+      end
+
+      # Tear down the transport and release resources if a server is running.
+      # Safe-navigates when no instance exists because callers in cleanup paths
+      # (signal handlers, web server shutdown hooks, test teardown) need this to
+      # work unconditionally.
+      #
+      # @return [void]
+      def shutdown
+        instance&.shutdown
+      end
+
+      # Tear down the transport and clear the singleton instance to allow reconfiguration.
+      # Safe-navigates when no instance exists because test teardown (before/after hooks)
+      # must succeed even when a test fails before the server is initialized.
+      #
+      # @return [void]
+      def reset!
+        instance&.shutdown
+        self.instance = nil
+      end
+
+      private
+
+      # Internal factory logic shared by with_stdio_transport and with_streamable_http_transport.
+      # Validates configuration, creates a server instance without calling initialize (via allocate),
+      # initializes it with the configuration, and stores it in the singleton.
+      #
+      # @param config [Configuration] the transport-specific configuration subclass
+      # @yieldparam config [Configuration] if a block is given, yields for additional setup
+      # @return [Server] the configured and stored server instance
+      def build_server(config)
+        yield(config) if block_given?
+        config.validate!
+        server = allocate
+        server.send(:initialize_from_configuration, config)
+        self.instance = server
+        server
+      end
+    end
+
+    private
+
+    # Internal initializer called by build_server after allocate.
+    # Bypasses the standard initialize to allow configuration-driven construction.
+    # Creates the Router that maps JSON-RPC methods to handlers based on the registry.
+    #
+    # @param configuration [Configuration] the validated transport-specific configuration
+    # @return [void]
+    def initialize_from_configuration(configuration)
+      @configuration = configuration
+      @router = Router.new(configuration:)
     end
   end
 end

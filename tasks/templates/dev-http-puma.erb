@@ -78,7 +78,7 @@ def build_registry
 end
 
 # Configure MCP server (safe before fork - the Puma plugin handles starting after fork)
-ModelContextProtocol::Server.setup do |config|
+ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MCP Development Server (Puma)"
   config.version = "1.0.0"
 
@@ -88,12 +88,9 @@ ModelContextProtocol::Server.setup do |config|
     cursor_ttl: 1800
   }
 
-  config.transport = {
-    type: :streamable_http,
-    require_sessions: true,
-    session_ttl: 3600,
-    allowed_origins: ["*"]
-  }
+  config.require_sessions = true
+  config.session_ttl = 3600
+  config.allowed_origins = ["*"]
 
   config.registry = build_registry
 end

@@ -9,15 +9,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   let(:server) do
-    ModelContextProtocol::Server.new do |config|
+    ModelContextProtocol::Server.with_streamable_http_transport do |config|
       config.name = "test-server"
       config.version = "1.0.0"
       config.registry = ModelContextProtocol::Server::Registry.new
-      config.transport = {
-        type: :streamable_http,
-        require_sessions: false,
-        validate_origin: false
-      }
+      config.require_sessions = false
+      config.validate_origin = false
     end
   end
   let(:router) { server.router }
@@ -127,7 +124,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
         context "when sessions are required" do
           before do
-            configuration.transport[:require_sessions] = true
+            configuration.require_sessions = true
             new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
               router: server.router,
               configuration: configuration
@@ -193,7 +190,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
         context "when sessions are required" do
           before do
-            configuration.transport[:require_sessions] = true
+            configuration.require_sessions = true
             new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
               router: server.router,
               configuration: configuration
@@ -449,7 +446,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       context "when sessions are required" do
         before do
-          configuration.transport[:require_sessions] = true
+          configuration.require_sessions = true
           new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
             router: server.router,
             configuration: configuration
@@ -476,7 +473,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
       context "with invalid session when sessions are required" do
         before do
-          configuration.transport[:require_sessions] = true
+          configuration.require_sessions = true
           new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
             router: server.router,
             configuration: configuration
@@ -655,7 +652,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
   describe "cross-server message routing" do
     it "returns JSON response regardless of cross-server sessions (honors Accept header)" do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
         configuration: configuration
@@ -676,14 +673,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       session_store.mark_stream_active(session_id, first_server_instance)
 
       ping_request = {"method" => "ping", "id" => "ping-1"}
-      second_server = ModelContextProtocol::Server.new do |config|
+      second_server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "other-server"
         config.version = "1.0.0"
         config.registry = ModelContextProtocol::Server::Registry.new
-        config.transport = {
-          type: :streamable_http,
-          require_sessions: true
-        }
+        config.require_sessions = true
       end
 
       second_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
@@ -713,7 +707,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
   describe "session management integration" do
     it "creates sessions with server context when sessions are required" do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       configuration.context = {user_id: "test-user", app: "test-app"}
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
@@ -735,7 +729,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "merges request-level session_context with server context at initialization" do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       configuration.context = {app: "test-app", tenant: "default"}
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
@@ -764,7 +758,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "passes session_context to router for regular requests" do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
         configuration: configuration
@@ -798,7 +792,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     end
 
     it "handles session cleanup on DELETE when sessions are required" do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: server.router,
         configuration: configuration
@@ -1024,7 +1018,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       end
 
       before do
-        configuration.transport[:require_sessions] = true
+        configuration.require_sessions = true
         new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
           router: server.router,
           configuration: configuration
@@ -2023,17 +2017,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     context "with custom ping_timeout" do
       let(:server) do
-        ModelContextProtocol::Server.new do |config|
+        ModelContextProtocol::Server.with_streamable_http_transport do |config|
           config.name = "test-server"
           config.version = "1.0.0"
           config.registry = ModelContextProtocol::Server::Registry.new
-          config.transport = {
-            type: :streamable_http,
-            require_sessions: false,
-            validate_origin: false,
-            ping_timeout: 30,
-            env: rack_env
-          }
+          config.require_sessions = false
+          config.validate_origin = false
+          config.ping_timeout = 30
         end
       end
 
@@ -2256,15 +2246,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
 
     let(:server_with_tool) do
       reg = registry_with_tool
-      ModelContextProtocol::Server.new do |config|
+      ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "test-server"
         config.version = "1.0.0"
         config.registry = reg
-        config.transport = {
-          type: :streamable_http,
-          require_sessions: true,
-          validate_origin: false
-        }
+        config.require_sessions = true
+        config.validate_origin = false
       end
     end
 
@@ -2367,15 +2354,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     it "stores initial handlers when session is created during initialization" do
       init_request = {"method" => "initialize", "id" => "init-1", "params" => {}}
 
-      init_server = ModelContextProtocol::Server.new do |config|
+      init_server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "test-server"
         config.version = "1.0.0"
         config.registry = registry_with_tool
-        config.transport = {
-          type: :streamable_http,
-          require_sessions: true,
-          validate_origin: false
-        }
+        config.require_sessions = true
+        config.validate_origin = false
       end
 
       init_transport = described_class.new(
@@ -2407,7 +2391,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     let(:session_store) { transport.instance_variable_get(:@session_store) }
 
     before do
-      configuration.transport[:require_sessions] = true
+      configuration.require_sessions = true
       # Create the session in Redis
       session_store.create_session(session_id, {server_instance: "test-server"})
       # Store initial handlers so change detection works
