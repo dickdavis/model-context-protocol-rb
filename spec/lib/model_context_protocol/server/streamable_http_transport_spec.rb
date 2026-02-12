@@ -12,7 +12,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     ModelContextProtocol::Server.with_streamable_http_transport do |config|
       config.name = "test-server"
       config.version = "1.0.0"
-      config.registry = ModelContextProtocol::Server::Registry.new
+      config.registry {}
       config.require_sessions = false
       config.validate_origin = false
       config.redis_url = "redis://localhost:6379/15"
@@ -685,7 +685,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       second_server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "other-server"
         config.version = "1.0.0"
-        config.registry = ModelContextProtocol::Server::Registry.new
+        config.registry {}
         config.require_sessions = true
         config.redis_url = "redis://localhost:6379/15"
       end
@@ -2034,7 +2034,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         ModelContextProtocol::Server.with_streamable_http_transport do |config|
           config.name = "test-server"
           config.version = "1.0.0"
-          config.registry = ModelContextProtocol::Server::Registry.new
+          config.registry {}
           config.require_sessions = false
           config.validate_origin = false
           config.redis_url = "redis://localhost:6379/15"
@@ -2251,20 +2251,13 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   describe "#check_and_notify_handler_changes" do
-    let(:registry_with_tool) do
-      ModelContextProtocol::Server::Registry.new do
-        tools do
-          register TestToolWithTextResponse
-        end
-      end
-    end
-
     let(:server_with_tool) do
-      reg = registry_with_tool
       ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "test-server"
         config.version = "1.0.0"
-        config.registry = reg
+        config.registry do
+          tools { register TestToolWithTextResponse }
+        end
         config.require_sessions = true
         config.validate_origin = false
         config.redis_url = "redis://localhost:6379/15"
@@ -2359,21 +2352,15 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   describe "initialization stores handlers" do
-    let(:registry_with_tool) do
-      ModelContextProtocol::Server::Registry.new do
-        tools do
-          register TestToolWithTextResponse
-        end
-      end
-    end
-
     it "stores initial handlers when session is created during initialization" do
       init_request = {"method" => "initialize", "id" => "init-1", "params" => {}}
 
       init_server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "test-server"
         config.version = "1.0.0"
-        config.registry = registry_with_tool
+        config.registry do
+          tools { register TestToolWithTextResponse }
+        end
         config.require_sessions = true
         config.validate_origin = false
         config.redis_url = "redis://localhost:6379/15"

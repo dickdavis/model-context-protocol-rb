@@ -35,9 +35,28 @@ ModelContextProtocol::Server.configure_server_logging do |config|
   config.progname = "MCP-Dev-Server"
 end
 
-# Build the registry (checks flag files at startup)
-def build_registry
-  ModelContextProtocol::Server::Registry.new do
+# Configure MCP server (safe before fork - the Puma plugin handles starting after fork)
+ModelContextProtocol::Server.with_streamable_http_transport do |config|
+  config.name = "MCP Development Server (Puma)"
+  config.version = "1.0.0"
+
+  config.redis_url = "redis://localhost:6379/0"
+  config.redis_pool_size = 10
+  config.redis_enable_reaper = true
+  config.redis_reaper_interval = 10
+  config.redis_idle_timeout = 15
+
+  config.pagination = {
+    default_page_size: 2,
+    max_page_size: 3,
+    cursor_ttl: 1800
+  }
+
+  config.require_sessions = true
+  config.session_ttl = 3600
+  config.allowed_origins = ["*"]
+
+  config.registry do
     prompts do
       register TestPrompt
       register TestPromptWithCompletionClass if flag_enabled?('extra_prompts')
@@ -66,30 +85,6 @@ def build_registry
       register TestToolWithAudioResponse if flag_enabled?('extra_tools')
     end
   end
-end
-
-# Configure MCP server (safe before fork - the Puma plugin handles starting after fork)
-ModelContextProtocol::Server.with_streamable_http_transport do |config|
-  config.name = "MCP Development Server (Puma)"
-  config.version = "1.0.0"
-
-  config.redis_url = "redis://localhost:6379/0"
-  config.redis_pool_size = 10
-  config.redis_enable_reaper = true
-  config.redis_reaper_interval = 10
-  config.redis_idle_timeout = 15
-
-  config.pagination = {
-    default_page_size: 2,
-    max_page_size: 3,
-    cursor_ttl: 1800
-  }
-
-  config.require_sessions = true
-  config.session_ttl = 3600
-  config.allowed_origins = ["*"]
-
-  config.registry = build_registry
 end
 
 # Rack application

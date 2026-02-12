@@ -1,7 +1,6 @@
 require "spec_helper"
 
 RSpec.describe ModelContextProtocol::Server do
-  let(:registry) { ModelContextProtocol::Server::Registry.new }
   let(:mock_redis) { MockRedis.new }
 
   before(:each) do
@@ -26,7 +25,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_stdio_transport do |config|
         config.name = "Stdio Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
       end
 
       aggregate_failures do
@@ -41,7 +40,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_stdio_transport do |config|
         config.name = "Stdio Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
       end
 
       expect(described_class.instance).to eq(server)
@@ -52,7 +51,7 @@ RSpec.describe ModelContextProtocol::Server do
         described_class.with_stdio_transport do |config|
           # Missing required name
           config.version = "1.0.0"
-          config.registry = registry
+          config.registry {}
         end
       }.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
     end
@@ -63,7 +62,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "HTTP Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -78,7 +77,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "HTTP Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -89,7 +88,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "HTTP Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
         config.require_sessions = true
         config.session_ttl = 7200
@@ -107,7 +106,7 @@ RSpec.describe ModelContextProtocol::Server do
       expect {
         described_class.with_streamable_http_transport do |config|
           config.version = "1.0.0"
-          config.registry = registry
+          config.registry {}
           config.redis_url = "redis://localhost:6379/15"
         end
       }.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
@@ -124,7 +123,7 @@ RSpec.describe ModelContextProtocol::Server do
         server = described_class.with_stdio_transport do |config|
           config.name = "Stdio Server"
           config.version = "1.0.0"
-          config.registry = registry
+          config.registry {}
         end
         server.start
 
@@ -137,7 +136,7 @@ RSpec.describe ModelContextProtocol::Server do
         server = described_class.with_streamable_http_transport do |config|
           config.name = "HTTP Server"
           config.version = "1.0.0"
-          config.registry = registry
+          config.registry {}
           config.redis_url = "redis://localhost:6379/15"
         end
 
@@ -156,7 +155,7 @@ RSpec.describe ModelContextProtocol::Server do
         server = described_class.with_streamable_http_transport do |config|
           config.name = "HTTP Server"
           config.version = "1.0.0"
-          config.registry = registry
+          config.registry {}
           config.redis_url = "redis://localhost:6379/15"
         end
 
@@ -185,7 +184,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Serve Test Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
@@ -207,7 +206,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Serve Test Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
@@ -225,7 +224,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Serve Test Server"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
@@ -241,7 +240,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Shutdown Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -261,7 +260,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Shutdown Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -274,7 +273,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_stdio_transport do |config|
         config.name = "Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
       end
 
       expect(server.configured?).to be true
@@ -286,7 +285,7 @@ RSpec.describe ModelContextProtocol::Server do
       server = described_class.with_stdio_transport do |config|
         config.name = "Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
       end
 
       expect(server.running?).to be false
@@ -298,7 +297,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Reset Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -324,7 +323,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Delegation Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -337,7 +336,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Delegation Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -353,7 +352,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Delegation Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -383,7 +382,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Delegation Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
@@ -407,7 +406,7 @@ RSpec.describe ModelContextProtocol::Server do
       described_class.with_streamable_http_transport do |config|
         config.name = "Delegation Test"
         config.version = "1.0.0"
-        config.registry = registry
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 

@@ -3,8 +3,6 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
   subject(:configuration) { described_class.new }
 
-  let(:registry) { ModelContextProtocol::Server::Registry.new }
-
   describe "transport type" do
     it "returns :streamable_http" do
       expect(configuration.transport_type).to eq(:streamable_http)
@@ -115,7 +113,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
   describe "validation" do
     before do
       configuration.name = "test-server"
-      configuration.registry = registry
+      configuration.registry {}
       configuration.version = "1.0.0"
     end
 
@@ -156,7 +154,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
   describe "setup_transport!" do
     before do
       configuration.name = "test-server"
-      configuration.registry = registry
+      configuration.registry {}
       configuration.version = "1.0.0"
       configuration.redis_url = "redis://localhost:6379/15"
     end
@@ -186,7 +184,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
       config = described_class.new
       config.name = "test-server"
       config.version = "1.0.0"
-      config.registry = registry
+      config.registry {}
       config.redis_url = "redis://localhost:6379/15"
 
       expect { config.validate! }.not_to raise_error

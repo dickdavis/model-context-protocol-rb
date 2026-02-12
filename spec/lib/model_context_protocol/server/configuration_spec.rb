@@ -3,8 +3,6 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::Configuration do
   subject(:configuration) { described_class.new }
 
-  let(:registry) { ModelContextProtocol::Server::Registry.new }
-
   describe "#client_logger" do
     it "always provides a logger instance" do
       expect(configuration.client_logger).to be_a(ModelContextProtocol::Server::ClientLogger)
@@ -47,7 +45,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with valid configuration" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -59,7 +57,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with invalid name" do
       before do
         configuration.name = nil
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -71,7 +69,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with non-string name" do
       before do
         configuration.name = 123
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -80,22 +78,9 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
       end
     end
 
-    context "with invalid registry" do
+    context "with missing registry" do
       before do
         configuration.name = "test-server"
-        configuration.registry = nil
-        configuration.version = "1.0.0"
-      end
-
-      it "raises InvalidRegistryError" do
-        expect { configuration.validate! }.to raise_error(described_class::InvalidRegistryError)
-      end
-    end
-
-    context "with non-registry object" do
-      before do
-        configuration.name = "test-server"
-        configuration.registry = "not-a-registry"
         configuration.version = "1.0.0"
       end
 
@@ -107,7 +92,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with invalid version" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = nil
       end
 
@@ -119,7 +104,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with non-string version" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = 123
       end
 
@@ -131,7 +116,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with valid pagination settings" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -159,7 +144,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with invalid pagination settings" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -239,7 +224,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with title" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -286,7 +271,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
     context "with instructions" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -495,7 +480,7 @@ RSpec.describe ModelContextProtocol::Server::Configuration do
   describe "server logger configuration" do
     before do
       configuration.name = "test-server"
-      configuration.registry = registry
+      configuration.registry {}
       configuration.version = "1.0.0"
     end
 

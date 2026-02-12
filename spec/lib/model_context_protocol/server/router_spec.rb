@@ -5,7 +5,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
     ModelContextProtocol::Server::Configuration.new.tap do |config|
       config.name = "TestServer"
       config.version = "1.0.0"
-      config.registry = ModelContextProtocol::Server::Registry.new
+      config.registry {}
     end
   end
 
@@ -573,7 +573,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
       config = ModelContextProtocol::Server::Configuration.new.tap do |c|
         c.name = "Test Server"
         c.version = "1.0.0"
-        c.registry = ModelContextProtocol::Server::Registry.new
+        c.registry {}
       end
       described_class.new(configuration: config)
     end
@@ -625,7 +625,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = ModelContextProtocol::Server::Registry.new
+          c.registry {}
         end
         router = described_class.new(configuration: config)
 
@@ -643,7 +643,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = ModelContextProtocol::Server::Registry.new
+          c.registry {}
         end
         router = described_class.new(configuration: config)
 
@@ -660,20 +660,18 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
     context "completion/complete" do
       it "raises an error when an invalid ref/type is provided" do
-        registry = ModelContextProtocol::Server::Registry.new do
-          prompts do
-            register TestPrompt
-          end
-
-          resource_templates do
-            register TestResourceTemplate
-          end
-        end
-
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.registry do
+            prompts do
+              register TestPrompt
+            end
+
+            resource_templates do
+              register TestResourceTemplate
+            end
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -698,16 +696,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
       context "for prompts" do
         it "returns a completion for the given prompt" do
-          registry = ModelContextProtocol::Server::Registry.new do
-            prompts do
-              register TestPrompt
-            end
-          end
-
           config = ModelContextProtocol::Server::Configuration.new.tap do |c|
             c.name = "Test Server"
             c.version = "1.0.0"
-            c.registry = registry
+            c.registry do
+              prompts { register TestPrompt }
+            end
           end
           router = described_class.new(configuration: config)
 
@@ -737,16 +731,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
         end
 
         it "returns a null completion when no matching prompt is found" do
-          registry = ModelContextProtocol::Server::Registry.new do
-            prompts do
-              register TestPrompt
-            end
-          end
-
           config = ModelContextProtocol::Server::Configuration.new.tap do |c|
             c.name = "Test Server"
             c.version = "1.0.0"
-            c.registry = registry
+            c.registry do
+              prompts { register TestPrompt }
+            end
           end
           router = described_class.new(configuration: config)
 
@@ -778,16 +768,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
       context "for resource templates" do
         it "looks up resource templates when direct resource is not found" do
-          registry = ModelContextProtocol::Server::Registry.new do
-            resource_templates do
-              register TestResourceTemplate
-            end
-          end
-
           config = ModelContextProtocol::Server::Configuration.new.tap do |c|
             c.name = "Test Server"
             c.version = "1.0.0"
-            c.registry = registry
+            c.registry do
+              resource_templates { register TestResourceTemplate }
+            end
           end
           router = described_class.new(configuration: config)
 
@@ -817,16 +803,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
         end
 
         it "returns a null completion when no matching resource template is found" do
-          registry = ModelContextProtocol::Server::Registry.new do
-            resource_templates do
-              register TestResourceTemplate
-            end
-          end
-
           config = ModelContextProtocol::Server::Configuration.new.tap do |c|
             c.name = "Test Server"
             c.version = "1.0.0"
-            c.registry = registry
+            c.registry do
+              resource_templates { register TestResourceTemplate }
+            end
           end
           router = described_class.new(configuration: config)
 
@@ -859,16 +841,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
     context "resources/read" do
       it "raises an error when resource is not found" do
-        registry = ModelContextProtocol::Server::Registry.new do
-          resources do
-            register TestResource
-          end
-        end
-
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.registry do
+            resources { register TestResource }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -881,16 +859,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
       end
 
       it "returns the serialized resource data when the resource is found" do
-        registry = ModelContextProtocol::Server::Registry.new do
-          resources do
-            register TestResource
-          end
-        end
-
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.registry do
+            resources { register TestResource }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -914,16 +888,12 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
     context "resources/templates/list" do
       it "returns a list of registered resource templates" do
-        registry = ModelContextProtocol::Server::Registry.new do
-          resource_templates do
-            register TestResourceTemplate
-          end
-        end
-
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.registry do
+            resource_templates { register TestResourceTemplate }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -1038,7 +1008,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
       config = ModelContextProtocol::Server::Configuration.new.tap do |c|
         c.name = "Pagination Test Server"
         c.version = "1.0.0"
-        c.registry = registry
+        c.instance_variable_set(:@registry, registry)
         c.pagination = {
           enabled: true,
           default_page_size: 10,
@@ -1207,19 +1177,13 @@ RSpec.describe ModelContextProtocol::Server::Router do
     end
 
     describe "initialization response" do
-      let(:registry) do
-        ModelContextProtocol::Server::Registry.new do
-          prompts do
-            register TestPrompt
-          end
-        end
-      end
-
       it "includes only required fields when title and instructions are not configured" do
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.registry do
+            prompts { register TestPrompt }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -1241,7 +1205,9 @@ RSpec.describe ModelContextProtocol::Server::Router do
           c.name = "Test Server"
           c.version = "1.0.0"
           c.title = "My Awesome Test Server"
-          c.registry = registry
+          c.registry do
+            prompts { register TestPrompt }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -1261,7 +1227,9 @@ RSpec.describe ModelContextProtocol::Server::Router do
           c.name = "Test Server"
           c.version = "1.0.0"
           c.instructions = "This server provides test prompts and resources for development."
-          c.registry = registry
+          c.registry do
+            prompts { register TestPrompt }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -1282,7 +1250,9 @@ RSpec.describe ModelContextProtocol::Server::Router do
           c.version = "1.0.0"
           c.title = "Development Test Server"
           c.instructions = "Use this server for testing MCP functionality. Available tools include prompt completion and resource access."
-          c.registry = registry
+          c.registry do
+            prompts { register TestPrompt }
+          end
         end
         router = described_class.new(configuration: config)
 
@@ -1305,7 +1275,7 @@ RSpec.describe ModelContextProtocol::Server::Router do
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Short TTL Server"
           c.version = "1.0.0"
-          c.registry = registry
+          c.instance_variable_set(:@registry, registry)
           c.pagination = {
             enabled: true,
             default_page_size: 10,
@@ -1338,29 +1308,21 @@ RSpec.describe ModelContextProtocol::Server::Router do
   end
 
   describe "listChanged capability by transport type" do
-    let(:registry) do
-      ModelContextProtocol::Server::Registry.new do
-        prompts do
-          register TestPrompt
-        end
-
-        resources subscribe: true do
-          register TestResource
-        end
-
-        tools do
-          register TestToolWithTextResponse
-        end
+    let(:registry_block) do
+      proc do
+        prompts { register TestPrompt }
+        resources(subscribe: true) { register TestResource }
+        tools { register TestToolWithTextResponse }
       end
     end
 
     context "with stdio transport (default)" do
       let(:router) do
-        reg = registry
+        blk = registry_block
         config = ModelContextProtocol::Server::Configuration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = reg
+          c.registry(&blk)
           # transport_type defaults to :stdio or nil
         end
         described_class.new(configuration: config)
@@ -1381,11 +1343,11 @@ RSpec.describe ModelContextProtocol::Server::Router do
 
     context "with streamable_http transport" do
       let(:router) do
-        reg = registry
+        blk = registry_block
         config = ModelContextProtocol::Server::StreamableHttpConfiguration.new.tap do |c|
           c.name = "Test Server"
           c.version = "1.0.0"
-          c.registry = reg
+          c.registry(&blk)
         end
         described_class.new(configuration: config)
       end

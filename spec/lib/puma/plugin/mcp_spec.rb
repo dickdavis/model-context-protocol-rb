@@ -2,7 +2,6 @@ require "spec_helper"
 require "puma/plugin/mcp"
 
 RSpec.describe "Puma::Plugin::MCP" do
-  let(:registry) { ModelContextProtocol::Server::Registry.new }
   let(:mock_redis) { MockRedis.new }
 
   # Get the plugin class created by Puma::Plugin.create
@@ -35,11 +34,10 @@ RSpec.describe "Puma::Plugin::MCP" do
 
   describe "#start_mcp_server" do
     it "starts the server when configured but not running" do
-      reg = registry
       ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Plugin Test Server"
         config.version = "1.0.0"
-        config.registry = reg
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -66,11 +64,10 @@ RSpec.describe "Puma::Plugin::MCP" do
     end
 
     it "does nothing when already running" do
-      reg = registry
       ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Already Running Server"
         config.version = "1.0.0"
-        config.registry = reg
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -90,11 +87,10 @@ RSpec.describe "Puma::Plugin::MCP" do
 
   describe "#shutdown_mcp_server" do
     it "shuts down the server when running" do
-      reg = registry
       ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Shutdown Test Server"
         config.version = "1.0.0"
-        config.registry = reg
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
@@ -119,11 +115,10 @@ RSpec.describe "Puma::Plugin::MCP" do
     end
 
     it "does nothing when configured but not started" do
-      reg = registry
       ModelContextProtocol::Server.with_streamable_http_transport do |config|
         config.name = "Configured Only Server"
         config.version = "1.0.0"
-        config.registry = reg
+        config.registry {}
         config.redis_url = "redis://localhost:6379/15"
       end
 
