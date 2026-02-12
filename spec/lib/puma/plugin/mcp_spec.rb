@@ -16,19 +16,17 @@ RSpec.describe "Puma::Plugin::MCP" do
   end
 
   before(:each) do
-    # Ensure clean state before each test
-    ModelContextProtocol::Server.reset!
-
-    # Configure Redis for streamable_http transport
-    ModelContextProtocol::Server::RedisConfig.configure do |config|
-      config.redis_url = "redis://localhost:6379/15"
-    end
-
-    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-    allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-
     # Suppress background threads in tests
     allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
+
+    # Clear any stale reaper thread references before reset to avoid
+    # "leaked double" errors from the previous test's Thread.new stub
+    manager = ModelContextProtocol::Server::RedisConfig.instance.manager
+    manager&.instance_variable_set(:@reaper_thread, nil)
+
+    # Ensure clean state before each test
+    ModelContextProtocol::Server.reset!
+    ModelContextProtocol::Server::RedisConfig.reset!
   end
 
   after(:each) do
@@ -42,7 +40,11 @@ RSpec.describe "Puma::Plugin::MCP" do
         config.name = "Plugin Test Server"
         config.version = "1.0.0"
         config.registry = reg
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
 
       expect(ModelContextProtocol::Server.configured?).to be true
       expect(ModelContextProtocol::Server.running?).to be false
@@ -69,7 +71,12 @@ RSpec.describe "Puma::Plugin::MCP" do
         config.name = "Already Running Server"
         config.version = "1.0.0"
         config.registry = reg
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       ModelContextProtocol::Server.start
 
       expect(ModelContextProtocol::Server.running?).to be true
@@ -88,7 +95,12 @@ RSpec.describe "Puma::Plugin::MCP" do
         config.name = "Shutdown Test Server"
         config.version = "1.0.0"
         config.registry = reg
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       ModelContextProtocol::Server.start
 
       expect(ModelContextProtocol::Server.running?).to be true
@@ -112,6 +124,7 @@ RSpec.describe "Puma::Plugin::MCP" do
         config.name = "Configured Only Server"
         config.version = "1.0.0"
         config.registry = reg
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       expect(ModelContextProtocol::Server.configured?).to be true

@@ -1,12 +1,15 @@
+require "uri"
+
 module ModelContextProtocol
   # Settings for servers that communicate via the MCP streamable HTTP transport, typically
   # used by Rack applications serving multiple clients concurrently with Redis-backed coordination.
   #
   # Created by Server.with_streamable_http_transport, which yields an instance to a configuration
   # block before passing it to Router. Adds session management (require_sessions), CORS control
-  # (validate_origin, allowed_origins), and connection timeouts (session_ttl, ping_timeout) on
-  # top of the base class. Requires RedisConfig.configured? to be true at validation time because
-  # StreamableHttpTransport stores session state, cursor data, and cross-server notifications in Redis.
+  # (validate_origin, allowed_origins), connection timeouts (session_ttl, ping_timeout), and
+  # Redis connection pool settings (redis_url, redis_pool_size, etc.) on top of the base class.
+  # validate_transport! verifies that redis_url is a valid Redis URL, and setup_transport!
+  # configures the Redis connection pool via RedisConfig before the server starts.
   #
   # Router queries supports_list_changed? (true for this subclass, false for stdio) to advertise
   # listChanged capabilities in the initialize response. StreamableHttpTransport reads require_sessions,
@@ -48,6 +51,41 @@ module ModelContextProtocol
     #   StreamableHttpTransport passes this to StreamMonitor to detect stale connections.
     #   @see StreamableHttpTransport#initialize
     attr_writer :ping_timeout
+
+    # @!attribute [w] redis_url
+    #   The Redis connection URL (redis:// or rediss:// scheme). Required.
+    #   Passed to RedisConfig during setup_transport! to create the connection pool.
+    attr_writer :redis_url
+
+    # @!attribute [w] redis_pool_size
+    #   Number of Redis connections in the pool.
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_pool_size
+
+    # @!attribute [w] redis_pool_timeout
+    #   Seconds to wait for a connection from the pool before raising.
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_pool_timeout
+
+    # @!attribute [w] redis_ssl_params
+    #   SSL parameters for Redis connections (e.g., { verify_mode: OpenSSL::SSL::VERIFY_NONE }).
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_ssl_params
+
+    # @!attribute [w] redis_enable_reaper
+    #   Whether to enable the idle connection reaper thread.
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_enable_reaper
+
+    # @!attribute [w] redis_reaper_interval
+    #   How often (in seconds) the reaper checks for idle connections.
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_reaper_interval
+
+    # @!attribute [w] redis_idle_timeout
+    #   How long (in seconds) a connection can sit idle before the reaper closes it.
+    #   Passed to RedisConfig during setup_transport!.
+    attr_writer :redis_idle_timeout
 
     # Check whether session IDs are mandatory for incoming requests.
     # StreamableHttpTransport reads this at request handling time to decide whether
@@ -96,6 +134,37 @@ module ModelContextProtocol
       @ping_timeout || 10
     end
 
+    # @return [String, nil] the Redis connection URL
+    attr_reader :redis_url
+
+    # @return [Integer] number of Redis connections in the pool (default: 20)
+    def redis_pool_size
+      @redis_pool_size || 20
+    end
+
+    # @return [Integer] seconds to wait for a pool connection (default: 5)
+    def redis_pool_timeout
+      @redis_pool_timeout || 5
+    end
+
+    # @return [Hash, nil] SSL parameters for Redis connections
+    attr_reader :redis_ssl_params
+
+    # @return [Boolean] whether the idle connection reaper is enabled (default: true)
+    def redis_enable_reaper
+      @redis_enable_reaper.nil? ? true : @redis_enable_reaper
+    end
+
+    # @return [Integer] seconds between reaper checks (default: 60)
+    def redis_reaper_interval
+      @redis_reaper_interval || 60
+    end
+
+    # @return [Integer] seconds before idle connections are reaped (default: 300)
+    def redis_idle_timeout
+      @redis_idle_timeout || 300
+    end
+
     private
 
     # Default CORS origins permitted for HTTP transport: localhost and 127.0.0.1 on both HTTP and HTTPS.
@@ -109,17 +178,40 @@ module ModelContextProtocol
       "http://127.0.0.1", "https://127.0.0.1"
     ].freeze
 
-    # Verify that Redis is configured before allowing HTTP transport.
+    # Verify that redis_url is a valid Redis URL before allowing HTTP transport.
     # Overrides the base class template method; called by validate! after checking name/version/registry.
-    # StreamableHttpTransport requires Redis for SessionStore (client state), NotificationQueue
-    # (cross-server messages), and StreamRegistry (active connections), so it cannot function without it.
+    # Uses URI parsing ("parse, don't validate") to catch nil, empty, malformed, and non-Redis URLs.
     #
-    # @raise [InvalidTransportError] if RedisConfig.configured? returns false
+    # @raise [InvalidTransportError] if redis_url is nil, empty, malformed, or not a redis:// / rediss:// URL
     # @return [void]
     def validate_transport!
-      unless ModelContextProtocol::Server::RedisConfig.configured?
+      uri = URI.parse(redis_url.to_s)
+      unless %w[redis rediss].include?(uri.scheme)
         raise InvalidTransportError,
-          "streamable_http transport requires Redis. Call Server.configure_redis first."
+          "streamable_http transport requires a valid Redis URL (redis:// or rediss://). " \
+          "Set config.redis_url in the configuration block."
+      end
+    rescue URI::InvalidURIError
+      raise InvalidTransportError,
+        "streamable_http transport requires a valid Redis URL (redis:// or rediss://). " \
+        "Set config.redis_url in the configuration block."
+    end
+
+    # Configure the Redis connection pool via RedisConfig.
+    # Overrides the base class template method; called by Server.build_server after validate! passes.
+    # Maps the redis_* attributes on this configuration to the corresponding RedisConfig::Configuration
+    # attributes, then starts the pool manager.
+    #
+    # @return [void]
+    def setup_transport!
+      ModelContextProtocol::Server::RedisConfig.configure do |redis_config|
+        redis_config.redis_url = redis_url
+        redis_config.pool_size = redis_pool_size
+        redis_config.pool_timeout = redis_pool_timeout
+        redis_config.enable_reaper = redis_enable_reaper
+        redis_config.reaper_interval = redis_reaper_interval
+        redis_config.idle_timeout = redis_idle_timeout
+        redis_config.ssl_params = redis_ssl_params
       end
     end
   end

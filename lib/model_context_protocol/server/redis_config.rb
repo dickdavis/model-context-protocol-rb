@@ -6,7 +6,7 @@ module ModelContextProtocol
 
     class NotConfiguredError < StandardError
       def initialize
-        super("Redis not configured. Call ModelContextProtocol::Server.configure_redis first")
+        super("Redis not configured. Set redis_url in the StreamableHttpConfiguration block.")
       end
     end
 

@@ -100,30 +100,17 @@ module ModelContextProtocol
       #
       # @yieldparam config [StreamableHttpConfiguration] the configuration to populate
       # @return [Server] the configured server instance (also stored in Server.instance)
-      # @raise [InvalidTransportError] if Redis hasn't been configured via configure_redis
+      # @raise [InvalidTransportError] if redis_url is not set or invalid
       # @example
       #   server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
       #     config.name = "My HTTP MCP Server"
+      #     config.redis_url = ENV.fetch("REDIS_URL")
       #     config.require_sessions = true
       #     config.allowed_origins = ["*"]
       #   end
       #   server.start  # spawns background threads, returns immediately
       def with_streamable_http_transport(&block)
         build_server(StreamableHttpConfiguration.new, &block)
-      end
-
-      # Configure the Redis connection pool used by StreamableHttpTransport.
-      # Must be called before with_streamable_http_transport.
-      #
-      # @yieldparam config [RedisConfig] the Redis configuration
-      # @return [void]
-      # @example
-      #   ModelContextProtocol::Server.configure_redis do |config|
-      #     config.redis_url = "redis://localhost:6379/0"
-      #     config.pool_size = 10
-      #   end
-      def configure_redis(&block)
-        Server::RedisConfig.configure(&block)
       end
 
       # Configure global server-side logging (distinct from client-facing logs sent via JSON-RPC).
@@ -222,6 +209,7 @@ module ModelContextProtocol
       def build_server(config)
         yield(config) if block_given?
         config.validate!
+        config.send(:setup_transport!)
         server = allocate
         server.send(:initialize_from_configuration, config)
         self.instance = server
