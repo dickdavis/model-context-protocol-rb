@@ -1,32 +1,93 @@
 module ModelContextProtocol
+  # Base settings container for MCP servers with two concrete subclasses:
+  # - {StdioConfiguration} for standalone scripts using stdin/stdout
+  # - {StreamableHttpConfiguration} for Rack applications using streamable HTTP with Redis
+  #
+  # Server.rb factory methods (with_stdio_transport, with_streamable_http_transport)
+  # instantiate the appropriate subclass, yield it to a block for population, validate
+  # it, then pass it to Router.new. Router reads pagination settings via pagination_options
+  # and queries transport capabilities via supports_list_changed? and apply_environment_variables?.
+  #
+  # The base class provides shared attributes (name, version, registry, pagination) and
+  # validation logic, while subclasses override transport_type and validate_transport! to
+  # enforce transport-specific constraints.
   class Server::Configuration
-    # Raised when configured with invalid name.
+    # Signals that the server's identifying name is missing or not a String.
+    # Raised by validate! when name is nil or non-String.
     class InvalidServerNameError < StandardError; end
 
-    # Raised when configured with invalid version.
+    # Signals that the server's version string is missing or not a String.
+    # Raised by validate! when version is nil or non-String.
     class InvalidServerVersionError < StandardError; end
 
-    # Raised when configured with invalid title.
+    # Signals that the optional UI title is non-nil but not a String.
+    # Raised by validate_title! when title is set to a non-String value.
     class InvalidServerTitleError < StandardError; end
 
-    # Raised when configured with invalid instructions.
+    # Signals that the optional LLM instructions are non-nil but not a String.
+    # Raised by validate_instructions! when instructions is set to a non-String value.
     class InvalidServerInstructionsError < StandardError; end
 
-    # Raised when configured with invalid registry.
+    # Signals that the registry is missing or not a Registry instance.
+    # Raised by validate! when registry is nil or not a ModelContextProtocol::Server::Registry.
     class InvalidRegistryError < StandardError; end
 
-    # Raised when a required environment variable is not set
+    # Signals that a required environment variable is absent (stdio transport only).
+    # Raised by StdioConfiguration#validate_environment_variables! when a variable
+    # declared via require_environment_variable is not set.
     class MissingRequiredEnvironmentVariable < StandardError; end
 
-    # Raised when transport configuration is invalid
+    # Signals transport-specific validation failure (Redis missing for HTTP, stdout conflict for stdio).
+    # Raised by subclass implementations of validate_transport! when prerequisites are unmet.
     class InvalidTransportError < StandardError; end
 
-    # Raised when pagination configuration is invalid
+    # Signals that pagination settings are invalid (negative sizes, out-of-range defaults).
+    # Raised by validate_pagination! when default_page_size exceeds max_page_size or values are non-positive.
     class InvalidPaginationError < StandardError; end
 
-    attr_accessor :name, :registry, :version, :transport, :pagination, :title, :instructions
-    attr_reader :client_logger, :server_logger
+    # @!attribute [rw] name
+    #   @return [String] the server's identifying name (sent in initialize response serverInfo.name)
+    attr_accessor :name
 
+    # @!attribute [rw] registry
+    #   @return [ModelContextProtocol::Server::Registry] container for prompts, resources, and tools;
+    #     Router queries this to handle resources/list, tools/call, etc.
+    attr_accessor :registry
+
+    # @!attribute [rw] version
+    #   @return [String] the server's version string (sent in initialize response serverInfo.version)
+    attr_accessor :version
+
+    # @!attribute [rw] pagination
+    #   @return [Hash, false, nil] pagination settings or false to disable;
+    #     Router calls pagination_options to extract default_page_size, max_page_size, and cursor_ttl
+    #     when handling list requests (resources/list, prompts/list, tools/list).
+    #     Accepts Hash with :enabled, :default_page_size, :max_page_size, :cursor_ttl keys, or false to disable.
+    attr_accessor :pagination
+
+    # @!attribute [rw] title
+    #   @return [String, nil] optional human-readable display title for Claude Desktop UI
+    #     (sent in initialize response serverInfo.title if present)
+    attr_accessor :title
+
+    # @!attribute [rw] instructions
+    #   @return [String, nil] optional guidance for LLMs on how to use the server
+    #     (sent in initialize response instructions field if present)
+    attr_accessor :instructions
+
+    # @!attribute [r] client_logger
+    #   @return [ClientLogger] logger for sending notifications/message to MCP clients via JSON-RPC;
+    #     Router passes this to prompts, resources, and tools so they can log to the client
+    attr_reader :client_logger
+
+    # @!attribute [r] server_logger
+    #   @return [ServerLogger] Ruby Logger for server-side diagnostics (not sent to clients);
+    #     writes to stderr by default, or configured destination via configure_server_logging
+    attr_reader :server_logger
+
+    # Initialize shared attributes and loggers for any configuration subclass.
+    # ClientLogger queues messages until a transport connects; ServerLogger writes to stderr
+    # (or file/custom logdev if configured globally via Server.configure_server_logging).
     def initialize
       @client_logger = ModelContextProtocol::Server::ClientLogger.new(
         logger_name: "server",
@@ -42,24 +103,34 @@ module ModelContextProtocol
       @server_logger = ModelContextProtocol::Server::ServerLogger.new(**server_logger_params)
     end
 
-    def transport_type
-      case transport
-      when Hash
-        transport[:type] || transport["type"]
-      when Symbol, String
-        transport.to_sym
-      end
-    end
+    # Identify the transport layer for this configuration.
+    # Subclasses return :stdio or :streamable_http; Server.start uses this to
+    # instantiate the correct Transport class (StdioTransport or StreamableHttpTransport).
+    #
+    # @return [Symbol, nil] nil in the base class (never instantiated directly)
+    def transport_type = nil
 
-    def transport_options
-      case transport
-      when Hash
-        transport.except(:type, "type").transform_keys(&:to_sym)
-      else
-        {}
-      end
-    end
+    # Determine whether the transport supports notifications/resources/list_changed
+    # and notifications/tools/list_changed. Router queries this when building the
+    # initialize response capabilities hash (adding listChanged: true to prompts/resources/tools).
+    # Only HTTP transport returns true (stdio can't push unsolicited notifications).
+    #
+    # @return [Boolean] false in base class and StdioConfiguration, true in StreamableHttpConfiguration
+    def supports_list_changed? = false
 
+    # Determine whether Router should modify ENV before executing handlers.
+    # StdioConfiguration returns true because stdin/stdout scripts run single-threaded
+    # and ENV mutation is safe. StreamableHttpConfiguration returns false because
+    # ENV is global and modifying it in a multi-threaded Rack server creates race conditions.
+    #
+    # @return [Boolean] false in base class, overridden by subclasses
+    def apply_environment_variables? = false
+
+    # Check whether pagination is active for list responses (resources/list, prompts/list, tools/list).
+    # Router calls this before extracting pagination params; if false, it returns unpaginated results.
+    # Enabled by default (nil or true), or when pagination Hash has enabled != false.
+    #
+    # @return [Boolean] true unless pagination is explicitly set to false
     def pagination_enabled?
       return true if pagination.nil?
 
@@ -73,6 +144,12 @@ module ModelContextProtocol
       end
     end
 
+    # Extract normalized pagination settings for Router to pass to Pagination.extract_pagination_params.
+    # Router uses default_page_size and max_page_size to validate cursor and page size params from the client,
+    # and cursor_ttl to configure how long the Pagination module stores cursor state in memory.
+    #
+    # @return [Hash] pagination parameters with keys :enabled, :default_page_size, :max_page_size, :cursor_ttl;
+    #   defaults are 100, 1000, and 3600 (1 hour) respectively
     def pagination_options
       case pagination
       when Hash
@@ -94,6 +171,19 @@ module ModelContextProtocol
       end
     end
 
+    # Verify all required attributes and transport-specific constraints.
+    # Called by Server.build_server (the factory method's internal logic) after yielding
+    # the configuration block but before constructing the Router. Ensures the configuration
+    # is complete and internally consistent.
+    #
+    # @raise [InvalidServerNameError] if name is nil or non-String
+    # @raise [InvalidRegistryError] if registry is nil or not a Registry instance
+    # @raise [InvalidServerVersionError] if version is nil or non-String
+    # @raise [InvalidTransportError] if transport prerequisites fail (subclass-specific)
+    # @raise [InvalidPaginationError] if page sizes are negative or out of range
+    # @raise [InvalidServerTitleError] if title is non-nil but not a String
+    # @raise [InvalidServerInstructionsError] if instructions is non-nil but not a String
+    # @return [void]
     def validate!
       raise InvalidServerNameError unless valid_name?
       raise InvalidRegistryError unless valid_registry?
@@ -103,93 +193,73 @@ module ModelContextProtocol
       validate_pagination!
       validate_title!
       validate_instructions!
-      validate_environment_variables!
-      validate_server_logging_transport_constraints!
     end
 
-    def environment_variables
-      @environment_variables ||= {}
-    end
-
-    def environment_variable(key)
-      environment_variables[key.to_s.upcase] || ENV[key.to_s.upcase] || nil
-    end
-
-    def require_environment_variable(key)
-      required_environment_variables << key.to_s.upcase
-    end
-
-    # Programatically set an environment variable - useful if an alternative
-    # to environment variables is used for security purposes. Despite being
-    # more like 'configuration variables', these are called environment variables
-    # to align with the Model Context Protocol terminology.
+    # Access server-wide key-value storage merged with per-request session_context by Router.
+    # Router.effective_context merges this with Thread.current[:mcp_context][:session_context],
+    # then passes the result to prompts, resources, and tools so they can access both
+    # server-level (shared across all requests) and session-level (specific to HTTP session) data.
     #
-    # see: https://modelcontextprotocol.io/docs/tools/debugging#environment-variables
-    #
-    # @param key [String] The key to set the environment variable for
-    # @param value [String] The value to set the environment variable to
-    def set_environment_variable(key, value)
-      environment_variables[key.to_s.upcase] = value
-    end
-
+    # @return [Hash] the lazily-initialized context hash (defaults to {})
     def context
       @context ||= {}
     end
 
+    # Replace the server-wide context with a new hash.
+    # Router reads this via effective_context, merging it with session-level data before
+    # passing to handler implementations.
+    #
+    # @param context_hash [Hash] the new context to store (defaults to {})
+    # @return [Hash] the stored context
     def context=(context_hash = {})
       @context = context_hash
     end
 
     private
 
-    def required_environment_variables
-      @required_environment_variables ||= []
+    # Template method for subclass-specific transport validation.
+    # StdioConfiguration checks that required environment variables are set and that
+    # server_logger isn't writing to stdout (which would corrupt the stdio protocol).
+    # StreamableHttpConfiguration checks that RedisConfig.configured? is true.
+    #
+    # @raise [InvalidTransportError] when transport prerequisites are unmet
+    # @raise [MissingRequiredEnvironmentVariable] when stdio transport requires an unset variable
+    # @return [void]
+    def validate_transport!
+      # Template method — subclasses override to add transport-specific validations
     end
 
-    def validate_environment_variables!
-      required_environment_variables.each do |key|
-        raise MissingRequiredEnvironmentVariable, "#{key} is not set" unless environment_variable(key)
-      end
-    end
-
-    def validate_server_logging_transport_constraints!
-      return unless transport_type == :stdio && server_logger.logdev == $stdout
-
-      raise ModelContextProtocol::Server::ServerLogger::StdoutNotAllowedError,
-        "StdioTransport cannot log to stdout. Use stderr or a file instead."
-    end
-
+    # Check that name attribute is a non-nil String.
+    # Called by validate! to ensure the initialize response can be constructed.
+    #
+    # @return [Boolean] true if name is a String
     def valid_name?
       name&.is_a?(String)
     end
 
+    # Check that registry attribute is a Registry instance.
+    # Called by validate! to ensure Router can query tools, prompts, and resources.
+    #
+    # @return [Boolean] true if registry is a ModelContextProtocol::Server::Registry
     def valid_registry?
       registry&.is_a?(ModelContextProtocol::Server::Registry)
     end
 
+    # Check that version attribute is a non-nil String.
+    # Called by validate! to ensure the initialize response can be constructed.
+    #
+    # @return [Boolean] true if version is a String
     def valid_version?
       version&.is_a?(String)
     end
 
-    def validate_transport!
-      case transport_type
-      when :streamable_http
-        validate_streamable_http_transport!
-      when :stdio, nil
-        # stdio transport has no required options
-      else
-        raise InvalidTransportError, "Unknown transport type: #{transport_type}" if transport_type
-      end
-    end
-
-    def validate_streamable_http_transport!
-      unless ModelContextProtocol::Server::RedisConfig.configured?
-        raise InvalidTransportError,
-          "streamable_http transport requires Redis configuration. " \
-          "Call ModelContextProtocol::Server.configure_redis in an initializer."
-      end
-    end
-
+    # Verify pagination settings are internally consistent (page sizes positive, defaults in range).
+    # Called by validate! only when pagination_enabled? is true; skipped if pagination is false.
+    # Ensures Router won't pass invalid params to Pagination.extract_pagination_params.
+    #
+    # @raise [InvalidPaginationError] if max_page_size <= 0, default_page_size <= 0,
+    #   default_page_size > max_page_size, or cursor_ttl < 0
+    # @return [void]
     def validate_pagination!
       return unless pagination_enabled?
 
@@ -208,6 +278,11 @@ module ModelContextProtocol
       end
     end
 
+    # Check that the optional title attribute is nil or a String.
+    # Called by validate! to ensure the initialize response serverInfo.title is valid.
+    #
+    # @raise [InvalidServerTitleError] if title is non-nil and not a String
+    # @return [void]
     def validate_title!
       return if title.nil?
       return if title.is_a?(String)
@@ -215,6 +290,11 @@ module ModelContextProtocol
       raise InvalidServerTitleError, "Server title must be a string"
     end
 
+    # Check that the optional instructions attribute is nil or a String.
+    # Called by validate! to ensure the initialize response instructions field is valid.
+    #
+    # @raise [InvalidServerInstructionsError] if instructions is non-nil and not a String
+    # @return [void]
     def validate_instructions!
       return if instructions.nil?
       return if instructions.is_a?(String)
