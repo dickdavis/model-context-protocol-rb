@@ -29,22 +29,21 @@ module ModelContextProtocol
       @redis_pool = ModelContextProtocol::Server::RedisConfig.pool
       @redis = ModelContextProtocol::Server::RedisClientProxy.new(@redis_pool)
 
-      transport_options = @configuration.transport_options
-      @require_sessions = transport_options.fetch(:require_sessions, false)
-      @default_protocol_version = transport_options.fetch(:default_protocol_version, "2025-03-26")
+      @require_sessions = @configuration.require_sessions
+      @default_protocol_version = "2025-03-26"
       # Use Concurrent::Map for thread-safe access from multiple request threads
       @session_protocol_versions = Concurrent::Map.new
-      @validate_origin = transport_options.fetch(:validate_origin, true)
-      @allowed_origins = transport_options.fetch(:allowed_origins, ["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"])
+      @validate_origin = @configuration.validate_origin
+      @allowed_origins = @configuration.allowed_origins
 
-      @session_store = SessionStore.new(@redis, ttl: transport_options[:session_ttl] || 3600)
+      @session_store = SessionStore.new(@redis, ttl: @configuration.session_ttl)
       @server_instance = "#{Socket.gethostname}-#{Process.pid}-#{SecureRandom.hex(4)}"
       @stream_registry = StreamRegistry.new(@redis, @server_instance)
       @notification_queue = NotificationQueue.new(@redis, @server_instance)
       @event_counter = EventCounter.new(@redis, @server_instance)
       @request_store = RequestStore.new(@redis, @server_instance)
       @server_request_store = ServerRequestStore.new(@redis, @server_instance)
-      @ping_timeout = transport_options.fetch(:ping_timeout, 10)
+      @ping_timeout = @configuration.ping_timeout
 
       @message_poller = MessagePoller.new(@redis, @stream_registry, @client_logger) do |stream, message|
         send_to_stream(stream, message)
