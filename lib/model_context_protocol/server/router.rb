@@ -298,7 +298,7 @@ module ModelContextProtocol
         capabilities[:logging] = {}
 
         registry = @configuration.registry
-        supports_list_changed = @configuration.transport_type == :streamable_http
+        supports_list_changed = @configuration.supports_list_changed?
 
         if !registry.instance_variable_get(:@prompts).empty?
           prompts_caps = {}
@@ -326,10 +326,10 @@ module ModelContextProtocol
       # Skip ENV manipulation for streamable_http transport because ENV is
       # global state and modifying it is thread-unsafe in multi-threaded servers.
       # For stdio transport, apply ENV variables as before (single-threaded).
-      if @configuration.transport_type == :streamable_http
-        yield
-      else
+      if @configuration.apply_environment_variables?
         with_environment(@configuration.environment_variables, &block)
+      else
+        yield
       end
     end
 
