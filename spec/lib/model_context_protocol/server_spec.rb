@@ -5,7 +5,16 @@ RSpec.describe ModelContextProtocol::Server do
   let(:mock_redis) { MockRedis.new }
 
   before(:each) do
+    # Suppress background threads in tests
+    allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
+
+    # Clear any stale reaper thread references before reset to avoid
+    # "leaked double" errors from the previous test's Thread.new stub
+    manager = ModelContextProtocol::Server::RedisConfig.instance.manager
+    manager&.instance_variable_set(:@reaper_thread, nil)
+
     described_class.reset!
+    ModelContextProtocol::Server::RedisConfig.reset!
   end
 
   after(:each) do
@@ -50,17 +59,12 @@ RSpec.describe ModelContextProtocol::Server do
   end
 
   describe ".with_streamable_http_transport" do
-    before(:each) do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-    end
-
     it "creates a server with StreamableHttpConfiguration" do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "HTTP Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       aggregate_failures do
@@ -75,6 +79,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "HTTP Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       expect(described_class.instance).to eq(server)
@@ -85,6 +90,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "HTTP Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
         config.require_sessions = true
         config.session_ttl = 7200
         config.allowed_origins = ["*"]
@@ -102,6 +108,7 @@ RSpec.describe ModelContextProtocol::Server do
         described_class.with_streamable_http_transport do |config|
           config.version = "1.0.0"
           config.registry = registry
+          config.redis_url = "redis://localhost:6379/15"
         end
       }.to raise_error(ModelContextProtocol::Server::Configuration::InvalidServerNameError)
     end
@@ -126,21 +133,17 @@ RSpec.describe ModelContextProtocol::Server do
     end
 
     context "with streamable_http transport" do
-      before(:each) do
-        ModelContextProtocol::Server::RedisConfig.configure do |config|
-          config.redis_url = "redis://localhost:6379/15"
-        end
-        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-        allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
-      end
-
       it "creates StreamableHttpTransport" do
         server = described_class.with_streamable_http_transport do |config|
           config.name = "HTTP Server"
           config.version = "1.0.0"
           config.registry = registry
+          config.redis_url = "redis://localhost:6379/15"
         end
+
+        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
         server.start
 
         aggregate_failures do
@@ -154,7 +157,12 @@ RSpec.describe ModelContextProtocol::Server do
           config.name = "HTTP Server"
           config.version = "1.0.0"
           config.registry = registry
+          config.redis_url = "redis://localhost:6379/15"
         end
+
+        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+        allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
         server.start
 
         expect { server.start }.to raise_error(RuntimeError, /already running/)
@@ -173,22 +181,18 @@ RSpec.describe ModelContextProtocol::Server do
       }
     end
 
-    before(:each) do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-      allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
-    end
-
     it "handles requests through transport" do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Serve Test Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       server.start
 
       result = server.serve(env: rack_env)
@@ -204,8 +208,13 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Serve Test Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       server.start
 
       result = server.serve(env: rack_env, session_context: {user_id: "test-user-123"})
@@ -217,6 +226,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Serve Test Server"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
 
@@ -227,21 +237,17 @@ RSpec.describe ModelContextProtocol::Server do
   end
 
   describe "#shutdown" do
-    before(:each) do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-      allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
-    end
-
     it "clears the transport" do
       server = described_class.with_streamable_http_transport do |config|
         config.name = "Shutdown Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       server.start
 
       expect(server.running?).to be true
@@ -256,6 +262,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Shutdown Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       expect { server.shutdown }.not_to raise_error
@@ -287,21 +294,16 @@ RSpec.describe ModelContextProtocol::Server do
   end
 
   describe ".reset!" do
-    before(:each) do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-      allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
-    end
-
     it "clears the instance" do
       described_class.with_streamable_http_transport do |config|
         config.name = "Reset Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
 
       expect(described_class.instance).not_to be_nil
 
@@ -316,15 +318,6 @@ RSpec.describe ModelContextProtocol::Server do
   end
 
   describe "class-level delegations" do
-    before(:each) do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
-      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
-      allow(Thread).to receive(:new).and_return(double("thread", alive?: false, kill: nil, join: nil, "name=": nil))
-    end
-
     it "delegates configured? to instance" do
       expect(described_class.configured?).to be false
 
@@ -332,6 +325,7 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Delegation Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       expect(described_class.configured?).to be true
@@ -344,7 +338,12 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Delegation Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       described_class.start
 
       expect(described_class.running?).to be true
@@ -355,7 +354,12 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Delegation Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       described_class.start
 
       expect(described_class.instance.running?).to be true
@@ -380,8 +384,13 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Delegation Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
         config.validate_origin = false
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       described_class.start
 
       result = described_class.serve(env: rack_env)
@@ -399,38 +408,16 @@ RSpec.describe ModelContextProtocol::Server do
         config.name = "Delegation Test"
         config.version = "1.0.0"
         config.registry = registry
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
+
       described_class.start
       described_class.shutdown
 
       expect(described_class.instance.running?).to be false
-    end
-  end
-
-  describe ".configure_redis" do
-    it "delegates to RedisConfig.configure" do
-      expect(ModelContextProtocol::Server::RedisConfig).to receive(:configure)
-
-      described_class.configure_redis do |config|
-        config.redis_url = "redis://test:6379"
-      end
-    end
-
-    it "passes the block to RedisConfig.configure" do
-      block_executed = false
-
-      allow(ModelContextProtocol::Server::RedisConfig).to receive(:configure) do |&block|
-        config = double("config")
-        allow(config).to receive(:redis_url=)
-        block&.call(config)
-        block_executed = true
-      end
-
-      described_class.configure_redis do |config|
-        config.redis_url = "redis://test:6379"
-      end
-
-      expect(block_executed).to be true
     end
   end
 

@@ -44,6 +44,36 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
     end
   end
 
+  describe "redis attribute defaults" do
+    it "defaults redis_url to nil" do
+      expect(configuration.redis_url).to be_nil
+    end
+
+    it "defaults redis_pool_size to 20" do
+      expect(configuration.redis_pool_size).to eq(20)
+    end
+
+    it "defaults redis_pool_timeout to 5" do
+      expect(configuration.redis_pool_timeout).to eq(5)
+    end
+
+    it "defaults redis_ssl_params to nil" do
+      expect(configuration.redis_ssl_params).to be_nil
+    end
+
+    it "defaults redis_enable_reaper to true" do
+      expect(configuration.redis_enable_reaper).to be true
+    end
+
+    it "defaults redis_reaper_interval to 60" do
+      expect(configuration.redis_reaper_interval).to eq(60)
+    end
+
+    it "defaults redis_idle_timeout to 300" do
+      expect(configuration.redis_idle_timeout).to eq(300)
+    end
+  end
+
   describe "custom values" do
     it "allows overriding all transport-specific options" do
       configuration.require_sessions = true
@@ -60,6 +90,26 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
         expect(configuration.ping_timeout).to eq(30)
       end
     end
+
+    it "allows overriding all redis options" do
+      configuration.redis_url = "rediss://prod.example.com:6380/1"
+      configuration.redis_pool_size = 50
+      configuration.redis_pool_timeout = 10
+      configuration.redis_ssl_params = {verify_mode: 0}
+      configuration.redis_enable_reaper = false
+      configuration.redis_reaper_interval = 120
+      configuration.redis_idle_timeout = 600
+
+      aggregate_failures do
+        expect(configuration.redis_url).to eq("rediss://prod.example.com:6380/1")
+        expect(configuration.redis_pool_size).to eq(50)
+        expect(configuration.redis_pool_timeout).to eq(10)
+        expect(configuration.redis_ssl_params).to eq({verify_mode: 0})
+        expect(configuration.redis_enable_reaper).to be false
+        expect(configuration.redis_reaper_interval).to eq(120)
+        expect(configuration.redis_idle_timeout).to eq(600)
+      end
+    end
   end
 
   describe "validation" do
@@ -69,19 +119,57 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
       configuration.version = "1.0.0"
     end
 
-    it "raises error when Redis is not configured" do
+    it "raises error when redis_url is not set" do
       expect { configuration.validate! }.to raise_error(
         ModelContextProtocol::Server::Configuration::InvalidTransportError,
-        /streamable_http transport requires Redis/
+        /streamable_http transport requires a valid Redis URL/
       )
     end
 
-    it "validates successfully when Redis is configured" do
-      ModelContextProtocol::Server::RedisConfig.configure do |config|
-        config.redis_url = "redis://localhost:6379/15"
-      end
+    it "raises error when redis_url is empty" do
+      configuration.redis_url = ""
+      expect { configuration.validate! }.to raise_error(
+        ModelContextProtocol::Server::Configuration::InvalidTransportError,
+        /streamable_http transport requires a valid Redis URL/
+      )
+    end
 
+    it "raises error when redis_url has wrong scheme" do
+      configuration.redis_url = "http://localhost:6379"
+      expect { configuration.validate! }.to raise_error(
+        ModelContextProtocol::Server::Configuration::InvalidTransportError,
+        /streamable_http transport requires a valid Redis URL/
+      )
+    end
+
+    it "validates successfully with redis:// URL" do
+      configuration.redis_url = "redis://localhost:6379/15"
       expect { configuration.validate! }.not_to raise_error
+    end
+
+    it "validates successfully with rediss:// URL" do
+      configuration.redis_url = "rediss://prod.example.com:6380/1"
+      expect { configuration.validate! }.not_to raise_error
+    end
+  end
+
+  describe "setup_transport!" do
+    before do
+      configuration.name = "test-server"
+      configuration.registry = registry
+      configuration.version = "1.0.0"
+      configuration.redis_url = "redis://localhost:6379/15"
+    end
+
+    it "configures RedisConfig with redis attributes" do
+      configuration.redis_pool_size = 30
+      configuration.redis_pool_timeout = 8
+
+      expect(ModelContextProtocol::Server::RedisConfig).to receive(:configure).and_yield(
+        ModelContextProtocol::Server::RedisConfig::Configuration.new
+      )
+
+      configuration.send(:setup_transport!)
     end
   end
 
@@ -91,10 +179,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
     end
 
     it "allows stdout logger for streamable_http transport" do
-      ModelContextProtocol::Server.configure_redis do |config|
-        config.redis_url = "redis://localhost:6379"
-      end
-
       ModelContextProtocol::Server.configure_server_logging do |config|
         config.logdev = $stdout
       end
@@ -103,6 +187,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
       config.name = "test-server"
       config.version = "1.0.0"
       config.registry = registry
+      config.redis_url = "redis://localhost:6379/15"
 
       expect { config.validate! }.not_to raise_error
     end

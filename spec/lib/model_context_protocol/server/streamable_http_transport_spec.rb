@@ -15,6 +15,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       config.registry = ModelContextProtocol::Server::Registry.new
       config.require_sessions = false
       config.validate_origin = false
+      config.redis_url = "redis://localhost:6379/15"
     end
   end
   let(:router) { server.router }
@@ -25,10 +26,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   let(:configuration) { server.configuration }
 
   before(:all) do
-    ModelContextProtocol::Server.configure_redis do |config|
-      config.redis_url = "redis://localhost:6379/15"
-    end
-
     # Configure server logging to use a silent logger for tests
     ModelContextProtocol::Server.configure_server_logging do |config|
       config.logdev = File::NULL
@@ -37,6 +34,14 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   end
 
   before(:each) do
+    # Clear any stale reaper thread references before server evaluation to avoid
+    # "leaked double" errors when setup_transport! calls RedisConfig.configure
+    manager = ModelContextProtocol::Server::RedisConfig.instance.manager
+    manager&.instance_variable_set(:@reaper_thread, nil)
+
+    # Force server evaluation first so setup_transport! creates the pool,
+    # then stub the pool for test isolation
+    server
     allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
     allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
 
@@ -75,12 +80,16 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
   before do
     mock_redis.flushdb
 
-    monitor_thread = double("monitor_thread", alive?: false, kill: nil, join: nil, name: nil)
-    poller_thread = double("poller_thread", alive?: false, kill: nil, join: nil, name: nil)
-    allow(poller_thread).to receive(:name=)
+    # Create thread doubles that support all methods used by reaper, monitor, and poller threads.
+    # Any Thread.new call (including RedisPoolManager's reaper) matches with(no_args) since
+    # Ruby blocks are not positional args, so all doubles need name= support.
+    thread_double_attrs = {alive?: false, kill: nil, join: nil, name: nil, "name=": nil}
+    reaper_thread = double("reaper_thread", **thread_double_attrs)
+    monitor_thread = double("monitor_thread", **thread_double_attrs)
+    poller_thread = double("poller_thread", **thread_double_attrs)
 
     allow(Thread).to receive(:new).and_call_original
-    allow(Thread).to receive(:new).with(no_args).and_return(monitor_thread, poller_thread)
+    allow(Thread).to receive(:new).with(no_args).and_return(reaper_thread, monitor_thread, poller_thread)
   end
 
   describe "#handle" do
@@ -678,7 +687,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         config.version = "1.0.0"
         config.registry = ModelContextProtocol::Server::Registry.new
         config.require_sessions = true
+        config.redis_url = "redis://localhost:6379/15"
       end
+
+      # Re-apply pool stubs after second server's setup_transport! reconfigures RedisConfig
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkout).and_return(mock_redis)
+      allow(ModelContextProtocol::Server::RedisConfig.pool).to receive(:checkin)
 
       second_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
         router: second_server.router,
@@ -2023,6 +2037,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           config.registry = ModelContextProtocol::Server::Registry.new
           config.require_sessions = false
           config.validate_origin = false
+          config.redis_url = "redis://localhost:6379/15"
           config.ping_timeout = 30
         end
       end
@@ -2252,6 +2267,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         config.registry = reg
         config.require_sessions = true
         config.validate_origin = false
+        config.redis_url = "redis://localhost:6379/15"
       end
     end
 
@@ -2360,6 +2376,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         config.registry = registry_with_tool
         config.require_sessions = true
         config.validate_origin = false
+        config.redis_url = "redis://localhost:6379/15"
       end
 
       init_transport = described_class.new(

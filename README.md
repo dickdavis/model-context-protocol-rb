@@ -81,19 +81,16 @@ server.start
 
 ### Streamable HTTP Transport
 
-For HTTP-based MCP servers (e.g., Rails applications), you'll need to configure redis and setup your MCP server in an initializer.
+For HTTP-based MCP servers (e.g., Rails applications), you'll need to setup your MCP server in an initializer with Redis configuration.
 
 ```ruby
 # config/initializers/model_context_protocol.rb
 
-ModelContextProtocol::Server.configure_redis do |config|
-  config.redis_url = ENV.fetch("REDIS_URL")
-  config.pool_size = 20
-end
-
 ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MyMCPServer"
   config.version = "1.0.0"
+  config.redis_url = ENV.fetch("REDIS_URL")
+  config.redis_pool_size = 20
 
   config.registry = ModelContextProtocol::Server::Registry.new do
     tools { register MyTool }

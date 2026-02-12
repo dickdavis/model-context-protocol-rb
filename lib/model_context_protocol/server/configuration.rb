@@ -220,13 +220,24 @@ module ModelContextProtocol
     # Template method for subclass-specific transport validation.
     # StdioConfiguration checks that required environment variables are set and that
     # server_logger isn't writing to stdout (which would corrupt the stdio protocol).
-    # StreamableHttpConfiguration checks that RedisConfig.configured? is true.
+    # StreamableHttpConfiguration validates that redis_url is a valid Redis URL.
     #
     # @raise [InvalidTransportError] when transport prerequisites are unmet
     # @raise [MissingRequiredEnvironmentVariable] when stdio transport requires an unset variable
     # @return [void]
     def validate_transport!
       # Template method — subclasses override to add transport-specific validations
+    end
+
+    # Template method for subclass-specific transport setup (side effects).
+    # Called by Server.build_server after validate! passes. Separated from validate_transport!
+    # because validation should be pure (no side effects), while setup performs actions like
+    # creating connection pools.
+    # StreamableHttpConfiguration overrides this to configure the Redis connection pool.
+    #
+    # @return [void]
+    def setup_transport!
+      # Template method — subclasses override to perform transport-specific setup
     end
 
     # Check that name attribute is a non-nil String.

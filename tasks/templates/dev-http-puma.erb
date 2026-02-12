@@ -28,15 +28,6 @@ def flag_enabled?(flag_name)
   File.exist?(File.join(FLAGS_DIR, flag_name))
 end
 
-# Configure Redis
-ModelContextProtocol::Server.configure_redis do |config|
-  config.redis_url = "redis://localhost:6379/0"
-  config.pool_size = 10
-  config.enable_reaper = true
-  config.reaper_interval = 10
-  config.idle_timeout = 15
-end
-
 # Configure server logging
 ModelContextProtocol::Server.configure_server_logging do |config|
   config.logdev = $stdout
@@ -81,6 +72,12 @@ end
 ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MCP Development Server (Puma)"
   config.version = "1.0.0"
+
+  config.redis_url = "redis://localhost:6379/0"
+  config.redis_pool_size = 10
+  config.redis_enable_reaper = true
+  config.redis_reaper_interval = 10
+  config.redis_idle_timeout = 15
 
   config.pagination = {
     default_page_size: 2,
