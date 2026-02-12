@@ -3,8 +3,6 @@ require "spec_helper"
 RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
   subject(:configuration) { described_class.new }
 
-  let(:registry) { ModelContextProtocol::Server::Registry.new }
-
   describe "block initialization" do
     before(:each) do
       ModelContextProtocol::Server.reset!
@@ -17,7 +15,7 @@ RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
     it "allows configuration via factory method" do
       server = ModelContextProtocol::Server.with_stdio_transport do |config|
         config.name = "test-server"
-        config.registry = registry
+        config.registry {}
         config.version = "1.0.0"
       end
 
@@ -25,7 +23,7 @@ RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
       aggregate_failures do
         expect(config).to be_a(described_class)
         expect(config.name).to eq("test-server")
-        expect(config.registry).to eq(registry)
+        expect(config.registry).to be_a(ModelContextProtocol::Server::Registry)
         expect(config.version).to eq("1.0.0")
       end
     end
@@ -49,7 +47,7 @@ RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
     context "when requiring environment variables" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
         configuration.require_environment_variable("TEST_VAR")
       end
@@ -99,7 +97,7 @@ RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
     context "when not requiring environment variables" do
       before do
         configuration.name = "test-server"
-        configuration.registry = registry
+        configuration.registry {}
         configuration.version = "1.0.0"
       end
 
@@ -127,7 +125,7 @@ RSpec.describe ModelContextProtocol::Server::StdioConfiguration do
       config = described_class.new
       config.name = "test-server"
       config.version = "1.0.0"
-      config.registry = registry
+      config.registry {}
 
       expect { config.validate! }.to raise_error(/StdioTransport cannot log to stdout/)
     end

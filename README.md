@@ -61,7 +61,7 @@ server = ModelContextProtocol::Server.with_stdio_transport do |config|
   config.name = "MyMCPServer"
   config.version = "1.0.0"
 
-  config.registry = ModelContextProtocol::Server::Registry.new do
+  config.registry do
     prompts do
       register MyPrompt
     end
@@ -92,7 +92,7 @@ ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.redis_url = ENV.fetch("REDIS_URL")
   config.redis_pool_size = 20
 
-  config.registry = ModelContextProtocol::Server::Registry.new do
+  config.registry do
     tools { register MyTool }
   end
 end

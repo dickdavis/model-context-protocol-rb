@@ -87,7 +87,7 @@ module ModelContextProtocol
       # @example
       #   server = ModelContextProtocol::Server.with_stdio_transport do |config|
       #     config.name = "My MCP Server"
-      #     config.registry = Registry.new { tools { register MyTool } }
+      #     config.registry { tools { register MyTool } }
       #   end
       #   server.start  # blocks while handling stdio
       def with_stdio_transport(&block)

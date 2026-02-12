@@ -49,11 +49,6 @@ module ModelContextProtocol
     #   @return [String] the server's identifying name (sent in initialize response serverInfo.name)
     attr_accessor :name
 
-    # @!attribute [rw] registry
-    #   @return [ModelContextProtocol::Server::Registry] container for prompts, resources, and tools;
-    #     Router queries this to handle resources/list, tools/call, etc.
-    attr_accessor :registry
-
     # @!attribute [rw] version
     #   @return [String] the server's version string (sent in initialize response serverInfo.version)
     attr_accessor :version
@@ -101,6 +96,21 @@ module ModelContextProtocol
       end
 
       @server_logger = ModelContextProtocol::Server::ServerLogger.new(**server_logger_params)
+    end
+
+    # Create and store a Registry from a block defining prompts, resources, and tools.
+    # Router queries the resulting registry to handle resources/list, tools/call, etc.
+    #
+    # @yieldparam (see Registry.new)
+    # @return [ModelContextProtocol::Server::Registry] the created registry
+    # @example
+    #   config.registry do
+    #     tools { register MyTool }
+    #   end
+    def registry(&block)
+      return @registry unless block
+
+      @registry = ModelContextProtocol::Server::Registry.new(&block)
     end
 
     # Identify the transport layer for this configuration.
