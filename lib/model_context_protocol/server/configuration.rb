@@ -75,27 +75,30 @@ module ModelContextProtocol
     #     Router passes this to prompts, resources, and tools so they can log to the client
     attr_reader :client_logger
 
-    # @!attribute [r] server_logger
-    #   @return [ServerLogger] Ruby Logger for server-side diagnostics (not sent to clients);
-    #     writes to stderr by default, or configured destination via configure_server_logging
-    attr_reader :server_logger
+    # Lazily-built Ruby Logger for server-side diagnostics (not sent to clients).
+    # Reads from GlobalConfig::ServerLogging on first access so that
+    # Server.configure_server_logging can be called before or after the factory method.
+    #
+    # @return [ServerLogger] writes to stderr by default, or configured destination via configure_server_logging
+    def server_logger
+      @server_logger ||= begin
+        params = if ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?
+          ModelContextProtocol::Server::GlobalConfig::ServerLogging.logger_params
+        else
+          {}
+        end
+        ModelContextProtocol::Server::ServerLogger.new(**params)
+      end
+    end
 
     # Initialize shared attributes and loggers for any configuration subclass.
-    # ClientLogger queues messages until a transport connects; ServerLogger writes to stderr
-    # (or file/custom logdev if configured globally via Server.configure_server_logging).
+    # ClientLogger queues messages until a transport connects; ServerLogger is built
+    # lazily on first access via #server_logger.
     def initialize
       @client_logger = ModelContextProtocol::Server::ClientLogger.new(
         logger_name: "server",
         level: "info"
       )
-
-      server_logger_params = if ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?
-        ModelContextProtocol::Server::GlobalConfig::ServerLogging.logger_params
-      else
-        {}
-      end
-
-      @server_logger = ModelContextProtocol::Server::ServerLogger.new(**server_logger_params)
     end
 
     # Create and store a Registry from a block defining prompts, resources, and tools.

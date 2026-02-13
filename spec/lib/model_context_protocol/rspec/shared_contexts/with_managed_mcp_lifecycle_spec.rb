@@ -12,12 +12,10 @@ RSpec.describe "with managed mcp lifecycle" do
 
     ModelContextProtocol::Server.reset!
     ModelContextProtocol::Server::RedisConfig.reset!
-    ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
   end
 
   after(:each) do
     ModelContextProtocol::Server.reset!
-    ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
   end
 
   context "when the server is configured" do
@@ -37,22 +35,14 @@ RSpec.describe "with managed mcp lifecycle" do
       server = ModelContextProtocol::Server.instance
       expect(server.running?).to be false
 
-      # Simulate what the shared context does
-      ModelContextProtocol::Server.configure_server_logging do |config|
-        config.logdev = File::NULL
-      end
       ModelContextProtocol::Server.start
 
       expect(server.running?).to be true
 
       ModelContextProtocol::Server.shutdown
-      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
     end
 
     it "shuts down the transport after the example" do
-      ModelContextProtocol::Server.configure_server_logging do |config|
-        config.logdev = File::NULL
-      end
       ModelContextProtocol::Server.start
 
       expect(ModelContextProtocol::Server.running?).to be true
@@ -60,45 +50,14 @@ RSpec.describe "with managed mcp lifecycle" do
       ModelContextProtocol::Server.shutdown
 
       expect(ModelContextProtocol::Server.running?).to be false
-
-      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
     end
 
     it "preserves Server.instance after shutdown" do
-      ModelContextProtocol::Server.configure_server_logging do |config|
-        config.logdev = File::NULL
-      end
       ModelContextProtocol::Server.start
       ModelContextProtocol::Server.shutdown
 
       expect(ModelContextProtocol::Server.instance).not_to be_nil
       expect(ModelContextProtocol::Server.configured?).to be true
-
-      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
-    end
-
-    it "suppresses server logging during the example" do
-      ModelContextProtocol::Server.configure_server_logging do |config|
-        config.logdev = File::NULL
-      end
-
-      expect(ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?).to be true
-      params = ModelContextProtocol::Server::GlobalConfig::ServerLogging.logger_params
-      expect(params[:logdev]).to eq(File::NULL)
-
-      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
-    end
-
-    it "resets ServerLogging after the example" do
-      ModelContextProtocol::Server.configure_server_logging do |config|
-        config.logdev = File::NULL
-      end
-
-      expect(ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?).to be true
-
-      ModelContextProtocol::Server::GlobalConfig::ServerLogging.reset!
-
-      expect(ModelContextProtocol::Server::GlobalConfig::ServerLogging.configured?).to be false
     end
   end
 end
