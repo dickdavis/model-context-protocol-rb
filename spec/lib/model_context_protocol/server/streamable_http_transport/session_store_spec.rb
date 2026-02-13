@@ -224,7 +224,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
 
     it "returns the session context" do
       context = session_store.get_session_context(session_id)
-      expect(context).to eq({"user_id" => 123, "tenant" => "acme"})
+      expect(context).to eq({user_id: 123, tenant: "acme"})
     end
 
     context "when session has no context" do
