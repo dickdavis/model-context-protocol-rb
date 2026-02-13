@@ -1,7 +1,6 @@
 require "model_context_protocol"
 require_relative "rspec/matchers"
 require_relative "rspec/helpers"
-require_relative "rspec/shared_contexts"
 
 module ModelContextProtocol
   module RSpec

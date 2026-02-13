@@ -1,1 +1,0 @@
-require_relative "shared_contexts/with_managed_mcp_lifecycle"
