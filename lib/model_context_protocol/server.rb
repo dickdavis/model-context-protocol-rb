@@ -126,6 +126,7 @@ module ModelContextProtocol
       #   end
       def configure_server_logging(&block)
         Server::GlobalConfig::ServerLogging.configure(&block)
+        instance&.configuration&.instance_variable_set(:@server_logger, nil)
       end
 
       # Class-level delegations that forward to the singleton instance.

@@ -5,11 +5,14 @@ module ModelContextProtocol
   class Server::ServerLogger < Logger
     class StdoutNotAllowedError < StandardError; end
 
-    attr_reader :logdev
+    # Returns the log device argument passed at construction (e.g., $stderr, File::NULL).
+    # Stored separately from Logger's internal @logdev to avoid overwriting the LogDevice object.
+    attr_reader :configured_logdev
+    alias_method :logdev, :configured_logdev
 
     def initialize(logdev: $stderr, level: Logger::INFO, formatter: nil, progname: "MCP-Server")
       super(logdev)
-      @logdev = logdev
+      @configured_logdev = logdev
 
       self.level = level
       self.progname = progname
