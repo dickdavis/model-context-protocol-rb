@@ -802,7 +802,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       )
       transport.handle(env: rack_env)
 
-      expect(captured_context).to eq({"user_id" => "test-user-123"})
+      expect(captured_context).to eq({user_id: "test-user-123"})
     end
 
     it "handles session cleanup on DELETE when sessions are required" do

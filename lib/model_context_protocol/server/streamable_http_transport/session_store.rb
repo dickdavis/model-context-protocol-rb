@@ -61,7 +61,7 @@ module ModelContextProtocol
 
       def get_session_context(session_id)
         context_data = @redis.hget("session:#{session_id}", "context")
-        context_data ? JSON.parse(context_data) : {}
+        context_data ? JSON.parse(context_data, symbolize_names: true) : {}
       end
 
       def cleanup_session(session_id)
