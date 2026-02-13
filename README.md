@@ -98,14 +98,14 @@ ModelContextProtocol::Server.with_streamable_http_transport do |config|
 end
 ```
 
-If your app uses Puma as the web server, use the provided plugin to start the MCP server.
+If your app uses Puma (>= 7.0) as the web server, use the provided plugin to start the MCP server.
 
 ```ruby
 # config/puma.rb
 plugin :mcp
 ```
 
-Otherwise, you'll need to manually implement logic for starting and shutting the MCP server appropriately. This example shows how to do so for Puma; you can adapt it for your server of choice:
+For Puma 6.x or other web servers, you'll need to manually implement logic for starting and shutting the MCP server appropriately. This example shows how to do so for Puma 6.x; you can adapt it for your server of choice:
 
 ```ruby
 # config/puma.rb

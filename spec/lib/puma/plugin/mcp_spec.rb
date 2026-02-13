@@ -135,37 +135,39 @@ RSpec.describe "Puma::Plugin::MCP" do
   end
 
   describe "#config" do
-    it "registers worker hooks in clustered mode" do
+    it "captures the DSL reference" do
       dsl = double("dsl")
-      allow(dsl).to receive(:get).with(:workers, 0).and_return(2)
+      plugin_instance.config(dsl)
+      expect(plugin_instance.instance_variable_get(:@dsl)).to eq(dsl)
+    end
+  end
+
+  describe "#start" do
+    let(:dsl) { double("dsl") }
+    let(:events) { double("events") }
+    let(:options) { {} }
+    let(:launcher) { double("launcher", events: events, options: options) }
+
+    before { plugin_instance.config(dsl) }
+
+    it "registers worker hooks in clustered mode" do
+      options[:workers] = 2
       expect(dsl).to receive(:before_worker_boot)
       expect(dsl).to receive(:before_worker_shutdown)
-      expect(dsl).not_to receive(:after_booted)
-      expect(dsl).not_to receive(:after_stopped)
+      expect(events).not_to receive(:after_booted)
+      expect(events).not_to receive(:after_stopped)
 
-      plugin_instance.config(dsl)
+      plugin_instance.start(launcher)
     end
 
-    it "registers booted hooks in single mode" do
-      dsl = double("dsl")
-      allow(dsl).to receive(:get).with(:workers, 0).and_return(0)
+    it "registers event hooks in single mode" do
+      options[:workers] = 0
       expect(dsl).not_to receive(:before_worker_boot)
       expect(dsl).not_to receive(:before_worker_shutdown)
-      expect(dsl).to receive(:after_booted)
-      expect(dsl).to receive(:after_stopped)
+      expect(events).to receive(:after_booted)
+      expect(events).to receive(:after_stopped)
 
-      plugin_instance.config(dsl)
-    end
-
-    it "treats nil workers as single mode" do
-      dsl = double("dsl")
-      allow(dsl).to receive(:get).with(:workers, 0).and_return(nil)
-      expect(dsl).not_to receive(:before_worker_boot)
-      expect(dsl).not_to receive(:before_worker_shutdown)
-      expect(dsl).to receive(:after_booted)
-      expect(dsl).to receive(:after_stopped)
-
-      plugin_instance.config(dsl)
+      plugin_instance.start(launcher)
     end
   end
 end
