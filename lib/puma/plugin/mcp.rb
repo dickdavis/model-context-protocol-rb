@@ -3,17 +3,22 @@
 require "puma/plugin"
 
 Puma::Plugin.create do
-  # Configure Puma hooks to manage MCP server lifecycle
-  # Handles both clustered mode (workers > 0) and single mode (workers = 0)
+  # Capture the DSL reference for deferred hook registration.
   def config(dsl)
-    if dsl.get(:workers, 0).to_i.positive?
-      # Clustered mode: each worker starts after forking
-      dsl.before_worker_boot { start_mcp_server }
-      dsl.before_worker_shutdown { shutdown_mcp_server }
+    @dsl = dsl
+  end
+
+  # Register lifecycle hooks after configuration is finalized.
+  # Using launcher.clustered? ensures reliable mode detection,
+  # avoiding issues where config-time checks may not reflect
+  # the final runtime worker count.
+  def start(launcher)
+    if (launcher.options[:workers] || 0) > 0
+      @dsl.before_worker_boot { start_mcp_server }
+      @dsl.before_worker_shutdown { shutdown_mcp_server }
     else
-      # Single mode: start after server boots (no forking)
-      dsl.after_booted { start_mcp_server }
-      dsl.after_stopped { shutdown_mcp_server }
+      launcher.events.after_booted { start_mcp_server }
+      launcher.events.after_stopped { shutdown_mcp_server }
     end
   end
 
