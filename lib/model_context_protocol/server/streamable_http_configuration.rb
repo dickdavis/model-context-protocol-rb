@@ -91,9 +91,9 @@ module ModelContextProtocol
     # StreamableHttpTransport reads this at request handling time to decide whether
     # to reject requests without session_id query parameters.
     #
-    # @return [Boolean] false by default (sessions are optional)
+    # @return [Boolean] true by default (sessions are required)
     def require_sessions
-      @require_sessions.nil? ? false : @require_sessions
+      @require_sessions.nil? ? true : @require_sessions
     end
 
     # Check whether CORS origin validation is enforced.

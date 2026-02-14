@@ -18,8 +18,8 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
   end
 
   describe "defaults" do
-    it "defaults require_sessions to false" do
-      expect(configuration.require_sessions).to be false
+    it "defaults require_sessions to true" do
+      expect(configuration.require_sessions).to be true
     end
 
     it "defaults validate_origin to true" do
@@ -74,14 +74,14 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpConfiguration do
 
   describe "custom values" do
     it "allows overriding all transport-specific options" do
-      configuration.require_sessions = true
+      configuration.require_sessions = false
       configuration.validate_origin = false
       configuration.allowed_origins = ["*"]
       configuration.session_ttl = 7200
       configuration.ping_timeout = 30
 
       aggregate_failures do
-        expect(configuration.require_sessions).to be true
+        expect(configuration.require_sessions).to be false
         expect(configuration.validate_origin).to be false
         expect(configuration.allowed_origins).to eq(["*"])
         expect(configuration.session_ttl).to eq(7200)
