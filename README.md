@@ -59,7 +59,18 @@ For command-line MCP servers that communicate via standard input/output:
 ```ruby
 server = ModelContextProtocol::Server.with_stdio_transport do |config|
   config.name = "MyMCPServer"
+  config.title = "My Server"
   config.version = "1.0.0"
+  config.instructions = <<~INSTRUCTIONS
+    This server provides prompts, tools, and resources for interacting with my app.
+
+    Key capabilities:
+    - Does something
+    - Does something else
+    - Oh, and it does this other thing, too
+
+    Use this server when you need to do things.
+  INSTRUCTIONS
 
   config.registry do
     prompts do
@@ -81,19 +92,50 @@ server.start
 
 ### Streamable HTTP Transport
 
-For HTTP-based MCP servers (e.g., Rails applications), you'll need to setup your MCP server in an initializer with Redis configuration.
+For HTTP-based MCP servers (e.g., Rails applications), you'll need to setup your MCP server in an initializer with Redis configuration. Redis enables coordination across multiple server processes in production deployments (e.g., Puma workers), where no single process can hold all state in memory.
 
 ```ruby
 # config/initializers/model_context_protocol.rb
+require "model_context_protocol"
+
+# Assuming your handlers will be organized in the app/mcp folder.
+Dir[Rails.root.join("app/mcp/**/*.rb")].sort.each { |f| require f }
 
 ModelContextProtocol::Server.with_streamable_http_transport do |config|
-  config.name = "MyMCPServer"
+  config.name = "MyServer"
+  config.title = "My Server"
   config.version = "1.0.0"
-  config.redis_url = ENV.fetch("REDIS_URL")
+  config.instructions = <<~INSTRUCTIONS
+    This server provides prompts, tools, and resources for interacting with my app.
+
+    Key capabilities:
+    - Does something
+    - Does something else
+    - Oh, and it does this other thing, too
+
+    Use this server when you need to do things.
+  INSTRUCTIONS
+
+  config.redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
   config.redis_pool_size = 20
+  config.redis_pool_timeout = 5
+  config.redis_enable_reaper = true
+  config.redis_reaper_interval = 60
+  config.redis_idle_timeout = 300
+  config.redis_ssl_params = {verify_mode: OpenSSL::SSL::VERIFY_NONE}
 
   config.registry do
-    tools { register MyTool }
+    prompts do
+      register MyPrompt
+    end
+
+    resources do
+      register MyResource
+    end
+
+    tools do
+      register MyTool
+    end
   end
 end
 ```
@@ -138,8 +180,9 @@ class ModelContextProtocolController < ActionController::API
       session_context: { user_id: current_user.id }
     )
 
+    response.headers.merge!(result[:headers]) if result[:headers]
+
     if result[:stream]
-      response.headers.merge!(result[:headers])
       result[:stream_proc]&.call(response.stream)
     else
       render json: result[:json], status: result[:status] || 200
@@ -148,6 +191,14 @@ class ModelContextProtocolController < ActionController::API
     response.stream.close rescue nil
   end
 end
+```
+
+Lastly, add the necessary routes:
+
+```ruby
+get "/", to: "model_context_protocol#handle", as: :mcp_get
+post "/", to: "model_context_protocol#handle", as: :mcp_post
+delete "/", to: "model_context_protocol#handle", as: :mcp_delete
 ```
 
 For a complete Rails integration example, see the [Quick Start with Rails](https://github.com/dickdavis/model-context-protocol-rb/wiki/Quick-Start-with-Rails) guide.
@@ -372,6 +423,9 @@ bundle exec rake mcp:generate_stdio_server
 
 # generates bin/dev-http for streamable HTTP transport
 bundle exec rake mcp:generate_streamable_http_server
+
+# generates bin/dev-http-puma for streamable HTTP transport with Puma web server
+bundle exec rake mcp:generate_puma_server
 ```
 
 If you need to test with HTTPS (e.g., for clients that require SSL), generate self-signed certificates:
