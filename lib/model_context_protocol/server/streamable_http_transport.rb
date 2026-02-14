@@ -30,7 +30,6 @@ module ModelContextProtocol
       @redis = ModelContextProtocol::Server::RedisClientProxy.new(@redis_pool)
 
       @require_sessions = @configuration.require_sessions
-      @default_protocol_version = "2025-03-26"
       # Use Concurrent::Map for thread-safe access from multiple request threads
       @session_protocol_versions = Concurrent::Map.new
       @validate_origin = @configuration.validate_origin
@@ -166,16 +165,11 @@ module ModelContextProtocol
       end
     end
 
-    # Validate HTTP headers for required content type and CORS origin
-    # Returns error response if headers are invalid, nil if valid
-    def validate_headers(env)
-      if @validate_origin
-        origin = env["HTTP_ORIGIN"]
-        if origin && !@allowed_origins.any? { |allowed| origin.start_with?(allowed) }
-          error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Origin not allowed"}]
-          return {json: error_response.serialized, status: 403}
-        end
-      end
+    # Validate HTTP headers for POST requests: CORS origin, content type, and protocol version.
+    # Returns error response hash if headers are invalid, nil if valid.
+    def validate_headers(env, session_id: nil)
+      origin_error = validate_origin!(env)
+      return origin_error if origin_error
 
       accept_header = env["HTTP_ACCEPT"]
       if accept_header
@@ -185,13 +179,51 @@ module ModelContextProtocol
         end
       end
 
+      validate_protocol_version!(env, session_id: session_id)
+    end
+
+    # Validate CORS Origin header against allowed origins.
+    # The MCP spec requires servers to validate Origin on all incoming connections
+    # to prevent DNS rebinding attacks.
+    def validate_origin!(env)
+      return nil unless @validate_origin
+
+      origin = env["HTTP_ORIGIN"]
+      if origin && !@allowed_origins.any? { |allowed| origin.start_with?(allowed) }
+        error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Origin not allowed"}]
+        return {json: error_response.serialized, status: 403}
+      end
+
+      nil
+    end
+
+    # Validate MCP-Protocol-Version header against negotiated version.
+    # Per the MCP spec, the server MUST respond with 400 Bad Request for invalid
+    # or unsupported protocol versions. When a session_id is provided, validation
+    # is scoped to that session's negotiated version.
+    def validate_protocol_version!(env, session_id: nil)
       protocol_version = env["HTTP_MCP_PROTOCOL_VERSION"]
-      if protocol_version
-        valid_versions = @session_protocol_versions.values.compact.uniq
-        unless valid_versions.empty? || valid_versions.include?(protocol_version)
-          error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid MCP protocol version: #{protocol_version}. Expected one of: #{valid_versions.join(", ")}"}]
-          return {json: error_response.serialized, status: 400}
+      return nil unless protocol_version
+
+      # When a session_id is provided, try session-specific validation first.
+      # If the session has a known negotiated version, validate strictly against it.
+      if session_id
+        expected_version = @session_protocol_versions[session_id]
+        if expected_version
+          if protocol_version != expected_version
+            error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid MCP protocol version: #{protocol_version}. Expected: #{expected_version}"}]
+            return {json: error_response.serialized, status: 400}
+          end
+          return nil
         end
+      end
+
+      # Fallback: validate against all known negotiated versions (covers cases
+      # where session_id is nil or has no entry, e.g. sessions not required).
+      valid_versions = @session_protocol_versions.values.compact.uniq
+      unless valid_versions.empty? || valid_versions.include?(protocol_version)
+        error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid MCP protocol version: #{protocol_version}. Expected one of: #{valid_versions.join(", ")}"}]
+        return {json: error_response.serialized, status: 400}
       end
 
       nil
@@ -216,12 +248,12 @@ module ModelContextProtocol
     # @param env [Hash] Rack environment hash
     # @param session_context [Hash] Per-request context for initialization
     def handle_post_request(env, session_context: {})
-      validation_error = validate_headers(env)
+      session_id = env["HTTP_MCP_SESSION_ID"]
+      validation_error = validate_headers(env, session_id: session_id)
       return validation_error if validation_error
 
       body_string = env["rack.input"].read
       body = JSON.parse(body_string)
-      session_id = env["HTTP_MCP_SESSION_ID"]
       accept_header = env["HTTP_ACCEPT"] || ""
 
       log_to_server_with_context(request_id: body["id"]) do |logger|
@@ -325,12 +357,15 @@ module ModelContextProtocol
     # Handle regular MCP requests (tools, resources, prompts) with streaming/JSON decision logic
     # Defaults to SSE streaming but returns JSON when client explicitly requests JSON only
     def handle_regular_request(body, session_id, accept_header)
-      # Retrieve session context for passing to router
       session_context = {}
 
       if @require_sessions
+        # Per the MCP spec, servers SHOULD respond to requests without a valid
+        # Mcp-Session-Id header (other than initialization) with HTTP 400.
+        # The session ID MUST be present on all subsequent requests after initialization,
+        # including notifications like notifications/initialized.
         unless session_id && @session_store.session_exists?(session_id)
-          if session_id && !@session_store.session_exists?(session_id)
+          if session_id
             error_response = ErrorResponse[id: body["id"], error: {code: -32600, message: "Session terminated"}]
             return {json: error_response.serialized, status: 404}
           else
@@ -339,10 +374,7 @@ module ModelContextProtocol
           end
         end
 
-        # Retrieve stored session context
         session_context = @session_store.get_session_context(session_id)
-
-        # Check for handler changes and notify client if needed
         check_and_notify_handler_changes(session_id)
       end
 
@@ -368,7 +400,7 @@ module ModelContextProtocol
         log_to_server_with_context do |logger|
           logger.info("← Notification [accepted]")
         end
-        {json: {}, status: 202}
+        {status: 202}
 
       when :request
         if accept_header.include?("text/event-stream")
@@ -406,6 +438,9 @@ module ModelContextProtocol
     # Handle HTTP GET requests to establish persistent SSE connections for notifications
     # Validates session requirements and Accept headers before opening long-lived streams
     def handle_get_request(env)
+      origin_error = validate_origin!(env)
+      return origin_error if origin_error
+
       accept_header = env["HTTP_ACCEPT"] || ""
       unless accept_header.include?("text/event-stream")
         error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Accept header must include text/event-stream"}]
@@ -413,6 +448,10 @@ module ModelContextProtocol
       end
 
       session_id = env["HTTP_MCP_SESSION_ID"]
+
+      protocol_error = validate_protocol_version!(env, session_id: session_id)
+      return protocol_error if protocol_error
+
       last_event_id = env["HTTP_LAST_EVENT_ID"]
 
       if @require_sessions
@@ -442,9 +481,27 @@ module ModelContextProtocol
     # Handle HTTP DELETE requests to clean up sessions and associated resources
     # Removes session data, closes streams, and cleans up request store entries
     def handle_delete_request(env)
+      origin_error = validate_origin!(env)
+      return origin_error if origin_error
+
       session_id = env["HTTP_MCP_SESSION_ID"]
 
+      protocol_error = validate_protocol_version!(env, session_id: session_id)
+      return protocol_error if protocol_error
+
       @server_logger.info("→ DELETE /mcp [Session cleanup: #{session_id || "unknown"}]")
+
+      if @require_sessions
+        unless session_id
+          error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Invalid or missing session ID"}]
+          return {json: error_response.serialized, status: 400}
+        end
+
+        unless @session_store.session_exists?(session_id)
+          error_response = ErrorResponse[id: nil, error: {code: -32600, message: "Session terminated"}]
+          return {json: error_response.serialized, status: 404}
+        end
+      end
 
       if session_id
         cleanup_session(session_id)

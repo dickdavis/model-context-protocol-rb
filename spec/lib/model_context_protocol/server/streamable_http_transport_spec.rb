@@ -219,6 +219,47 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               expect(result[:status]).to eq(400)
             end
           end
+
+          it "rejects notifications without a session ID" do
+            notification_body = {"method" => "notifications/initialized", "jsonrpc" => "2.0"}
+            set_request_env(body: notification_body.to_json)
+
+            result = transport.handle(env: rack_env)
+
+            aggregate_failures do
+              expect(result[:json]).to eq({
+                jsonrpc: "2.0",
+                id: nil,
+                error: {code: -32600, message: "Invalid or missing session ID"}
+              })
+              expect(result[:status]).to eq(400)
+            end
+          end
+
+          it "accepts notifications with a valid session ID and returns 202 with no body" do
+            # Create a session first via initialization
+            init_request = {"method" => "initialize", "id" => "init-1"}
+            set_request_env(
+              body: init_request.to_json,
+              headers: {"Accept" => "application/json"}
+            )
+            init_result = transport.handle(env: rack_env)
+            created_session_id = init_result[:headers]["Mcp-Session-Id"]
+
+            # Send notification with the session ID
+            notification_body = {"method" => "notifications/initialized", "jsonrpc" => "2.0"}
+            set_request_env(
+              body: notification_body.to_json,
+              headers: {"Mcp-Session-Id" => created_session_id}
+            )
+
+            result = transport.handle(env: rack_env)
+
+            aggregate_failures do
+              expect(result[:status]).to eq(202)
+              expect(result).not_to have_key(:json)
+            end
+          end
         end
       end
 
@@ -346,6 +387,44 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
               error: {code: -32600, message: /Invalid MCP protocol version: 2020-01-01/}
             })
             expect(result[:status]).to eq(400)
+          end
+        end
+      end
+
+      context "per-session protocol version scoping" do
+        it "validates protocol version against the specific session's negotiated version" do
+          configuration.require_sessions = true
+          new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+            router: server.router,
+            configuration: configuration
+          )
+          server.instance_variable_set(:@transport, new_transport)
+
+          # Initialize session A with version 2025-06-18
+          init_request_a = {"method" => "initialize", "params" => {"protocolVersion" => "2025-06-18"}, "id" => "init-a"}
+          set_request_env(
+            body: init_request_a.to_json,
+            headers: {"Accept" => "application/json"}
+          )
+          result_a = transport.handle(env: rack_env)
+          session_a = result_a[:headers]["Mcp-Session-Id"]
+
+          # Send a request on session A with the wrong version
+          ping_request = {"method" => "ping", "params" => {}, "id" => "ping-1"}
+          set_request_env(
+            body: ping_request.to_json,
+            headers: {
+              "Accept" => "application/json",
+              "Mcp-Session-Id" => session_a,
+              "MCP-Protocol-Version" => "2020-01-01"
+            }
+          )
+
+          result = transport.handle(env: rack_env)
+
+          aggregate_failures do
+            expect(result[:status]).to eq(400)
+            expect(result[:json][:error][:message]).to match(/Invalid MCP protocol version: 2020-01-01. Expected: 2025-06-18/)
           end
         end
       end
@@ -549,12 +628,56 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           )
         end
 
-        it "still returns success" do
+        it "still returns success when sessions are not required" do
           result = transport.handle(env: rack_env)
 
           aggregate_failures do
             expect(result[:json]).to eq({success: true})
             expect(result[:status]).to eq(200)
+          end
+        end
+      end
+
+      context "when sessions are required" do
+        before do
+          configuration.require_sessions = true
+          new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+            router: server.router,
+            configuration: configuration
+          )
+          server.instance_variable_set(:@transport, new_transport)
+        end
+
+        it "returns 400 for missing session ID" do
+          set_request_env(method: "DELETE", headers: {})
+
+          result = transport.handle(env: rack_env)
+
+          aggregate_failures do
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: nil,
+              error: {code: -32600, message: "Invalid or missing session ID"}
+            })
+            expect(result[:status]).to eq(400)
+          end
+        end
+
+        it "returns 404 for non-existent session" do
+          set_request_env(
+            method: "DELETE",
+            headers: {"Mcp-Session-Id" => "expired-session-id"}
+          )
+
+          result = transport.handle(env: rack_env)
+
+          aggregate_failures do
+            expect(result[:json]).to eq({
+              jsonrpc: "2.0",
+              id: nil,
+              error: {code: -32600, message: "Session terminated"}
+            })
+            expect(result[:status]).to eq(404)
           end
         end
       end
@@ -836,6 +959,127 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         expect(result[:status]).to eq(200)
         session_store = transport.instance_variable_get(:@session_store)
         expect(session_store.session_exists?(session_id)).to eq(false)
+      end
+    end
+  end
+
+  describe "origin and protocol version validation on GET and DELETE" do
+    let(:origin_transport) do
+      configuration.validate_origin = true
+      configuration.allowed_origins = ["https://allowed.example.com"]
+      new_transport = ModelContextProtocol::Server::StreamableHttpTransport.new(
+        router: server.router,
+        configuration: configuration
+      )
+      server.instance_variable_set(:@transport, new_transport)
+      new_transport
+    end
+
+    it "rejects GET requests with disallowed origin" do
+      set_request_env(
+        method: "GET",
+        headers: {
+          "Accept" => "text/event-stream",
+          "Origin" => "https://evil.example.com"
+        }
+      )
+
+      result = origin_transport.handle(env: rack_env)
+
+      aggregate_failures do
+        expect(result[:json]).to match({
+          jsonrpc: "2.0",
+          id: nil,
+          error: {code: -32600, message: "Origin not allowed"}
+        })
+        expect(result[:status]).to eq(403)
+      end
+    end
+
+    it "rejects DELETE requests with disallowed origin" do
+      set_request_env(
+        method: "DELETE",
+        headers: {
+          "Mcp-Session-Id" => session_id,
+          "Origin" => "https://evil.example.com"
+        }
+      )
+
+      result = origin_transport.handle(env: rack_env)
+
+      aggregate_failures do
+        expect(result[:json]).to match({
+          jsonrpc: "2.0",
+          id: nil,
+          error: {code: -32600, message: "Origin not allowed"}
+        })
+        expect(result[:status]).to eq(403)
+      end
+    end
+
+    context "protocol version validation on GET" do
+      before do
+        # Establish a session with a negotiated protocol version
+        init_request = {"method" => "initialize", "params" => {"protocolVersion" => "2025-06-18"}, "id" => "init-1"}
+        set_request_env(
+          body: init_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+        result = transport.handle(env: rack_env)
+        @negotiated_session_id = result.dig(:headers, "Mcp-Session-Id")
+      end
+
+      it "rejects GET with invalid protocol version" do
+        set_request_env(
+          method: "GET",
+          headers: {
+            "Accept" => "text/event-stream",
+            "MCP-Protocol-Version" => "2020-01-01"
+          }
+        )
+
+        result = transport.handle(env: rack_env)
+
+        aggregate_failures do
+          expect(result[:json]).to match({
+            jsonrpc: "2.0",
+            id: nil,
+            error: {code: -32600, message: /Invalid MCP protocol version/}
+          })
+          expect(result[:status]).to eq(400)
+        end
+      end
+    end
+
+    context "protocol version validation on DELETE" do
+      before do
+        init_request = {"method" => "initialize", "params" => {"protocolVersion" => "2025-06-18"}, "id" => "init-1"}
+        set_request_env(
+          body: init_request.to_json,
+          headers: {"Accept" => "application/json"}
+        )
+        transport.handle(env: rack_env)
+      end
+
+      it "rejects DELETE with invalid protocol version" do
+        set_request_env(
+          method: "DELETE",
+          headers: {
+            "Mcp-Session-Id" => session_id,
+            "MCP-Protocol-Version" => "2020-01-01"
+          }
+        )
+
+        result = transport.handle(env: rack_env)
+
+        aggregate_failures do
+          expect(result[:json]).to match({
+            jsonrpc: "2.0",
+            id: nil,
+            error: {code: -32600, message: /Invalid MCP protocol version/}
+          })
+          expect(result[:status]).to eq(400)
+        end
       end
     end
   end
