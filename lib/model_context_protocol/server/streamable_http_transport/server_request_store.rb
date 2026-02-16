@@ -112,20 +112,6 @@ module ModelContextProtocol
         expired_requests
       end
 
-      # Clean up expired requests based on timeout
-      #
-      # @param timeout_seconds [Integer] timeout in seconds
-      # @return [Array<String>] list of cleaned up request IDs
-      def cleanup_expired_requests(timeout_seconds)
-        expired_requests = get_expired_requests(timeout_seconds)
-
-        expired_requests.each do |request_info|
-          unregister_request(request_info[:request_id])
-        end
-
-        expired_requests.map { |r| r[:request_id] }
-      end
-
       # Unregister a request (typically called when request completes or times out)
       #
       # @param request_id [String] the unique JSON-RPC request identifier
@@ -175,56 +161,6 @@ module ModelContextProtocol
 
         @redis.del(*all_keys) unless all_keys.empty?
         request_ids
-      end
-
-      # Get all pending request IDs for a specific session
-      #
-      # @param session_id [String] the session identifier
-      # @return [Array<String>] list of pending request IDs for the session
-      def get_session_requests(session_id)
-        pattern = "#{SESSION_KEY_PREFIX}#{session_id}:*"
-        request_keys = @redis.keys(pattern)
-
-        request_keys.map do |key|
-          key.sub("#{SESSION_KEY_PREFIX}#{session_id}:", "")
-        end
-      end
-
-      # Get all pending request IDs across all sessions
-      #
-      # @return [Array<String>] list of all pending request IDs
-      def get_all_pending_requests
-        pattern = "#{REQUEST_KEY_PREFIX}*"
-        request_keys = @redis.keys(pattern)
-
-        request_keys.map do |key|
-          key.sub(REQUEST_KEY_PREFIX, "")
-        end
-      end
-
-      # Refresh the TTL for a pending request
-      #
-      # @param request_id [String] the unique JSON-RPC request identifier
-      # @return [Boolean] true if TTL was refreshed, false if request doesn't exist
-      def refresh_request_ttl(request_id)
-        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{request_id}")
-        return false unless request_data
-
-        @redis.multi do |multi|
-          multi.expire("#{REQUEST_KEY_PREFIX}#{request_id}", @ttl)
-
-          begin
-            data = JSON.parse(request_data)
-            session_id = data["session_id"]
-            if session_id
-              multi.expire("#{SESSION_KEY_PREFIX}#{session_id}:#{request_id}", @ttl)
-            end
-          rescue JSON::ParserError
-            nil
-          end
-        end
-
-        true
       end
     end
   end

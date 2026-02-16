@@ -38,7 +38,7 @@ module ModelContextProtocol
 
       result = nil
       begin
-        execute_with_context(handler, message, session_context:) do
+        execute_with_context do
           context = {
             jsonrpc_request_id:,
             request_store:,
@@ -322,7 +322,7 @@ module ModelContextProtocol
     end
 
     # Execute handler with appropriate context setup
-    def execute_with_context(handler, message, session_context:, &block)
+    def execute_with_context(&block)
       # Skip ENV manipulation for streamable_http transport because ENV is
       # global state and modifying it is thread-unsafe in multi-threaded servers.
       # For stdio transport, apply ENV variables as before (single-threaded).

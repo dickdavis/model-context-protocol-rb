@@ -1,6 +1,6 @@
 module ModelContextProtocol
   class Server::RedisPoolManager
-    attr_reader :pool, :reaper_thread
+    attr_reader :pool
 
     def initialize(redis_url:, pool_size: 20, pool_timeout: 5, ssl_params: nil)
       @redis_url = redis_url
@@ -34,16 +34,6 @@ module ModelContextProtocol
     def shutdown
       stop_reaper
       close_pool
-    end
-
-    def healthy?
-      return false unless @pool
-
-      @pool.with do |conn|
-        conn.ping == "PONG"
-      end
-    rescue
-      false
     end
 
     def reap_now

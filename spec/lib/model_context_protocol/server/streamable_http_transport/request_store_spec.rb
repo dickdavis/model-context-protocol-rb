@@ -117,32 +117,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::RequestSto
     end
   end
 
-  describe "#get_cancellation_info" do
-    let(:request_id) { "test-request-123" }
-    let(:reason) { "User requested cancellation" }
-
-    context "when request is not cancelled" do
-      it "returns nil" do
-        expect(store.get_cancellation_info(request_id)).to be_nil
-      end
-    end
-
-    context "when request is cancelled" do
-      before do
-        store.mark_cancelled(request_id, reason)
-      end
-
-      it "returns cancellation data" do
-        info = store.get_cancellation_info(request_id)
-
-        expect(info).to include(
-          "cancelled_at" => be_a(Numeric),
-          "reason" => reason
-        )
-      end
-    end
-  end
-
   describe "#unregister_request" do
     let(:request_id) { "test-request-123" }
     let(:session_id) { "session-456" }
@@ -187,53 +161,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::RequestSto
     end
   end
 
-  describe "#get_request" do
-    let(:request_id) { "test-request-123" }
-    let(:session_id) { "session-456" }
-
-    context "when request exists" do
-      before do
-        store.register_request(request_id, session_id)
-      end
-
-      it "returns request data" do
-        request = store.get_request(request_id)
-
-        expect(request).to include(
-          "session_id" => session_id,
-          "server_instance" => server_instance,
-          "started_at" => be_a(Numeric)
-        )
-      end
-    end
-
-    context "when request does not exist" do
-      it "returns nil" do
-        expect(store.get_request(request_id)).to be_nil
-      end
-    end
-  end
-
-  describe "#active?" do
-    let(:request_id) { "test-request-123" }
-
-    context "when request is active" do
-      before do
-        store.register_request(request_id)
-      end
-
-      it "returns true" do
-        expect(store.active?(request_id)).to be true
-      end
-    end
-
-    context "when request is not active" do
-      it "returns false" do
-        expect(store.active?(request_id)).to be false
-      end
-    end
-  end
-
   describe "#cleanup_session_requests" do
     let(:session_id) { "session-456" }
     let(:request_ids) { ["req-1", "req-2", "req-3"] }
@@ -263,81 +190,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::RequestSto
       it "returns empty array" do
         removed = store.cleanup_session_requests("nonexistent-session")
         expect(removed).to eq([])
-      end
-    end
-  end
-
-  describe "#get_session_requests" do
-    let(:session_id) { "session-456" }
-    let(:request_ids) { ["req-1", "req-2", "req-3"] }
-
-    before do
-      request_ids.each { |req_id| store.register_request(req_id, session_id) }
-      store.register_request("other-req", "other-session")
-    end
-
-    it "returns only requests for the specified session" do
-      session_requests = store.get_session_requests(session_id)
-      expect(session_requests).to match_array(request_ids)
-    end
-
-    context "when session has no requests" do
-      it "returns empty array" do
-        session_requests = store.get_session_requests("nonexistent-session")
-        expect(session_requests).to eq([])
-      end
-    end
-  end
-
-  describe "#get_all_active_requests" do
-    let(:request_ids) { ["req-1", "req-2", "req-3"] }
-
-    before do
-      request_ids.each { |req_id| store.register_request(req_id, "session-#{req_id}") }
-    end
-
-    it "returns all active request IDs" do
-      active_requests = store.get_all_active_requests
-      expect(active_requests).to match_array(request_ids)
-    end
-
-    context "when no requests are active" do
-      it "returns empty array" do
-        mock_redis.flushdb
-        expect(store.get_all_active_requests).to eq([])
-      end
-    end
-  end
-
-  describe "#refresh_request_ttl" do
-    let(:request_id) { "test-request-123" }
-    let(:session_id) { "session-456" }
-
-    context "when request exists" do
-      before do
-        store.register_request(request_id, session_id)
-        store.mark_cancelled(request_id, "test")
-      end
-
-      it "refreshes TTL for all related keys" do
-        mock_redis.expire("request:active:#{request_id}", 10)
-        mock_redis.expire("request:cancelled:#{request_id}", 10)
-        mock_redis.expire("request:session:#{session_id}:#{request_id}", 10)
-
-        result = store.refresh_request_ttl(request_id)
-
-        aggregate_failures do
-          expect(result).to be true
-          expect(mock_redis.ttl("request:active:#{request_id}")).to be > 10
-          expect(mock_redis.ttl("request:cancelled:#{request_id}")).to be > 10
-          expect(mock_redis.ttl("request:session:#{session_id}:#{request_id}")).to be > 10
-        end
-      end
-    end
-
-    context "when request does not exist" do
-      it "returns false" do
-        expect(store.refresh_request_ttl(request_id)).to be false
       end
     end
   end

@@ -45,11 +45,6 @@ module ModelContextProtocol
         end
       end
 
-      def get_session_server(session_id)
-        server_data = @redis.hget("session:#{session_id}", "stream_server")
-        server_data ? JSON.parse(server_data) : nil
-      end
-
       def session_exists?(session_id)
         @redis.exists("session:#{session_id}") == 1
       end
@@ -85,37 +80,6 @@ module ModelContextProtocol
         queue.poll_messages
       rescue
         []
-      end
-
-      def get_sessions_with_messages
-        session_keys = @redis.keys("session:*")
-        sessions_with_messages = []
-
-        session_keys.each do |key|
-          session_id = key.sub("session:", "")
-          queue = SessionMessageQueue.new(@redis, session_id, ttl: @ttl)
-          if queue.has_messages?
-            sessions_with_messages << session_id
-          end
-        end
-
-        sessions_with_messages
-      rescue
-        []
-      end
-
-      def get_all_active_sessions
-        keys = @redis.keys("session:*")
-        active_sessions = []
-
-        keys.each do |key|
-          session_id = key.sub("session:", "")
-          if session_has_active_stream?(session_id)
-            active_sessions << session_id
-          end
-        end
-
-        active_sessions
       end
 
       def store_registered_handlers(session_id, prompts:, resources:, tools:)

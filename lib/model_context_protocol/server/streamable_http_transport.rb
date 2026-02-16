@@ -785,12 +785,6 @@ module ModelContextProtocol
       @server_request_store.cleanup_session_requests(session_id)
     end
 
-    # Check if this transport instance has any active local streams
-    # Used to determine if notifications should be queued or delivered immediately
-    def has_active_streams?
-      @stream_registry.has_any_local_streams?
-    end
-
     # Broadcast notification to all active streams on this transport instance
     # Handles connection errors gracefully and removes disconnected streams
     def deliver_to_active_streams(notification)

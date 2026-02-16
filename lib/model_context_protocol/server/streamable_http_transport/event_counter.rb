@@ -17,19 +17,6 @@ module ModelContextProtocol
         count = @redis.incr(@counter_key)
         "#{@server_instance}-#{count}"
       end
-
-      def current_count
-        count = @redis.get(@counter_key)
-        count ? count.to_i : 0
-      end
-
-      def reset
-        @redis.set(@counter_key, 0)
-      end
-
-      def set_count(value)
-        @redis.set(@counter_key, value.to_i)
-      end
     end
   end
 end

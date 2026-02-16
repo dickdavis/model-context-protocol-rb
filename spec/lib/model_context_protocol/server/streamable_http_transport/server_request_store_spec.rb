@@ -167,25 +167,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::ServerRequ
     end
   end
 
-  describe "#cleanup_expired_requests" do
-    let(:request_id) { "ping-test-123" }
-    let(:session_id) { "session-456" }
-
-    before do
-      allow(Time).to receive(:now).and_return(Time.at(1000))
-      store.register_request(request_id, session_id, type: :ping)
-    end
-
-    it "removes expired requests and returns their IDs" do
-      allow(Time).to receive(:now).and_return(Time.at(1020))
-
-      cleaned_ids = store.cleanup_expired_requests(10)
-
-      expect(cleaned_ids).to eq([request_id])
-      expect(store.pending?(request_id)).to be false
-    end
-  end
-
   describe "#cleanup_session_requests" do
     let(:session_id) { "session-456" }
     let(:request_id1) { "ping-test-123" }
@@ -211,60 +192,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::ServerRequ
 
       keys = mock_redis.keys("server_request:session:#{session_id}:*")
       expect(keys).to be_empty
-    end
-  end
-
-  describe "#get_session_requests" do
-    let(:session_id) { "session-456" }
-    let(:request_id1) { "ping-test-123" }
-    let(:request_id2) { "ping-test-456" }
-
-    before do
-      store.register_request(request_id1, session_id, type: :ping)
-      store.register_request(request_id2, session_id, type: :ping)
-    end
-
-    it "returns all request IDs for a session" do
-      request_ids = store.get_session_requests(session_id)
-
-      expect(request_ids).to contain_exactly(request_id1, request_id2)
-    end
-  end
-
-  describe "#get_all_pending_requests" do
-    let(:request_id1) { "ping-test-123" }
-    let(:request_id2) { "ping-test-456" }
-
-    before do
-      store.register_request(request_id1, "session-1", type: :ping)
-      store.register_request(request_id2, "session-2", type: :ping)
-    end
-
-    it "returns all pending request IDs" do
-      request_ids = store.get_all_pending_requests
-
-      expect(request_ids).to contain_exactly(request_id1, request_id2)
-    end
-  end
-
-  describe "#refresh_request_ttl" do
-    let(:request_id) { "ping-test-123" }
-    let(:session_id) { "session-456" }
-
-    context "when request exists" do
-      before do
-        store.register_request(request_id, session_id, type: :ping)
-      end
-
-      it "returns true and refreshes TTL" do
-        expect(store.refresh_request_ttl(request_id)).to be true
-      end
-    end
-
-    context "when request does not exist" do
-      it "returns false" do
-        expect(store.refresh_request_ttl("non-existent")).to be false
-      end
     end
   end
 end

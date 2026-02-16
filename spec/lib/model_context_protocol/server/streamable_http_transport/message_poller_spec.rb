@@ -410,12 +410,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
     before do
       allow(stream_registry).to receive(:get_all_local_streams).and_return({session_id => stream})
       allow(stream_registry).to receive(:get_local_stream).with(session_id).and_return(stream)
-
-      queue = ModelContextProtocol::Server::StreamableHttpTransport::SessionMessageQueue.new(redis, session_id)
-      messages.each { |msg| queue.push_message(msg) }
     end
 
     it "polls and delivers queued messages" do
+      queue = ModelContextProtocol::Server::StreamableHttpTransport::SessionMessageQueue.new(redis, session_id)
+      messages.each { |msg| queue.push_message(msg) }
+
       aggregate_failures do
         expect(message_delivery_block).to receive(:call).with(stream, messages[0])
         expect(message_delivery_block).to receive(:call).with(stream, messages[1])
@@ -423,14 +423,10 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::MessagePol
 
       poller.send(:poll_and_deliver_messages)
 
-      queue = ModelContextProtocol::Server::StreamableHttpTransport::SessionMessageQueue.new(redis, session_id)
       expect(queue.has_messages?).to eq(false)
     end
 
     it "handles polling with no messages gracefully" do
-      queue = ModelContextProtocol::Server::StreamableHttpTransport::SessionMessageQueue.new(redis, session_id)
-      queue.clear
-
       aggregate_failures do
         expect(message_delivery_block).not_to receive(:call)
         expect { poller.send(:poll_and_deliver_messages) }.not_to raise_error

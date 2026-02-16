@@ -84,28 +84,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::StreamRegi
     end
   end
 
-  describe "#get_stream_server" do
-    it "returns nil when stream doesn't exist in Redis" do
-      expect(registry.get_stream_server(session_id)).to be_nil
-    end
-
-    it "returns the server instance when stream exists" do
-      registry.register_stream(session_id, mock_stream)
-      expect(registry.get_stream_server(session_id)).to eq(server_instance)
-    end
-  end
-
-  describe "#stream_active?" do
-    it "returns false when stream doesn't exist in Redis" do
-      expect(registry.stream_active?(session_id)).to be false
-    end
-
-    it "returns true when stream exists in Redis" do
-      registry.register_stream(session_id, mock_stream)
-      expect(registry.stream_active?(session_id)).to be true
-    end
-  end
-
   describe "#refresh_heartbeat" do
     before do
       registry.register_stream(session_id, mock_stream)
@@ -188,35 +166,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::StreamRegi
         expect(expired).to be_empty
         expect(registry.has_local_stream?(session_id)).to be true
       end
-    end
-  end
-
-  describe "#get_stale_streams" do
-    it "returns streams with old heartbeats" do
-      registry.register_stream(session_id, mock_stream)
-
-      old_time = Time.now.to_f - 120
-      redis.set("stream:heartbeat:#{session_id}", old_time)
-
-      stale_streams = registry.get_stale_streams(90)
-
-      expect(stale_streams).to contain_exactly(session_id)
-    end
-
-    it "returns empty array when no streams are stale" do
-      registry.register_stream(session_id, mock_stream)
-
-      stale_streams = registry.get_stale_streams(90)
-
-      expect(stale_streams).to be_empty
-    end
-
-    it "handles missing heartbeat values gracefully" do
-      redis.set("stream:active:#{session_id}", server_instance)
-
-      stale_streams = registry.get_stale_streams(90)
-
-      expect(stale_streams).to be_empty
     end
   end
 end

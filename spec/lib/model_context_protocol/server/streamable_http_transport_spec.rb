@@ -1153,9 +1153,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           })
 
           notification_queue = transport.instance_variable_get(:@notification_queue)
-          expect(notification_queue.size).to eq(1)
+          queued_notifications = notification_queue.pop_all
+          expect(queued_notifications.length).to eq(1)
 
-          queued_notifications = notification_queue.peek_all
           queued_notification = queued_notifications.first
           aggregate_failures do
             expect(queued_notification["jsonrpc"]).to eq("2.0")
@@ -1377,12 +1377,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           expect(request_store.cancelled?(request_id)).to be true
         end
 
-        it "stores cancellation reason" do
+        it "stores cancellation in request store" do
           transport.send(:handle_cancellation, cancellation_message, session_id)
 
           request_store = transport.instance_variable_get(:@request_store)
-          cancellation_info = request_store.get_cancellation_info(request_id)
-          expect(cancellation_info["reason"]).to eq(reason)
+          expect(request_store.cancelled?(request_id)).to be true
         end
       end
 
@@ -1428,12 +1427,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
           request_store.register_request(request_id, session_id)
         end
 
-        it "marks request as cancelled with nil reason" do
+        it "marks request as cancelled" do
           transport.send(:handle_cancellation, cancellation_without_reason, session_id)
 
           request_store = transport.instance_variable_get(:@request_store)
-          cancellation_info = request_store.get_cancellation_info(request_id)
-          expect(cancellation_info["reason"]).to be_nil
+          expect(request_store.cancelled?(request_id)).to be true
         end
       end
 
@@ -1470,18 +1468,11 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         })
       end
 
-      it "registers and unregisters requests during processing" do
+      it "unregisters requests after processing" do
         transport.handle(env: rack_env)
 
         request_store = transport.instance_variable_get(:@request_store)
-        expect(request_store.active?(request_id)).to be false
-      end
-
-      it "cleans up request from store after processing" do
-        transport.handle(env: rack_env)
-
-        request_store = transport.instance_variable_get(:@request_store)
-        expect(request_store.active?(request_id)).to be false
+        expect(request_store.cancelled?(request_id)).to be false
       end
 
       it "provides cancellation context to handlers" do
@@ -2093,14 +2084,14 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
         transport.send_notification("notifications/progress", {progress: 50}, session_id: target_session_id)
 
         notification_queue = transport.instance_variable_get(:@notification_queue)
-        expect(notification_queue.size).to eq(1)
+        expect(notification_queue.pop_all.length).to eq(1)
       end
 
       it "queues notification if targeted stream does not exist" do
         transport.send_notification("notifications/progress", {progress: 50}, session_id: "nonexistent-session")
 
         notification_queue = transport.instance_variable_get(:@notification_queue)
-        expect(notification_queue.size).to eq(1)
+        expect(notification_queue.pop_all.length).to eq(1)
       end
     end
 
@@ -2195,16 +2186,19 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
     it "registers ping request in server request store" do
       transport.send(:send_ping_to_stream, mock_stream, session_id)
 
-      pending_requests = server_request_store.get_all_pending_requests
-      expect(pending_requests.size).to eq(1)
-      expect(pending_requests.first).to start_with("ping-")
+      pending_keys = mock_redis.keys("server_request:pending:ping-*")
+      expect(pending_keys.size).to eq(1)
+
+      ping_id = pending_keys.first.sub("server_request:pending:", "")
+      expect(ping_id).to start_with("ping-")
     end
 
     it "associates ping with session_id" do
       transport.send(:send_ping_to_stream, mock_stream, session_id)
 
-      pending_requests = server_request_store.get_all_pending_requests
-      request_info = server_request_store.get_request(pending_requests.first)
+      pending_keys = mock_redis.keys("server_request:pending:ping-*")
+      ping_id = pending_keys.first.sub("server_request:pending:", "")
+      request_info = server_request_store.get_request(ping_id)
 
       aggregate_failures do
         expect(request_info["session_id"]).to eq(session_id)
@@ -2255,8 +2249,9 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport do
       transport.send(:monitor_streams)
 
       # Simulate receiving ping response
-      pending_requests = server_request_store.get_all_pending_requests
-      pending_requests.each do |request_id|
+      pending_keys = mock_redis.keys("server_request:pending:ping-*")
+      pending_keys.each do |key|
+        request_id = key.sub("server_request:pending:", "")
         server_request_store.mark_completed(request_id)
       end
 

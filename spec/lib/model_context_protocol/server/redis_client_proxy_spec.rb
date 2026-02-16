@@ -118,16 +118,6 @@ RSpec.describe ModelContextProtocol::Server::RedisClientProxy do
         expect(result).to eq(2)
       end
     end
-
-    describe "#hgetall" do
-      it "calls hgetall on the Redis connection" do
-        hash_data = {"field1" => "value1", "field2" => "value2"}
-        expect(redis_mock).to receive(:hgetall).with("hash_key").and_return(hash_data)
-
-        result = wrapper.hgetall("hash_key")
-        expect(result).to eq(hash_data)
-      end
-    end
   end
 
   describe "list operations" do
@@ -194,15 +184,6 @@ RSpec.describe ModelContextProtocol::Server::RedisClientProxy do
         expect(result).to eq(1)
       end
     end
-
-    describe "#decr" do
-      it "calls decr on the Redis connection" do
-        expect(redis_mock).to receive(:decr).with("counter_key").and_return(0)
-
-        result = wrapper.decr("counter_key")
-        expect(result).to eq(0)
-      end
-    end
   end
 
   describe "key pattern operations" do
@@ -244,26 +225,6 @@ RSpec.describe ModelContextProtocol::Server::RedisClientProxy do
         expect(redis_mock).to receive(:eval).with(script, keys: ["test_key"], argv: ["test_value"]).and_return("OK")
 
         result = wrapper.eval(script, keys: ["test_key"], argv: ["test_value"])
-        expect(result).to eq("OK")
-      end
-    end
-  end
-
-  describe "utility methods" do
-    describe "#ping" do
-      it "calls ping on the Redis connection" do
-        expect(redis_mock).to receive(:ping).and_return("PONG")
-
-        result = wrapper.ping
-        expect(result).to eq("PONG")
-      end
-    end
-
-    describe "#flushdb" do
-      it "calls flushdb on the Redis connection" do
-        expect(redis_mock).to receive(:flushdb).and_return("OK")
-
-        result = wrapper.flushdb
         expect(result).to eq("OK")
       end
     end
