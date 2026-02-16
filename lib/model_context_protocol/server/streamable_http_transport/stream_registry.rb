@@ -43,14 +43,6 @@ module ModelContextProtocol
         @local_streams.key?(session_id)
       end
 
-      def get_stream_server(session_id)
-        @redis.get("#{STREAM_KEY_PREFIX}#{session_id}")
-      end
-
-      def stream_active?(session_id)
-        @redis.exists("#{STREAM_KEY_PREFIX}#{session_id}") == 1
-      end
-
       def refresh_heartbeat(session_id)
         @redis.multi do |multi|
           multi.set("#{HEARTBEAT_KEY_PREFIX}#{session_id}", Time.now.to_f, ex: @ttl)
@@ -87,32 +79,6 @@ module ModelContextProtocol
         end
 
         expired_sessions
-      end
-
-      def get_stale_streams(max_age_seconds = 90)
-        current_time = Time.now.to_f
-        stale_streams = []
-
-        # Get all heartbeat keys
-        heartbeat_keys = @redis.keys("#{HEARTBEAT_KEY_PREFIX}*")
-
-        return stale_streams if heartbeat_keys.empty?
-
-        # Get all heartbeat timestamps
-        heartbeat_values = @redis.mget(heartbeat_keys)
-
-        heartbeat_keys.each_with_index do |key, index|
-          next unless heartbeat_values[index]
-
-          session_id = key.sub(HEARTBEAT_KEY_PREFIX, "")
-          last_heartbeat = heartbeat_values[index].to_f
-
-          if current_time - last_heartbeat > max_age_seconds
-            stale_streams << session_id
-          end
-        end
-
-        stale_streams
       end
     end
   end

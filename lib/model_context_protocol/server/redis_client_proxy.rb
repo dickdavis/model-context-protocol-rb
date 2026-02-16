@@ -39,10 +39,6 @@ module ModelContextProtocol
         with_connection { |redis| redis.hset(key, *args) }
       end
 
-      def hgetall(key)
-        with_connection { |redis| redis.hgetall(key) }
-      end
-
       def hmget(key, *fields)
         with_connection { |redis| redis.hmget(key, *fields) }
       end
@@ -69,10 +65,6 @@ module ModelContextProtocol
 
       def incr(key)
         with_connection { |redis| redis.incr(key) }
-      end
-
-      def decr(key)
-        with_connection { |redis| redis.decr(key) }
       end
 
       def keys(pattern)
@@ -103,14 +95,6 @@ module ModelContextProtocol
 
       def eval(script, keys: [], argv: [])
         with_connection { |redis| redis.eval(script, keys: keys, argv: argv) }
-      end
-
-      def ping
-        with_connection { |redis| redis.ping }
-      end
-
-      def flushdb
-        with_connection { |redis| redis.flushdb }
       end
 
       private

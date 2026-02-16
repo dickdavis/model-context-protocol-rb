@@ -100,31 +100,6 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
       end
     end
 
-    context "with reaper enabled" do
-      before do
-        manager.configure_reaper(enabled: true, interval: 1)
-      end
-
-      it "starts reaper thread" do
-        manager.start
-
-        aggregate_failures do
-          expect(manager.reaper_thread).to be_a(Thread)
-          expect(manager.reaper_thread).to be_alive
-        end
-
-        manager.shutdown
-      end
-
-      it "names the reaper thread" do
-        manager.start
-
-        expect(manager.reaper_thread.name).to eq("MCP-Redis-Reaper")
-
-        manager.shutdown
-      end
-    end
-
     context "with ssl_params" do
       let(:ssl_params) { {verify_mode: OpenSSL::SSL::VERIFY_NONE} }
       let(:redis_double) { double("redis", close: nil, ping: "PONG") }
@@ -194,56 +169,12 @@ RSpec.describe ModelContextProtocol::Server::RedisPoolManager do
       manager.configure_reaper(enabled: true)
       manager.start
 
-      thread = manager.reaper_thread
-      expect(thread).to be_alive
+      reaper = manager.instance_variable_get(:@reaper_thread)
+      expect(reaper).to be_alive
 
       manager.shutdown
 
-      expect(thread.alive?).to be_falsey
-    end
-  end
-
-  describe "#healthy?" do
-    context "when pool does not exist" do
-      it "returns false" do
-        expect(manager.healthy?).to be false
-      end
-    end
-
-    context "when pool exists" do
-      before do
-        manager.start
-      end
-
-      context "and Redis responds to ping" do
-        it "returns true" do
-          expect(manager.healthy?).to be true
-        end
-      end
-
-      context "and Redis connection fails" do
-        before do
-          redis_mock = double("redis")
-          allow(redis_mock).to receive(:ping).and_raise(StandardError.new("Connection failed"))
-          allow(manager.pool).to receive(:with).and_yield(redis_mock)
-        end
-
-        it "returns false" do
-          expect(manager.healthy?).to be false
-        end
-      end
-
-      context "and Redis returns unexpected response" do
-        before do
-          redis_mock = double("redis")
-          allow(redis_mock).to receive(:ping).and_return("UNEXPECTED")
-          allow(manager.pool).to receive(:with).and_yield(redis_mock)
-        end
-
-        it "returns false" do
-          expect(manager.healthy?).to be false
-        end
-      end
+      expect(reaper.alive?).to be_falsey
     end
   end
 

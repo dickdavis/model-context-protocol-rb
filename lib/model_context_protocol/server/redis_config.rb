@@ -36,10 +36,6 @@ module ModelContextProtocol
       instance.stats
     end
 
-    def self.pool_manager
-      instance.manager
-    end
-
     def initialize
       reset!
     end

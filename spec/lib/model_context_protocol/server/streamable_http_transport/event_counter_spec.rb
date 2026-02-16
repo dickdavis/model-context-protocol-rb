@@ -80,80 +80,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::EventCount
     end
   end
 
-  describe "#current_count" do
-    it "returns 0 for new counter" do
-      expect(counter.current_count).to eq(0)
-    end
-
-    it "returns current count after increments" do
-      3.times { counter.next_event_id }
-
-      expect(counter.current_count).to eq(3)
-    end
-
-    it "returns correct count for existing counter" do
-      redis.set("event_counter:#{server_instance}", "42")
-
-      expect(counter.current_count).to eq(42)
-    end
-
-    it "handles non-existent counter gracefully" do
-      redis.del("event_counter:#{server_instance}")
-
-      expect(counter.current_count).to eq(0)
-    end
-  end
-
-  describe "#reset" do
-    it "resets counter to 0" do
-      5.times { counter.next_event_id }
-
-      counter.reset
-
-      aggregate_failures do
-        expect(counter.current_count).to eq(0)
-        expect(counter.next_event_id).to eq("#{server_instance}-1")
-      end
-    end
-
-    it "works on already zero counter" do
-      counter.reset
-
-      expect(counter.current_count).to eq(0)
-    end
-  end
-
-  describe "#set_count" do
-    it "sets the counter to a specific value" do
-      counter.set_count(100)
-
-      aggregate_failures do
-        expect(counter.current_count).to eq(100)
-        expect(counter.next_event_id).to eq("#{server_instance}-101")
-      end
-    end
-
-    it "handles string input" do
-      counter.set_count("50")
-
-      expect(counter.current_count).to eq(50)
-    end
-
-    it "handles zero value" do
-      5.times { counter.next_event_id }
-
-      counter.set_count(0)
-
-      expect(counter.current_count).to eq(0)
-    end
-
-    it "handles negative values by converting to positive" do
-      counter.set_count(-10)
-
-      expect(counter.current_count).to eq(-10)
-    end
-  end
-
   describe "thread safety" do
     it "maintains consistency under concurrent access" do
       counters = 5.times.map { described_class.new(redis, server_instance) }
@@ -175,7 +101,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::EventCount
       aggregate_failures do
         expect(ids.size).to eq(50)
         expect(ids.uniq.size).to eq(50)
-        expect(counter.current_count).to eq(50)
       end
     end
   end
@@ -193,9 +118,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::EventCount
         expect(id1).to eq("#{server_instance}-1")
         expect(id2).to eq("#{server2}-1")
         expect(id3).to eq("#{server_instance}-2")
-
-        expect(counter.current_count).to eq(2)
-        expect(counter2.current_count).to eq(1)
       end
     end
   end

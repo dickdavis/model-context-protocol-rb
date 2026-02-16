@@ -70,20 +70,6 @@ module ModelContextProtocol
         @defined_arguments.concat(definition_dsl.arguments)
       end
 
-      def with_argument(&block)
-        @defined_arguments ||= []
-
-        argument_dsl = ArgumentDSL.new
-        argument_dsl.instance_eval(&block)
-
-        @defined_arguments << {
-          name: argument_dsl.name,
-          description: argument_dsl.description,
-          required: argument_dsl.required,
-          completion: argument_dsl.completion
-        }
-      end
-
       def inherited(subclass)
         subclass.instance_variable_set(:@name, @name)
         subclass.instance_variable_set(:@description, @description)

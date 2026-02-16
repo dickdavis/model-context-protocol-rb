@@ -30,7 +30,7 @@ module ModelContextProtocol
       Logger::UNKNOWN => "emergency"
     }.freeze
 
-    attr_accessor :transport
+    attr_reader :transport
     attr_reader :logger_name
 
     def initialize(logger_name: "server", level: "info")

@@ -98,10 +98,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
     it "marks session stream as active" do
       session_store.mark_stream_active(session_id, stream_server)
 
-      aggregate_failures do
-        expect(session_store.session_has_active_stream?(session_id)).to eq(true)
-        expect(session_store.get_session_server(session_id)).to eq(stream_server)
-      end
+      expect(session_store.session_has_active_stream?(session_id)).to eq(true)
     end
 
     it "updates last_activity timestamp" do
@@ -145,10 +142,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
     it "marks session stream as inactive" do
       session_store.mark_stream_inactive(session_id)
 
-      aggregate_failures do
-        expect(session_store.session_has_active_stream?(session_id)).to eq(false)
-        expect(session_store.get_session_server(session_id)).to be_nil
-      end
+      expect(session_store.session_has_active_stream?(session_id)).to eq(false)
     end
 
     it "updates last_activity timestamp" do
@@ -191,30 +185,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
     context "when session does not exist" do
       it "returns false" do
         expect(session_store.session_has_active_stream?("nonexistent")).to eq(false)
-      end
-    end
-  end
-
-  describe "#get_session_server" do
-    before { session_store.create_session(session_id, session_data) }
-
-    context "when session has no active stream" do
-      it "returns nil" do
-        expect(session_store.get_session_server(session_id)).to be_nil
-      end
-    end
-
-    context "when session has active stream" do
-      before { session_store.mark_stream_active(session_id, server_instance) }
-
-      it "returns the server instance" do
-        expect(session_store.get_session_server(session_id)).to eq(server_instance)
-      end
-    end
-
-    context "when session does not exist" do
-      it "returns nil" do
-        expect(session_store.get_session_server("nonexistent")).to be_nil
       end
     end
   end
@@ -332,81 +302,6 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
       it "returns empty array" do
         messages = session_store.poll_messages_for_session("nonexistent")
         expect(messages).to eq([])
-      end
-    end
-  end
-
-  describe "#get_sessions_with_messages" do
-    let(:session_id_1) { SecureRandom.uuid }
-    let(:session_id_2) { SecureRandom.uuid }
-    let(:session_id_3) { SecureRandom.uuid }
-
-    before do
-      session_store.create_session(session_id_1, session_data)
-      session_store.create_session(session_id_2, session_data)
-      session_store.create_session(session_id_3, session_data)
-    end
-
-    it "returns only sessions that have pending messages" do
-      session_store.queue_message_for_session(session_id_1, {"test" => "msg1"})
-      session_store.queue_message_for_session(session_id_3, {"test" => "msg3"})
-
-      sessions = session_store.get_sessions_with_messages
-
-      aggregate_failures do
-        expect(sessions).to contain_exactly(session_id_1, session_id_3)
-        expect(sessions).not_to include(session_id_2)
-      end
-    end
-
-    it "returns empty array when no sessions have messages" do
-      sessions = session_store.get_sessions_with_messages
-      expect(sessions).to eq([])
-    end
-  end
-
-  describe "#get_all_active_sessions" do
-    let(:session_id_1) { SecureRandom.uuid }
-    let(:session_id_2) { SecureRandom.uuid }
-    let(:session_id_3) { SecureRandom.uuid }
-
-    before do
-      session_store.create_session(session_id_1, session_data)
-      session_store.create_session(session_id_2, session_data)
-      session_store.create_session(session_id_3, session_data)
-
-      session_store.mark_stream_active(session_id_1, "server-1")
-      session_store.mark_stream_active(session_id_2, "server-2")
-    end
-
-    it "returns only sessions with active streams" do
-      active_sessions = session_store.get_all_active_sessions
-
-      aggregate_failures do
-        expect(active_sessions).to contain_exactly(session_id_1, session_id_2)
-        expect(active_sessions).not_to include(session_id_3)
-      end
-    end
-
-    context "when no sessions have active streams" do
-      before do
-        session_store.mark_stream_inactive(session_id_1)
-        session_store.mark_stream_inactive(session_id_2)
-      end
-
-      it "returns empty array" do
-        active_sessions = session_store.get_all_active_sessions
-        expect(active_sessions).to eq([])
-      end
-    end
-
-    context "when no sessions exist" do
-      it "returns empty array" do
-        fresh_redis = MockRedis.new
-        fresh_session_store = described_class.new(fresh_redis, ttl: 300)
-
-        active_sessions = fresh_session_store.get_all_active_sessions
-        expect(active_sessions).to eq([])
       end
     end
   end
@@ -534,18 +429,12 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
       end
 
       session_store.mark_stream_active(session_id_1, server_2)
-      aggregate_failures do
-        expect(session_store.session_has_active_stream?(session_id_1)).to eq(true)
-        expect(session_store.get_session_server(session_id_1)).to eq(server_2)
-      end
+      expect(session_store.session_has_active_stream?(session_id_1)).to eq(true)
 
       expect(session_store.queue_message_for_session(session_id_1, {"test" => "message"})).to eq(true)
 
       session_store.mark_stream_inactive(session_id_1)
-      aggregate_failures do
-        expect(session_store.session_has_active_stream?(session_id_1)).to eq(false)
-        expect(session_store.get_session_server(session_id_1)).to be_nil
-      end
+      expect(session_store.session_has_active_stream?(session_id_1)).to eq(false)
 
       session_store.cleanup_session(session_id_1)
       expect(session_store.session_exists?(session_id_1)).to eq(false)
@@ -556,7 +445,7 @@ RSpec.describe ModelContextProtocol::Server::StreamableHttpTransport::SessionSto
       session_store.mark_stream_active(session_id_1, server_2)
 
       aggregate_failures do
-        expect(session_store.get_session_server(session_id_1)).to eq(server_2)
+        expect(session_store.session_has_active_stream?(session_id_1)).to eq(true)
         expect(session_store.queue_message_for_session(session_id_1, {"from" => "server_1"})).to eq(true)
       end
     end

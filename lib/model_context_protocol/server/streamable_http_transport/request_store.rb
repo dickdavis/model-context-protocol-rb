@@ -64,17 +64,6 @@ module ModelContextProtocol
         @redis.exists("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}") == 1
       end
 
-      # Get cancellation information for a request
-      #
-      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
-      # @return [Hash, nil] cancellation data or nil if not cancelled
-      def get_cancellation_info(jsonrpc_request_id)
-        data = @redis.get("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}")
-        data ? JSON.parse(data) : nil
-      rescue JSON::ParserError
-        nil
-      end
-
       # Unregister a request (typically called when request completes)
       #
       # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
@@ -99,25 +88,6 @@ module ModelContextProtocol
         end
 
         @redis.del(*keys_to_delete) unless keys_to_delete.empty?
-      end
-
-      # Get information about a specific request
-      #
-      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
-      # @return [Hash, nil] request information or nil if not found
-      def get_request(jsonrpc_request_id)
-        data = @redis.get("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}")
-        data ? JSON.parse(data) : nil
-      rescue JSON::ParserError
-        nil
-      end
-
-      # Check if a request is currently active
-      #
-      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
-      # @return [Boolean] true if the request is active, false otherwise
-      def active?(jsonrpc_request_id)
-        @redis.exists("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}") == 1
       end
 
       # Clean up all requests associated with a session
@@ -145,79 +115,6 @@ module ModelContextProtocol
 
         @redis.del(*all_keys) unless all_keys.empty?
         jsonrpc_request_ids
-      end
-
-      # Get all active request IDs for a specific session
-      #
-      # @param session_id [String] the session identifier
-      # @return [Array<String>] list of active request IDs for the session
-      def get_session_requests(session_id)
-        pattern = "#{SESSION_KEY_PREFIX}#{session_id}:*"
-        request_keys = @redis.keys(pattern)
-
-        request_keys.map do |key|
-          key.sub("#{SESSION_KEY_PREFIX}#{session_id}:", "")
-        end
-      end
-
-      # Get all active request IDs across all sessions
-      #
-      # @return [Array<String>] list of all active request IDs
-      def get_all_active_requests
-        pattern = "#{REQUEST_KEY_PREFIX}*"
-        request_keys = @redis.keys(pattern)
-
-        request_keys.map do |key|
-          key.sub(REQUEST_KEY_PREFIX, "")
-        end
-      end
-
-      # Clean up expired requests based on TTL
-      # This method can be called periodically to ensure cleanup
-      #
-      # @return [Integer] number of expired requests cleaned up
-      def cleanup_expired_requests
-        active_keys = @redis.keys("#{REQUEST_KEY_PREFIX}*")
-        expired_count = 0
-        key_exists_without_expiration = -1
-        key_does_not_exist = -2
-
-        active_keys.each do |key|
-          ttl = @redis.ttl(key)
-          if ttl == key_exists_without_expiration
-            @redis.expire(key, @ttl)
-          elsif ttl == key_does_not_exist
-            expired_count += 1
-          end
-        end
-
-        expired_count
-      end
-
-      # Refresh the TTL for an active request
-      #
-      # @param jsonrpc_request_id [String] the unique JSON-RPC request identifier
-      # @return [Boolean] true if TTL was refreshed, false if request doesn't exist
-      def refresh_request_ttl(jsonrpc_request_id)
-        request_data = @redis.get("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}")
-        return false unless request_data
-
-        @redis.multi do |multi|
-          multi.expire("#{REQUEST_KEY_PREFIX}#{jsonrpc_request_id}", @ttl)
-          multi.expire("#{CANCELLED_KEY_PREFIX}#{jsonrpc_request_id}", @ttl)
-
-          begin
-            data = JSON.parse(request_data)
-            session_id = data["session_id"]
-            if session_id
-              multi.expire("#{SESSION_KEY_PREFIX}#{session_id}:#{jsonrpc_request_id}", @ttl)
-            end
-          rescue JSON::ParserError
-            nil
-          end
-        end
-
-        true
       end
     end
   end
