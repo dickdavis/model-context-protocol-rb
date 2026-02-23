@@ -329,6 +329,13 @@ class TestToolWithStructuredContentResponse < ModelContextProtocol::Server::Tool
         required: ["temperature", "conditions", "humidity"]
       }
     end
+    # Optional security requirements for the tool
+    security_schemes do
+      [
+        {type: "noauth"},
+        {type: "oauth2", scopes: ["search.read"]}
+      ]
+    end
   end
 
   def call
@@ -362,6 +369,7 @@ end
 
 Key features:
 - Define input and output JSON schemas
+- Declare tool security schemes (e.g., noauth, oauth2 scopes)
 - Return text, image, audio, or embedded resource content
 - Support for structured content responses
 - Cancellable and progressable operations

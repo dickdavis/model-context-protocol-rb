@@ -335,6 +335,53 @@ RSpec.describe ModelContextProtocol::Server::Tool do
       child_tool = Class.new(parent_tool)
       expect(child_tool.annotations).to eq({readOnlyHint: true})
     end
+
+    it "sets security schemes when provided" do
+      tool_with_security_schemes = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "search"
+          description "Search indexed documents"
+          input_schema { {type: "object", properties: {}, required: []} }
+          security_schemes do
+            [
+              {type: "noauth"},
+              {type: "oauth2", scopes: ["search.read"]}
+            ]
+          end
+        end
+      end
+
+      expect(tool_with_security_schemes.security_schemes).to eq(
+        [
+          {type: "noauth"},
+          {type: "oauth2", scopes: ["search.read"]}
+        ]
+      )
+    end
+
+    it "inherits security schemes in subclasses" do
+      parent_tool = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "search"
+          description "Search indexed documents"
+          input_schema { {type: "object", properties: {}, required: []} }
+          security_schemes do
+            [
+              {type: "noauth"},
+              {type: "oauth2", scopes: ["search.read"]}
+            ]
+          end
+        end
+      end
+
+      child_tool = Class.new(parent_tool)
+      expect(child_tool.security_schemes).to eq(
+        [
+          {type: "noauth"},
+          {type: "oauth2", scopes: ["search.read"]}
+        ]
+      )
+    end
   end
 
   describe "definition" do
@@ -430,6 +477,52 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         annotations: {readOnlyHint: true}
       )
     end
+
+    it "includes security schemes when provided" do
+      tool_with_security_schemes = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "search"
+          description "Search indexed documents"
+          input_schema do
+            {
+              type: "object",
+              properties: {
+                q: {
+                  type: "string",
+                  description: "Search query"
+                }
+              },
+              required: ["q"]
+            }
+          end
+          security_schemes do
+            [
+              {type: "noauth"},
+              {type: "oauth2", scopes: ["search.read"]}
+            ]
+          end
+        end
+      end
+
+      expect(tool_with_security_schemes.definition).to eq(
+        name: "search",
+        description: "Search indexed documents",
+        inputSchema: {
+          type: "object",
+          properties: {
+            q: {
+              type: "string",
+              description: "Search query"
+            }
+          },
+          required: ["q"]
+        },
+        securitySchemes: [
+          {type: "noauth"},
+          {type: "oauth2", scopes: ["search.read"]}
+        ]
+      )
+    end
   end
 
   describe "optional title field" do
@@ -457,6 +550,11 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     it "does not include annotations in definition when not provided" do
       metadata = tool_without_title.definition
       expect(metadata).not_to have_key(:annotations)
+    end
+
+    it "does not include security schemes in definition when not provided" do
+      metadata = tool_without_title.definition
+      expect(metadata).not_to have_key(:securitySchemes)
     end
   end
 

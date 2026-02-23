@@ -83,7 +83,7 @@ module ModelContextProtocol
     end
 
     class << self
-      attr_reader :name, :description, :title, :input_schema, :output_schema, :annotations
+      attr_reader :name, :description, :title, :input_schema, :output_schema, :annotations, :security_schemes
 
       def define(&block)
         definition_dsl = DefinitionDSL.new
@@ -95,6 +95,7 @@ module ModelContextProtocol
         @input_schema = definition_dsl.input_schema
         @output_schema = definition_dsl.output_schema
         @annotations = definition_dsl.annotations
+        @security_schemes = definition_dsl.security_schemes
       end
 
       def inherited(subclass)
@@ -104,6 +105,7 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@input_schema, @input_schema)
         subclass.instance_variable_set(:@output_schema, @output_schema)
         subclass.instance_variable_set(:@annotations, @annotations)
+        subclass.instance_variable_set(:@security_schemes, @security_schemes)
       end
 
       def call(arguments, client_logger, server_logger, context = {})
@@ -123,6 +125,7 @@ module ModelContextProtocol
         result[:title] = @title if @title
         result[:outputSchema] = @output_schema if @output_schema
         result[:annotations] = @annotations if @annotations
+        result[:securitySchemes] = @security_schemes if @security_schemes
         result
       end
     end
@@ -156,6 +159,11 @@ module ModelContextProtocol
       def annotations(&block)
         @annotations = instance_eval(&block) if block_given?
         @annotations
+      end
+
+      def security_schemes(&block)
+        @security_schemes = instance_eval(&block) if block_given?
+        @security_schemes
       end
     end
   end
