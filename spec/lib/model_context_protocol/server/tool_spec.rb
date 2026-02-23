@@ -295,6 +295,46 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         )
       end
     end
+
+    it "sets annotations when provided" do
+      tool_with_annotations = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "fetch"
+          description "Fetch the full contents of a single resource"
+          input_schema do
+            {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "Unique identifier of the resource to fetch"
+                }
+              },
+              required: ["id"]
+            }
+          end
+          annotations do
+            {readOnlyHint: true}
+          end
+        end
+      end
+
+      expect(tool_with_annotations.annotations).to eq(readOnlyHint: true)
+    end
+
+    it "inherits annotations in subclasses" do
+      parent_tool = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "fetch"
+          description "Fetch the full contents of a single resource"
+          input_schema { {type: "object", properties: {}, required: []} }
+          annotations { {readOnlyHint: true} }
+        end
+      end
+
+      child_tool = Class.new(parent_tool)
+      expect(child_tool.annotations).to eq({readOnlyHint: true})
+    end
   end
 
   describe "definition" do
@@ -350,6 +390,46 @@ RSpec.describe ModelContextProtocol::Server::Tool do
         }
       )
     end
+
+    it "includes annotations when provided" do
+      tool_with_annotations = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "fetch"
+          description "Fetch the full contents of a single resource"
+          input_schema do
+            {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                  description: "Unique identifier of the resource to fetch"
+                }
+              },
+              required: ["id"]
+            }
+          end
+          annotations do
+            {readOnlyHint: true}
+          end
+        end
+      end
+
+      expect(tool_with_annotations.definition).to eq(
+        name: "fetch",
+        description: "Fetch the full contents of a single resource",
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Unique identifier of the resource to fetch"
+            }
+          },
+          required: ["id"]
+        },
+        annotations: {readOnlyHint: true}
+      )
+    end
   end
 
   describe "optional title field" do
@@ -372,6 +452,11 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     it "does not include title in definition when not provided" do
       metadata = tool_without_title.definition
       expect(metadata).not_to have_key(:title)
+    end
+
+    it "does not include annotations in definition when not provided" do
+      metadata = tool_without_title.definition
+      expect(metadata).not_to have_key(:annotations)
     end
   end
 
