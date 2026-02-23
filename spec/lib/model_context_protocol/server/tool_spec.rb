@@ -328,12 +328,12 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           name "fetch"
           description "Fetch the full contents of a single resource"
           input_schema { {type: "object", properties: {}, required: []} }
-          annotations { {"readOnlyHint": true} }
+          annotations { {readOnlyHint: true} }
         end
       end
 
       child_tool = Class.new(parent_tool)
-      expect(child_tool.annotations).to eq({"readOnlyHint": true})
+      expect(child_tool.annotations).to eq({readOnlyHint: true})
     end
   end
 
@@ -409,7 +409,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
             }
           end
           annotations do
-            {"readOnlyHint": true}
+            {readOnlyHint: true}
           end
         end
       end
@@ -427,7 +427,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           },
           required: ["id"]
         },
-        annotations: {"readOnlyHint": true}
+        annotations: {readOnlyHint: true}
       )
     end
   end
