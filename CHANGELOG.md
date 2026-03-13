@@ -19,6 +19,7 @@
 - Remove dead code across the codebase.
 - (Fix) Fix logdev references in server logger.
 - (Fix) Ensure context hash keys are symbolized when retrieved from session.
+- (Fix) Fix `resource_link` content helper to return a Content object like all other content helpers.
 
 ## [0.6.0] - 2026-01-26
 
