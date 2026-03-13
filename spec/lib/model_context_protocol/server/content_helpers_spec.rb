@@ -217,30 +217,30 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
 
   describe "#resource_link" do
     context "with valid data" do
-      it "returns a serialized ResourceLink hash with required parameters" do
+      it "returns a ResourceLink content object with required parameters" do
         result = helper.resource_link(name: "test-file", uri: "https://example.com/test.txt")
 
-        expect(result).to be_a(Hash)
-        expect(result[:name]).to eq("test-file")
-        expect(result[:uri]).to eq("https://example.com/test.txt")
-        expect(result[:type]).to eq("resource_link")
+        expect(result).to be_a(ModelContextProtocol::Server::Content::ResourceLink)
+        expect(result.name).to eq("test-file")
+        expect(result.uri).to eq("https://example.com/test.txt")
+        expect(result.meta).to be_nil
+        expect(result.annotations).to be_nil
       end
 
-      it "returns a serialized ResourceLink hash with meta" do
+      it "returns a ResourceLink content object with meta" do
         result = helper.resource_link(
           name: "test-file",
           uri: "https://example.com/test.txt",
           meta: {api_version: "v1"}
         )
 
-        expect(result).to be_a(Hash)
-        expect(result[:name]).to eq("test-file")
-        expect(result[:uri]).to eq("https://example.com/test.txt")
-        expect(result[:type]).to eq("resource_link")
-        expect(result[:_meta]).to eq({api_version: "v1"})
+        expect(result).to be_a(ModelContextProtocol::Server::Content::ResourceLink)
+        expect(result.name).to eq("test-file")
+        expect(result.uri).to eq("https://example.com/test.txt")
+        expect(result.meta).to eq({api_version: "v1"})
       end
 
-      it "returns a serialized ResourceLink hash with annotations" do
+      it "returns a ResourceLink content object with annotations" do
         annotations = {audience: "user", priority: 0.8}
         result = helper.resource_link(
           name: "test-file",
@@ -248,14 +248,13 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
           annotations: annotations
         )
 
-        expect(result).to be_a(Hash)
-        expect(result[:name]).to eq("test-file")
-        expect(result[:uri]).to eq("https://example.com/test.txt")
-        expect(result[:type]).to eq("resource_link")
-        expect(result[:annotations]).to eq({audience: "user", priority: 0.8})
+        expect(result).to be_a(ModelContextProtocol::Server::Content::ResourceLink)
+        expect(result.name).to eq("test-file")
+        expect(result.uri).to eq("https://example.com/test.txt")
+        expect(result.annotations).to eq({audience: "user", priority: 0.8})
       end
 
-      it "returns a serialized ResourceLink hash with all optional parameters" do
+      it "returns a ResourceLink content object with all optional parameters" do
         annotations = {audience: ["user", "assistant"], last_modified: "2025-01-12T15:00:58Z", priority: 1.0}
         result = helper.resource_link(
           name: "test-file",
@@ -268,23 +267,22 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
           title: "Test File"
         )
 
-        expect(result).to be_a(Hash)
-        expect(result[:name]).to eq("test-file")
-        expect(result[:uri]).to eq("https://example.com/test.txt")
-        expect(result[:type]).to eq("resource_link")
-        expect(result[:_meta]).to eq({external: true})
-        expect(result[:annotations]).to eq({
+        expect(result).to be_a(ModelContextProtocol::Server::Content::ResourceLink)
+        expect(result.name).to eq("test-file")
+        expect(result.uri).to eq("https://example.com/test.txt")
+        expect(result.meta).to eq({external: true})
+        expect(result.annotations).to eq({
           audience: ["user", "assistant"],
           lastModified: "2025-01-12T15:00:58Z",
           priority: 1.0
         })
-        expect(result[:description]).to eq("A test file")
-        expect(result[:mimeType]).to eq("text/plain")
-        expect(result[:size]).to eq(1024)
-        expect(result[:title]).to eq("Test File")
+        expect(result.description).to eq("A test file")
+        expect(result.mime_type).to eq("text/plain")
+        expect(result.size).to eq(1024)
+        expect(result.title).to eq("Test File")
       end
 
-      it "returns a serialized ResourceLink hash with only some optional parameters" do
+      it "returns a ResourceLink content object with only some optional parameters" do
         result = helper.resource_link(
           name: "test-file",
           uri: "https://example.com/test.txt",
@@ -292,16 +290,25 @@ RSpec.describe ModelContextProtocol::Server::ContentHelpers do
           size: 2048
         )
 
-        expect(result).to be_a(Hash)
-        expect(result[:name]).to eq("test-file")
-        expect(result[:uri]).to eq("https://example.com/test.txt")
-        expect(result[:type]).to eq("resource_link")
-        expect(result[:description]).to eq("A test file")
-        expect(result[:size]).to eq(2048)
-        expect(result).not_to have_key(:_meta)
-        expect(result).not_to have_key(:annotations)
-        expect(result).not_to have_key(:mimeType)
-        expect(result).not_to have_key(:title)
+        expect(result).to be_a(ModelContextProtocol::Server::Content::ResourceLink)
+        expect(result.name).to eq("test-file")
+        expect(result.uri).to eq("https://example.com/test.txt")
+        expect(result.description).to eq("A test file")
+        expect(result.size).to eq(2048)
+        expect(result.meta).to be_nil
+        expect(result.annotations).to be_nil
+        expect(result.mime_type).to be_nil
+        expect(result.title).to be_nil
+      end
+
+      it "serializes correctly" do
+        result = helper.resource_link(name: "test-file", uri: "https://example.com/test.txt")
+        serialized = result.serialized
+
+        expect(serialized).to be_a(Hash)
+        expect(serialized[:name]).to eq("test-file")
+        expect(serialized[:uri]).to eq("https://example.com/test.txt")
+        expect(serialized[:type]).to eq("resource_link")
       end
     end
   end
