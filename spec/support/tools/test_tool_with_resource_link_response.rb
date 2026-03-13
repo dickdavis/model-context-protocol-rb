@@ -19,18 +19,12 @@ class TestToolWithResourceLinkResponse < ModelContextProtocol::Server::Tool
   def call
     name = arguments[:name]
 
-    # Create ResourceLink content object directly since the helper returns serialized form
-    link = ModelContextProtocol::Server::Content::ResourceLink[
-      meta: nil,
-      annotations: nil,
+    respond_with content: resource_link(
+      name: name,
+      uri: "file:///docs/#{name}.md",
       description: "A document named #{name}",
       mime_type: "text/markdown",
-      name: name,
-      size: nil,
-      title: "Document: #{name}",
-      uri: "file:///docs/#{name}.md"
-    ]
-
-    respond_with content: link
+      title: "Document: #{name}"
+    )
   end
 end

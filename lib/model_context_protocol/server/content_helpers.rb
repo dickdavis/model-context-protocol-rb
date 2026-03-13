@@ -78,7 +78,7 @@ module ModelContextProtocol
         size:,
         title:,
         uri:
-      ].serialized
+      ]
     end
   end
 end
