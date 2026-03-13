@@ -205,6 +205,10 @@ For a complete Rails integration example, see the [Quick Start with Rails](https
 
 For complete configuration details including all server options, Redis configuration, and logging options, see the [Building an MCP Server](https://github.com/dickdavis/model-context-protocol-rb/wiki/Building-an-MCP-Server) wiki page.
 
+## Claude Code Plugin
+
+The [mcp-rb](https://github.com/dickdavis/model-context-protocol-rb-plugin) Claude Code plugin teaches Claude how to build MCP handlers and configure servers using this gem's DSL. It provides skills for creating tools, prompts, resources, and server configurations.
+
 ## Prompts
 
 Define prompts that MCP clients can use to generate contextual message sequences.
