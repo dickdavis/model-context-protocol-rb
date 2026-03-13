@@ -15,7 +15,7 @@ class TestToolWithAnnotations < ModelContextProtocol::Server::Tool
       }
     end
     annotations do
-      {readOnlyHint: true}
+      read_only_hint true
     end
   end
 

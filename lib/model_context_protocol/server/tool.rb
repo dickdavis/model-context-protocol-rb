@@ -94,7 +94,7 @@ module ModelContextProtocol
         @title = definition_dsl.title
         @input_schema = definition_dsl.input_schema
         @output_schema = definition_dsl.output_schema
-        @annotations = definition_dsl.annotations
+        @annotations = definition_dsl.defined_annotations
         @security_schemes = definition_dsl.security_schemes
       end
 
@@ -104,7 +104,7 @@ module ModelContextProtocol
         subclass.instance_variable_set(:@title, @title)
         subclass.instance_variable_set(:@input_schema, @input_schema)
         subclass.instance_variable_set(:@output_schema, @output_schema)
-        subclass.instance_variable_set(:@annotations, @annotations)
+        subclass.instance_variable_set(:@annotations, @annotations&.dup)
         subclass.instance_variable_set(:@security_schemes, @security_schemes)
       end
 
@@ -124,7 +124,8 @@ module ModelContextProtocol
         result = {name: @name, description: @description, inputSchema: @input_schema}
         result[:title] = @title if @title
         result[:outputSchema] = @output_schema if @output_schema
-        result[:annotations] = @annotations if @annotations
+        annotations_hash = @annotations&.serialized
+        result[:annotations] = annotations_hash if annotations_hash
         result[:securitySchemes] = @security_schemes if @security_schemes
         result
       end
@@ -156,14 +157,63 @@ module ModelContextProtocol
         @output_schema
       end
 
+      attr_reader :defined_annotations
+
       def annotations(&block)
-        @annotations = instance_eval(&block) if block_given?
-        @annotations
+        @defined_annotations = AnnotationsDSL.new
+        @defined_annotations.instance_eval(&block)
+        @defined_annotations
       end
 
       def security_schemes(&block)
         @security_schemes = instance_eval(&block) if block_given?
         @security_schemes
+      end
+    end
+
+    class AnnotationsDSL
+      def initialize
+        @read_only_hint = nil
+        @destructive_hint = nil
+        @idempotent_hint = nil
+        @open_world_hint = nil
+      end
+
+      def read_only_hint(value)
+        validate_boolean!(:read_only_hint, value)
+        @read_only_hint = value
+      end
+
+      def destructive_hint(value)
+        validate_boolean!(:destructive_hint, value)
+        @destructive_hint = value
+      end
+
+      def idempotent_hint(value)
+        validate_boolean!(:idempotent_hint, value)
+        @idempotent_hint = value
+      end
+
+      def open_world_hint(value)
+        validate_boolean!(:open_world_hint, value)
+        @open_world_hint = value
+      end
+
+      def serialized
+        result = {}
+        result[:readOnlyHint] = @read_only_hint unless @read_only_hint.nil?
+        result[:destructiveHint] = @destructive_hint unless @destructive_hint.nil?
+        result[:idempotentHint] = @idempotent_hint unless @idempotent_hint.nil?
+        result[:openWorldHint] = @open_world_hint unless @open_world_hint.nil?
+        result.empty? ? nil : result
+      end
+
+      private
+
+      def validate_boolean!(field, value)
+        unless value.is_a?(TrueClass) || value.is_a?(FalseClass)
+          raise ArgumentError, "#{field} must be a boolean, got: #{value.inspect}"
+        end
       end
     end
   end
