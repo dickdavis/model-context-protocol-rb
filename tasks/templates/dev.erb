@@ -61,6 +61,8 @@ server = ModelContextProtocol::Server.with_stdio_transport do |config|
       register TestToolWithToolErrorResponse
       register TestToolWithCancellableSleep
       register TestToolWithProgressableAndCancellable
+      register TestToolWithAnnotations
+      register TestToolWithSecuritySchemes
     end
   end
 end
