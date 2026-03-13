@@ -1,15 +1,24 @@
 ## [Unreleased]
 
-- Implement list changed notifications for prompts, resources, and tools (Streamable HTTP transport only).
-- Add `ssl_params` configuration option for Redis connections to support hosted Redis providers with self-signed certificates.
-- (Breaking) Refactor streamable HTTP transport to singleton pattern for production use.
-  - Use `Server.setup { |config| ... }` to initialize once at application boot.
-  - Use `Server.serve(env:, session_context:)` to handle each HTTP request.
-  - Use `Server.shutdown` for graceful cleanup on application exit.
-  - This ensures only 2 background threads exist regardless of concurrent connections.
+- (Breaking) Refactor server to use factory methods and singleton pattern.
+  - Use `Server.with_stdio_transport` or `Server.with_streamable_http_transport` to configure.
+  - Use `Server.start` to activate the transport.
+  - Use `Server.serve(env:, session_context:)` to handle HTTP requests.
+  - Use `Server.shutdown` for cleanup on exit.
+- (Breaking) Sessions are now required by default for streamable HTTP transport. Set `require_sessions = false` to opt out.
+- (Breaking) Simplify Redis and registry configuration APIs.
+- Add Puma plugin (`puma/plugin/mcp`) to manage server lifecycle automatically.
+- Add RSpec matchers for testing MCP handlers (e.g., `be_valid_mcp_tool_response`, `have_text_content`).
+- Add tool annotations and security schemes.
+- Add spec-compliant session management.
+- Add list changed notifications for prompts, resources, and tools (streamable HTTP transport only).
 - Add `session_context` parameter to `Server.serve` for per-request context (e.g., user_id from authentication).
+- Add `ssl_params` configuration option for Redis connections.
 - Skip environment variable manipulation for streamable HTTP transport (thread-unsafe in multi-threaded servers).
 - Use thread-safe data structures for session protocol version tracking.
+- Remove dead code across the codebase.
+- (Fix) Fix logdev references in server logger.
+- (Fix) Ensure context hash keys are symbolized when retrieved from session.
 
 ## [0.6.0] - 2026-01-26
 
