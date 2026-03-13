@@ -314,12 +314,12 @@ RSpec.describe ModelContextProtocol::Server::Tool do
             }
           end
           annotations do
-            {readOnlyHint: true}
+            read_only_hint true
           end
         end
       end
 
-      expect(tool_with_annotations.annotations).to eq(readOnlyHint: true)
+      expect(tool_with_annotations.annotations.serialized).to eq(readOnlyHint: true)
     end
 
     it "inherits annotations in subclasses" do
@@ -328,12 +328,14 @@ RSpec.describe ModelContextProtocol::Server::Tool do
           name "fetch"
           description "Fetch the full contents of a single resource"
           input_schema { {type: "object", properties: {}, required: []} }
-          annotations { {readOnlyHint: true} }
+          annotations do
+            read_only_hint true
+          end
         end
       end
 
       child_tool = Class.new(parent_tool)
-      expect(child_tool.annotations).to eq({readOnlyHint: true})
+      expect(child_tool.annotations.serialized).to eq({readOnlyHint: true})
     end
 
     it "sets security schemes when provided" do
@@ -456,7 +458,7 @@ RSpec.describe ModelContextProtocol::Server::Tool do
             }
           end
           annotations do
-            {readOnlyHint: true}
+            read_only_hint true
           end
         end
       end
@@ -555,6 +557,120 @@ RSpec.describe ModelContextProtocol::Server::Tool do
     it "does not include security schemes in definition when not provided" do
       metadata = tool_without_title.definition
       expect(metadata).not_to have_key(:securitySchemes)
+    end
+  end
+
+  describe "AnnotationsDSL" do
+    it "serializes all hints with camelCase keys" do
+      tool = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "test"
+          description "Test tool"
+          input_schema { {type: "object", properties: {}, required: []} }
+          annotations do
+            read_only_hint false
+            destructive_hint true
+            idempotent_hint false
+            open_world_hint true
+          end
+        end
+      end
+
+      expect(tool.annotations.serialized).to eq(
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+      )
+    end
+
+    it "only serializes hints that are set" do
+      tool = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "test"
+          description "Test tool"
+          input_schema { {type: "object", properties: {}, required: []} }
+          annotations do
+            destructive_hint false
+          end
+        end
+      end
+
+      expect(tool.annotations.serialized).to eq(destructiveHint: false)
+    end
+
+    it "returns nil from serialized when no hints are set" do
+      tool = Class.new(ModelContextProtocol::Server::Tool) do
+        define do
+          name "test"
+          description "Test tool"
+          input_schema { {type: "object", properties: {}, required: []} }
+          annotations do
+          end
+        end
+      end
+
+      expect(tool.annotations.serialized).to be_nil
+    end
+
+    it "raises ArgumentError for non-boolean read_only_hint" do
+      expect {
+        Class.new(ModelContextProtocol::Server::Tool) do
+          define do
+            name "test"
+            description "Test tool"
+            input_schema { {type: "object", properties: {}, required: []} }
+            annotations do
+              read_only_hint "true"
+            end
+          end
+        end
+      }.to raise_error(ArgumentError, /read_only_hint must be a boolean/)
+    end
+
+    it "raises ArgumentError for non-boolean destructive_hint" do
+      expect {
+        Class.new(ModelContextProtocol::Server::Tool) do
+          define do
+            name "test"
+            description "Test tool"
+            input_schema { {type: "object", properties: {}, required: []} }
+            annotations do
+              destructive_hint 1
+            end
+          end
+        end
+      }.to raise_error(ArgumentError, /destructive_hint must be a boolean/)
+    end
+
+    it "raises ArgumentError for non-boolean idempotent_hint" do
+      expect {
+        Class.new(ModelContextProtocol::Server::Tool) do
+          define do
+            name "test"
+            description "Test tool"
+            input_schema { {type: "object", properties: {}, required: []} }
+            annotations do
+              idempotent_hint nil
+            end
+          end
+        end
+      }.to raise_error(ArgumentError, /idempotent_hint must be a boolean/)
+    end
+
+    it "raises ArgumentError for non-boolean open_world_hint" do
+      expect {
+        Class.new(ModelContextProtocol::Server::Tool) do
+          define do
+            name "test"
+            description "Test tool"
+            input_schema { {type: "object", properties: {}, required: []} }
+            annotations do
+              open_world_hint "false"
+            end
+          end
+        end
+      }.to raise_error(ArgumentError, /open_world_hint must be a boolean/)
     end
   end
 
