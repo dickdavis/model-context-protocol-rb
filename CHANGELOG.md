@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-13
+
 - (Breaking) Refactor server to use factory methods and singleton pattern.
   - Use `Server.with_stdio_transport` or `Server.with_streamable_http_transport` to configure.
   - Use `Server.start` to activate the transport.
@@ -110,7 +112,8 @@
 
 - Initial release
 
-[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dickdavis/model-context-protocol-rb/compare/v0.4.0...v0.5.0
