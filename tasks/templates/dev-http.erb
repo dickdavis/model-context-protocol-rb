@@ -11,7 +11,7 @@ require "securerandom"
 require "redis"
 require "logger"
 require "json"
-require 'stringio'
+require "stringio"
 
 require_relative "../lib/model_context_protocol"
 
@@ -20,18 +20,7 @@ require_relative "../lib/model_context_protocol"
   Dir[File.join(__dir__, "../spec/support/#{subdir}/**/*.rb")].each { |file| require file }
 end
 
-logger = Logger.new(STDOUT)
-logger.level = Logger::INFO
-logger.formatter = proc do |severity, datetime, progname, msg|
-  request_id = Thread.current[:request_id] || "----"
-  "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} [#{request_id}]: #{msg}\n"
-end
-
 # Flag files for dynamic handler registration (checked at startup)
-# Touch these files BEFORE starting the server to add extra handlers:
-#   tmp/flags/extra_tools    - adds TestToolWithAudioResponse
-#   tmp/flags/extra_resources - adds TestBinaryResource
-#   tmp/flags/extra_prompts  - adds TestPromptWithCompletionClass
 FLAGS_DIR = File.join(__dir__, '..', 'tmp', 'flags')
 FileUtils.mkdir_p(FLAGS_DIR) unless Dir.exist?(FLAGS_DIR)
 
@@ -46,9 +35,8 @@ ModelContextProtocol::Server.configure_server_logging do |config|
   config.progname = "MCP-Dev-Server"
 end
 
-# Set up the server (runs once at startup)
-logger.info("Setting up MCP Server...")
-server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
+# Configure MCP server
+ModelContextProtocol::Server.with_streamable_http_transport do |config|
   config.name = "MCP Development Server"
   config.version = "1.0.0"
 
@@ -100,11 +88,16 @@ server = ModelContextProtocol::Server.with_streamable_http_transport do |config|
     end
   end
 end
-server.start
 
+# Rack application
 class MCPHttpApp
-  def initialize(logger)
-    @logger = logger
+  def initialize
+    @logger = Logger.new(STDOUT)
+    @logger.level = Logger::INFO
+    @logger.formatter = proc do |severity, datetime, progname, msg|
+      request_id = Thread.current[:request_id] || "----"
+      "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} [#{request_id}]: #{msg}\n"
+    end
   end
 
   def call(env)
@@ -114,70 +107,19 @@ class MCPHttpApp
     request = Rack::Request.new(env)
     body_content = request.body.read
 
-    case env['REQUEST_METHOD']
-    when 'POST'
-      begin
-        request_json = JSON.parse(body_content)
-        method = request_json['method']
-        id = request_json['id']
-
-        if method&.start_with?('notifications/')
-          @logger.info("→ #{method} [NOTIFICATION]")
-        elsif id.nil?
-          @logger.info("→ #{method} [NOTIFICATION]")
-        else
-          @logger.info("→ #{method} (id: #{id}) [REQUEST]")
-        end
-        @logger.info("  Request: #{body_content}")
-      rescue JSON::ParserError
-        @logger.info("→ POST #{env['PATH_INFO']} [INVALID JSON]")
-        @logger.info("  Request: #{body_content}")
-      end
-    when 'GET'
-      accept_header = env['HTTP_ACCEPT'] || ''
-      if accept_header.include?('text/event-stream')
-        @logger.info("→ GET #{env['PATH_INFO']} [SSE STREAM REQUEST]")
-      else
-        @logger.info("→ GET #{env['PATH_INFO']}")
-      end
-      @logger.info("  Headers: Accept=#{accept_header}") unless accept_header.empty?
-    when 'DELETE'
-      session_id = env['HTTP_MCP_SESSION_ID']
-      if session_id
-        @logger.info("→ DELETE #{env['PATH_INFO']} [SESSION CLEANUP: #{session_id}]")
-      else
-        @logger.info("→ DELETE #{env['PATH_INFO']} [SESSION CLEANUP]")
-      end
-    else
-      @logger.info("→ #{env['REQUEST_METHOD']} #{env['PATH_INFO']}")
-      @logger.info("  Request: #{body_content}") unless body_content.empty?
-    end
-
-    if ModelContextProtocol::Server::RedisConfig.configured?
-      pool_stats = ModelContextProtocol::Server::RedisConfig.stats
-      @logger.info("  Redis Pool: #{pool_stats}")
-    end
+    log_request(env, body_content)
 
     env['rack.input'] = StringIO.new(body_content)
-    request = Rack::Request.new(env)
 
     unless request.path == "/mcp"
       return [404, {"Content-Type" => "application/json"}, ['{"error": "Not found"}']]
     end
 
     if request.request_method == "OPTIONS"
-      return [200, {
-        "Access-Control-Allow-Origin" => "*",
-        "Access-Control-Allow-Methods" => "GET, POST, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers" => "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin",
-        "Access-Control-Max-Age" => "86400"
-      }, [""]]
+      return [200, cors_headers, [""]]
     end
 
     begin
-      @logger.debug("Handling request via Server.serve")
-
-      # Use the server instance to handle the request
       result = ModelContextProtocol::Server.serve(
         env: env,
         session_context: {
@@ -186,59 +128,7 @@ class MCPHttpApp
         }
       )
 
-      case result
-      when Hash
-        if result[:stream]
-          @logger.info("← SSE STREAM OPENED [PERSISTENT CONNECTION]")
-          @logger.info("  Connection will remain open for real-time notifications")
-          headers = result[:headers] || {}
-          headers["Access-Control-Allow-Origin"] = "*"
-          headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
-          headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin"
-
-          return [200, headers, result[:stream_proc]]
-        elsif result[:json]
-          response_body = result[:json].to_json
-          status = result[:status] || 200
-
-          begin
-            response_json = result[:json]
-            if response_json[:error]
-              @logger.info("← ERROR RESPONSE (code: #{response_json[:error][:code]})")
-            elsif status == 202
-              @logger.info("← NOTIFICATION ACCEPTED [NO RESPONSE REQUIRED]")
-            elsif response_json[:accepted] == true && status == 200
-              method = request_json['method'] rescue 'unknown'
-              id = request_json['id'] rescue 'unknown'
-              @logger.info("← #{method} RESPONSE (id: #{id}) [DELIVERED VIA SSE STREAM]")
-            elsif response_json[:result]
-              method = request_json['method'] rescue 'unknown'
-              @logger.info("← #{method} RESPONSE (id: #{response_json[:id]})")
-            else
-              @logger.info("← RESPONSE (status: #{status})")
-            end
-            @logger.info("  Response: #{response_body}") unless status == 202 && response_body == '{}'
-          rescue
-            @logger.info("← RESPONSE (status: #{status})")
-            @logger.info("  Response: #{response_body}") unless response_body.empty?
-          end
-
-          headers = result[:headers] || {}
-          headers["Content-Type"] = "application/json"
-          headers["Access-Control-Allow-Origin"] = "*"
-          headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
-          headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin"
-
-          [result[:status] || 200, headers, [response_body]]
-        else
-          # Fallback
-          @logger.error("← Invalid transport response")
-          [500, {"Content-Type" => "application/json"}, ['{"error": "Invalid transport response"}']]
-        end
-      else
-        @logger.error("← Unexpected response format")
-        [500, {"Content-Type" => "application/json"}, ['{"error": "Unexpected response format"}']]
-      end
+      handle_result(result, body_content)
     rescue => e
       @logger.error("Error handling request: #{e.message}")
       @logger.debug("Full backtrace:\n#{e.backtrace.join("\n")}")
@@ -247,24 +137,96 @@ class MCPHttpApp
       Thread.current[:request_id] = nil
     end
   end
+
+  private
+
+  def log_request(env, body_content)
+    case env['REQUEST_METHOD']
+    when 'POST'
+      begin
+        request_json = JSON.parse(body_content)
+        method = request_json['method']
+        id = request_json['id']
+
+        if method&.start_with?('notifications/') || id.nil?
+          @logger.info("→ #{method} [NOTIFICATION]")
+        else
+          @logger.info("→ #{method} (id: #{id}) [REQUEST]")
+        end
+        @logger.info("  Request: #{body_content}")
+      rescue JSON::ParserError
+        @logger.info("→ POST #{env['PATH_INFO']} [INVALID JSON]")
+      end
+    when 'GET'
+      accept_header = env['HTTP_ACCEPT'] || ''
+      if accept_header.include?('text/event-stream')
+        @logger.info("→ GET #{env['PATH_INFO']} [SSE STREAM REQUEST]")
+      else
+        @logger.info("→ GET #{env['PATH_INFO']}")
+      end
+    when 'DELETE'
+      session_id = env['HTTP_MCP_SESSION_ID']
+      @logger.info("→ DELETE #{env['PATH_INFO']} [SESSION CLEANUP#{session_id ? ": #{session_id}" : ""}]")
+    else
+      @logger.info("→ #{env['REQUEST_METHOD']} #{env['PATH_INFO']}")
+    end
+  end
+
+  def handle_result(result, body_content)
+    case result
+    when Hash
+      if result[:stream]
+        @logger.info("← SSE STREAM OPENED [PERSISTENT CONNECTION]")
+        headers = (result[:headers] || {}).merge(cors_headers)
+        [200, headers, result[:stream_proc]]
+      elsif result[:json]
+        response_body = result[:json].to_json
+        status = result[:status] || 200
+        @logger.info("← RESPONSE (status: #{status})")
+        @logger.info("  Response: #{response_body}") unless status == 202
+        headers = (result[:headers] || {}).merge(cors_headers).merge("Content-Type" => "application/json")
+        [status, headers, [response_body]]
+      else
+        @logger.error("← Invalid transport response")
+        [500, {"Content-Type" => "application/json"}, ['{"error": "Invalid transport response"}']]
+      end
+    else
+      @logger.error("← Unexpected response format")
+      [500, {"Content-Type" => "application/json"}, ['{"error": "Unexpected response format"}']]
+    end
+  end
+
+  def cors_headers
+    {
+      "Access-Control-Allow-Origin" => "*",
+      "Access-Control-Allow-Methods" => "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers" => "Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version, Origin",
+      "Access-Control-Max-Age" => "86400"
+    }
+  end
 end
 
 use_ssl = ENV['SSL'] == 'true'
 port = use_ssl ? 9293 : 9292
 protocol = use_ssl ? 'https' : 'http'
 
-logger.info("Starting MCP #{protocol.upcase} Development Server on #{protocol}://localhost:#{port}/mcp")
-logger.info("Using streamable HTTP transport (2 background threads max)")
-logger.info("")
-logger.info("Flag files (checked at startup only - restart server to apply changes):")
-logger.info("  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse")
-logger.info("  touch tmp/flags/extra_resources # Add TestBinaryResource")
-logger.info("  touch tmp/flags/extra_prompts   # Add TestPromptWithCompletionClass")
-logger.info("  rm tmp/flags/<flag>             # Remove the handler")
+puts "=" * 60
+puts "MCP Development Server (WEBrick)"
+puts "=" * 60
+puts "URL:      #{protocol}://localhost:#{port}/mcp"
+puts "Transport: Streamable HTTP"
+puts "=" * 60
+puts ""
+puts "Flag files (checked at startup only - restart server to apply changes):"
+puts "  touch tmp/flags/extra_tools     # Add TestToolWithAudioResponse"
+puts "  touch tmp/flags/extra_resources # Add TestBinaryResource"
+puts "  touch tmp/flags/extra_prompts   # Add TestPromptWithCompletionClass"
+puts "  rm tmp/flags/<flag>             # Remove the handler"
+puts ""
 
 app = Rack::Builder.new do
   map '/mcp' do
-    run MCPHttpApp.new(logger)
+    run MCPHttpApp.new
   end
 end
 
@@ -278,8 +240,8 @@ if use_ssl
   key_path = File.join(__dir__, '..', 'tmp', 'ssl', 'server.key')
 
   unless File.exist?(cert_path) && File.exist?(key_path)
-    logger.error("SSL certificates not found at tmp/ssl/")
-    logger.error("Generate them with: openssl req -x509 -newkey rsa:4096 -keyout tmp/ssl/server.key -out tmp/ssl/server.crt -days 365 -nodes -subj \"/C=US/ST=Dev/L=Dev/O=Dev/CN=localhost\"")
+    $stderr.puts "SSL certificates not found at tmp/ssl/"
+    $stderr.puts "Generate them with: openssl req -x509 -newkey rsa:4096 -keyout tmp/ssl/server.key -out tmp/ssl/server.crt -days 365 -nodes -subj \"/C=US/ST=Dev/L=Dev/O=Dev/CN=localhost\""
     exit(1)
   end
 
@@ -290,6 +252,9 @@ if use_ssl
     SSLVerifyClient: OpenSSL::SSL::VERIFY_NONE
   )
 end
+
+# Start the MCP server (lifecycle hook)
+ModelContextProtocol::Server.start
 
 webrick_server = WEBrick::HTTPServer.new(server_options)
 webrick_server.mount '/', Rackup::Handler::WEBrick, app
