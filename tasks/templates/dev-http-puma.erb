@@ -84,6 +84,7 @@ ModelContextProtocol::Server.with_streamable_http_transport do |config|
       register TestToolWithProgressableAndCancellable
       register TestToolWithAnnotations
       register TestToolWithSecuritySchemes
+      register TestToolWithResourceLinkResponse
       register TestToolWithAudioResponse if flag_enabled?('extra_tools')
     end
   end
